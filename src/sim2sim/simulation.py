@@ -16,6 +16,23 @@ import numpy as np
 from PIL import Image
 
 
+def _load_xml(path, ancestors=()):
+    """Expand includes before inspecting bodies, retaining nested relative paths."""
+    path = Path(path).resolve()
+    if path in ancestors:
+        raise ValueError("cyclic MJCF include")
+    root = ET.parse(path).getroot()
+    for parent in list(root.iter()):
+        for index, node in reversed(list(enumerate(parent))):
+            if node.tag != "include":
+                continue
+            included = _load_xml(path.parent / node.attrib["file"], ancestors + (path,))
+            parent.remove(node)
+            for child in reversed(list(included)):
+                parent.insert(index, child)
+    return root
+
+
 class PointGrasp:
     """Replaceable point constraint controller, without orientation actuation.
 
@@ -58,15 +75,13 @@ class Simulation:
         self._grasp = None
         self._callback = self.config.get("recording_callback")
         scene_path = Path(scene_path).resolve()
-        tree = ET.parse(scene_path)
-        root = tree.getroot()
+        root = _load_xml(scene_path)
         compiler = root.find("compiler")
         if compiler is None:
             compiler = ET.SubElement(root, "compiler")
         for key in ("meshdir", "texturedir"):
-            compiler.set(key, str((scene_path.parent / compiler.get(key, ".")).resolve()))
-        for include in root.iter("include"):
-            include.set("file", str((scene_path.parent / include.attrib["file"]).resolve()))
+            compiler.set(key, str((scene_path.parent / compiler.get(key, compiler.get("assetdir", "."))).resolve()))
+        compiler.set("assetdir", str((scene_path.parent / compiler.get("assetdir", ".")).resolve()))
         world = root.find("worldbody")
         if world is None:
             raise ValueError("scene needs a worldbody")
@@ -118,6 +133,12 @@ class Simulation:
         self._camera_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera)
         if self._camera_id < 0:
             raise ValueError(f"unknown fixed camera: {self.camera}")
+        if int(self._model.cam_bodyid[self._camera_id]) != 0 or int(self._model.cam_mode[self._camera_id]) != 0:
+            raise ValueError("observation camera must be fixed directly in worldbody")
+        if hasattr(self._model, "cam_projection") and int(self._model.cam_projection[self._camera_id]) != 0:
+            raise ValueError("only perspective observation cameras are supported")
+        if np.any(self._model.cam_sensorsize[self._camera_id] != 0):
+            raise ValueError("use fovy camera calibration; custom sensor/focal camera intrinsics are unsupported")
         self._renderer = mujoco.Renderer(self._model, height=self.height, width=self.width)
         self._grasp_controller = self.config.get("grasp_controller_factory", PointGrasp)(self)
 
@@ -155,10 +176,10 @@ class Simulation:
         if not full and not self.config.get("rgb", True):
             result.pop("rgb")
             result.pop("rgb_format")
-        if not full and not self.config.get("depth", True):
+        if not full and not self.config.get("depth", False):
             result.pop("depth")
             result.pop("depth_format")
-        if full or self.config.get("calibration", False):
+        if full or self.config.get("calibration", True):
             result["calibration"] = self.calibration()
         return result
 

@@ -67,3 +67,32 @@ def test_candidate_camera_ignored(tmp_path):
     scores = evaluate(tmp_path, 'blocks', lambda s: s.replace('pos="1.4 -1.8 1.5"', 'pos="8 8 8"').replace('fovy="45"', 'fovy="10"'))
     assert all(value == pytest.approx(0, abs=1e-9) for value in scores['reset'].values())
     assert motion_error(scores) == pytest.approx(0, abs=1e-9)
+
+
+def test_candidate_missed_grasp_recorded(tmp_path):
+    scores = evaluate(tmp_path, 'blocks', lambda s: s.replace('pos="-.15 0 .46"', 'pos="2 2 .46"'),
+                      probes=[{'body': 'block_red', 'local_point': [0, 0, .06],
+                               'displacement': [0, 0, .15], 'ticks': 40}])
+    assert scores['probe_grasp_failure_rate'] == 1
+    assert scores['probes'][0]['source_grasp_success'] is True
+    assert scores['probes'][0]['candidate_grasp_success'] is False
+    assert scores['probes'][0]['status'] == 'missed_grasp'
+
+
+def test_missing_named_correspondence_keeps_generic_scores(tmp_path):
+    scores = evaluate(tmp_path, 'blocks', lambda s: s.replace('name="block_red"', 'name="renamed_red"'))
+    assert scores['parameters']['status'] == 'failed'
+    assert scores['reset']['rgb_error'] == pytest.approx(0, abs=1e-9)
+    assert scores['probes']
+
+
+def test_custom_hook_failure_explicit(tmp_path):
+    source = ROOT / 'environments' / 'blocks'
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, 'w') as archive:
+        archive.writestr('scene.xml', (source / 'scene.xml').read_text())
+    report = evaluate_submission(data.getvalue(), dict(source_dir=str(source), output_dir=str(tmp_path),
+        width=64, height=48, metrics_hook='builtins:does_not_exist'))
+    assert report['status'] == 'failed'
+    assert report['scores'] is None
+    assert 'AttributeError' in report['error']

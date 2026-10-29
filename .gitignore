@@ -6,3 +6,4 @@ __pycache__/
 runs/
 build/
 dist/
+sim2sim-tests-*.out

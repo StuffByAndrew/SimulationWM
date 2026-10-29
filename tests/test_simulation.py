@@ -23,7 +23,7 @@ def project(sim, point):
 def test_observation_grasp_motion_and_reset():
     sim = Simulation(ROOT / 'environments/blocks/scene.xml', {'width': 160, 'height': 120})
     try:
-        obs = sim.observe()
+        obs = sim.observe(full=True)
         rgb = np.asarray(Image.open(io.BytesIO(base64.b64decode(obs['rgb']))))
         depth = np.asarray(Image.open(io.BytesIO(base64.b64decode(obs['depth']))))
         assert rgb.shape == (120, 160, 3)
@@ -52,6 +52,8 @@ def test_spring_loads_and_private_raycast_misses_table():
     sim = Simulation(ROOT / 'environments/spring/scene.xml', {'width': 160, 'height': 120})
     try:
         assert sim._body_names == ['lever']
+        defaults = sim.observe()
+        assert 'rgb' in defaults and 'calibration' in defaults and 'depth' not in defaults
         assert not sim.action({'op': 'grasp', 'pixel': [0, 0]})['grasped']
         sim.action({'op': 'wait', 'ticks': 10})
         assert sim.total_ticks == 10
@@ -81,3 +83,24 @@ def test_modalities_and_off_center_point_force():
         assert sim.total_ticks == 152
     finally:
         sim.close()
+
+
+def test_included_bodies_and_fixed_camera_validation(tmp_path):
+    (tmp_path / 'parts').mkdir()
+    (tmp_path / 'parts' / 'object.xml').write_text('''<mujocoinclude>
+      <body name="included" pos="0 0 1"><freejoint/>
+      <geom type="sphere" size=".1" mass="1"/></body></mujocoinclude>''')
+    (tmp_path / 'world.xml').write_text('''<mujocoinclude>
+      <camera name="fixed" pos="0 -3 1" xyaxes="1 0 0 0 0 1"/>
+      <include file="parts/object.xml"/></mujocoinclude>''')
+    scene = tmp_path / 'scene.xml'
+    scene.write_text('<mujoco><worldbody><include file="world.xml"/></worldbody></mujoco>')
+    sim = Simulation(scene, {'width': 80, 'height': 60})
+    try:
+        assert sim._body_names == ['included']
+    finally:
+        sim.close()
+    scene.write_text('''<mujoco><worldbody><body name="moving"><freejoint/>
+      <geom type="sphere" size=".1"/><camera name="fixed"/></body></worldbody></mujoco>''')
+    with pytest.raises(ValueError, match='fixed directly in worldbody'):
+        Simulation(scene)

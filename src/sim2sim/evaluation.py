@@ -236,7 +236,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
         if manifest.is_file():
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
-            for key in ('probes', 'correspondence', 'camera'):
+            for key in ('probes', 'correspondence', 'camera', 'graspable_bodies'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -250,13 +250,17 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             if not target.exists():
                 staging.rename(target)
         report['project_path'] = f'versions/{version}/project'
-        simconfig = {k: config[k] for k in ('camera', 'width', 'height', 'timestep') if k in config}
+        simconfig = dict(config.get('source_config', {}))
+        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'default_ticks', 'graspable_bodies'):
+            if key in config:
+                simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)
         import mujoco
         camera_quat = np.zeros(4)
         mujoco.mju_mat2Quat(camera_quat, source._data.cam_xmat[source._camera_id])
         candidate_config = dict(simconfig, timestep=float(source._model.opt.timestep), trusted_camera={'pos': source._data.cam_xpos[source._camera_id].tolist(),
             'quat': camera_quat.tolist(), 'fovy': float(source._model.cam_fovy[source._camera_id])})
+        candidate_config.pop('graspable_bodies', None)
         candidate = Simulation(target / 'project' / config.get('entrypoint', 'scene.xml'), candidate_config)
         _trusted_camera(source, candidate)
         correspondence = config.get('correspondence')
@@ -306,5 +310,8 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
     finally:
         for sim in (source, candidate):
             if sim is not None:
-                sim.close()
+                try:
+                    sim.close()
+                except Exception as exc:
+                    report.update(status='failed', scores=None, error=f'cleanup failed: {type(exc).__name__}: {exc}'[:1000])
     return report

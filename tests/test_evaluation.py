@@ -2,6 +2,7 @@ import base64
 import io
 from pathlib import Path
 import zipfile
+import xml.etree.ElementTree as ET
 import pytest
 from sim2sim.evaluation import decode_submission, extract_submission, evaluate_submission
 
@@ -53,3 +54,14 @@ def test_bad_submission_explicit_failure(tmp_path):
 def test_base64_bounds():
     with pytest.raises(ValueError):
         decode_submission('@@')
+
+
+@pytest.mark.parametrize('files', [
+    {'scene.xml': '<mujoco><include file="a.part"/></mujoco>', 'a.part': '<mujoco><include file="b.part"/></mujoco>', 'b.part': '<mujoco><asset><mesh file="../../escape.obj"/></asset></mujoco>'},
+    {'scene.xml': '<mujoco><include file="missing.part"/></mujoco>'},
+    {'scene.xml': '<mujoco><asset><texture file="https://example.com/image.png"/></asset></mujoco>'},
+    {'scene.xml': '<mujoco><include file="bad.part"/></mujoco>', 'bad.part': '<mujoco>'},
+])
+def test_malformed_or_external_references(tmp_path, files):
+    with pytest.raises((ValueError, OSError, ET.ParseError)):
+        extract_submission(archive(files), tmp_path)
