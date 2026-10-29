@@ -1,0 +1,22 @@
+name = "blocks"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["block_red", "block_blue"]
+
+[correspondence]
+block_red = "block_red"
+block_blue = "block_blue"
+
+[[probes]]
+name = "red_lift"
+body = "block_red"
+local_point = [0.0, 0.0, 0.06]
+displacement = [0.0, 0.0, 0.15]
+ticks = 120
+
+[[probes]]
+name = "blue_slide"
+body = "block_blue"
+local_point = [0.0, 0.0, 0.05]
+displacement = [-0.15, 0.0, 0.0]
+ticks = 120

@@ -1,0 +1,21 @@
+name = "spring"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["lever"]
+
+[correspondence]
+lever = "lever"
+
+[[probes]]
+name = "lever_deflect"
+body = "lever"
+local_point = [0.35, 0.0, 0.0]
+displacement = [-0.05, 0.0, -0.15]
+ticks = 150
+
+[[probes]]
+name = "lever_return"
+body = "lever"
+local_point = [0.35, 0.0, 0.0]
+displacement = [0.0, 0.0, 0.1]
+ticks = 150
