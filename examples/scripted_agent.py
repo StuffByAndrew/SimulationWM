@@ -17,7 +17,59 @@ if "--integration" in sys.argv:
     assert not Path("/opt/sim2sim/environments").exists()
     cgroup = Path("/sys/fs/cgroup")
     assert 0 < int((cgroup / "memory.max").read_text()) <= 1024 ** 3
-    assert 0 < int((cgroup / "pids.max").read_text()) <= 64
+    import errno
+    import resource
+    assert resource.getrlimit(resource.RLIMIT_NPROC) == (64, 64)
+    try:
+        resource.setrlimit(resource.RLIMIT_NPROC, (65, 65))
+        raise AssertionError("hard process limit can be raised")
+    except (ValueError, OSError):
+        pass
+    try:
+        os.setuid(0)
+        raise AssertionError("sandbox UID can become root")
+    except PermissionError:
+        pass
+    children = []
+    try:
+        for _ in range(70):
+            try:
+                pid = os.fork()
+            except OSError as exc:
+                assert exc.errno == errno.EAGAIN
+                break
+            if pid == 0:
+                import time
+                time.sleep(10)
+                os._exit(0)
+            children.append(pid)
+        else:
+            raise AssertionError("process limit did not stop fork attempts")
+        assert len(children) < 64
+    finally:
+        import signal
+        for pid in children:
+            os.kill(pid, signal.SIGKILL)
+        for pid in children:
+            os.waitpid(pid, 0)
+    import threading
+    stop_threads = threading.Event()
+    threads = []
+    try:
+        for _ in range(70):
+            thread = threading.Thread(target=stop_threads.wait)
+            try:
+                thread.start()
+            except RuntimeError:
+                break
+            threads.append(thread)
+        else:
+            raise AssertionError("thread limit did not stop clone attempts")
+        assert len(threads) < 64
+    finally:
+        stop_threads.set()
+        for thread in threads:
+            thread.join()
     quota, period = (cgroup / "cpu.max").read_text().split()
     assert 0 < int(quota) / int(period) <= 1
     status = Path("/proc/self/status").read_text()

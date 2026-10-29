@@ -11,7 +11,7 @@ from unittest.mock import patch
 import zipfile
 
 from sim2sim.runtime import (RuntimeFailure, Transport, check_rootless, container_command,
-                             decode_submission, extract_bundle, InferenceBroker, NoRedirect)
+                             decode_submission, extract_bundle, InferenceBroker, NoRedirect, validate_effective_limits)
 from sim2sim.client import Client
 
 
@@ -26,9 +26,9 @@ class RuntimeTests(unittest.TestCase):
 
     def test_require_delegated_cgroup_v2_controllers(self):
         host = {"security": {"rootless": True}, "cgroupVersion": "v2", "cgroupControllers": ["cpu", "memory", "pids"]}
-        def invoke():
+        def invoke(backend="cgroup"):
             with patch("sim2sim.runtime.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout=json.dumps({"host": host}))):
-                return check_rootless()
+                return check_rootless(backend)
         invoke()
         host["cgroupVersion"] = "v1"
         with self.assertRaises(RuntimeFailure):
@@ -37,12 +37,34 @@ class RuntimeTests(unittest.TestCase):
         host["cgroupControllers"] = ["pids"]
         with self.assertRaises(RuntimeFailure):
             invoke()
+        host["cgroupControllers"] = ["cpu", "memory"]
+        with self.assertRaises(RuntimeFailure):
+            invoke()
+        invoke("rlimit")
+        cmd = container_command("local/image", ["python"], {"process_limit_backend": "rlimit"}, "test")
+        self.assertIn("--pids-limit=-1", cmd)
+        self.assertIn("--ulimit=nproc=64:64", cmd)
 
     def test_sandbox_has_no_host_mounts_or_network(self):
         cmd = container_command("local/image", ["python", "agent.py"], {}, "test")
         for flag in ("--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--http-proxy=false", "--image-volume=ignore", "--cgroups=enabled", "--log-driver=none"):
             self.assertIn(flag, cmd)
         self.assertFalse(any(x in cmd for x in ("-v", "--volume", "--mount", "--privileged", "--env-host")))
+
+    def test_effective_limits_fail_closed_on_ignored_flags(self):
+        observed = {"memory.max": "1073741824", "cpu.max": "100000 100000", "pids.max": "64", "nproc": [64,64], "uid": 65532, "cap_eff": "0000000000000000", "no_new_privs": "1"}
+        validate_effective_limits(observed, {})
+        observed["pids.max"] = None
+        validate_effective_limits(observed, {"process_limit_backend": "rlimit"})
+        with self.assertRaises(RuntimeFailure):
+            validate_effective_limits(observed, {})
+        observed["memory.max"] = "max"
+        with self.assertRaises(RuntimeFailure):
+            validate_effective_limits(observed, {"process_limit_backend": "rlimit"})
+        observed["memory.max"] = "1073741824"
+        observed["cpu.max"] = "max 100000"
+        with self.assertRaises(RuntimeFailure):
+            validate_effective_limits(observed, {"process_limit_backend": "rlimit"})
 
     def test_submission_limit_and_invalid_base64(self):
         with self.assertRaises(RuntimeFailure):
@@ -139,7 +161,7 @@ class HostBudgetTests(unittest.TestCase):
                   "evaluation": {}}
         cmd = [sys.executable, "-u", "-c", "import json,sys,time\njson.loads(input())\n" + script]
         with patch.dict(sys.modules, {"sim2sim.simulation": types.SimpleNamespace(Simulation=FakeSimulation)}), \
-             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.container_command", return_value=cmd), \
+             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits"), patch("sim2sim.runtime.container_command", return_value=cmd), \
              patch("sim2sim.runtime.stop_container", side_effect=stop), \
              patch("sim2sim.runtime.evaluate_in_container", side_effect=evaluate), \
              patch("sim2sim.runtime.subprocess.run"):

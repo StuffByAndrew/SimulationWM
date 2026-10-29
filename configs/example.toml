@@ -14,6 +14,9 @@ command = ["python", "/opt/agent/scripted_agent.py"]
 memory = "1g"
 cpus = 1
 pids = 64
+# For hosts delegating cpu/memory but no pids controller, explicitly select
+# the hard RLIMIT_NPROC backend for this fixed nonroot UID.
+# process_limit_backend = "rlimit"
 workspace = "256m"
 
 [budget]

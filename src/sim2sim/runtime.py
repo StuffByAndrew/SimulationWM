@@ -9,6 +9,7 @@ import platform
 import json
 import os
 import queue
+import re
 from pathlib import Path
 import selectors
 import subprocess
@@ -34,7 +35,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise RuntimeFailure("Inference redirects are forbidden")
 
 
-def check_rootless():
+def check_rootless(process_backend="cgroup"):
     try:
         p = subprocess.run(["podman", "info", "--format=json"],
                            capture_output=True, text=True, timeout=20, check=True)
@@ -44,17 +45,27 @@ def check_rootless():
         raise RuntimeFailure("A working rootless Podman installation is required") from exc
     if host.get("security", {}).get("rootless") is not True:
         raise RuntimeFailure("Refusing non-rootless Podman")
-    if host.get("cgroupVersion") != "v2" or not {"cpu", "memory", "pids"}.issubset(set(host.get("cgroupControllers") or [])):
-        raise RuntimeFailure("Rootless cgroup v2 with delegated cpu, memory and pids controllers is required")
+    if process_backend not in ("cgroup", "rlimit"):
+        raise RuntimeFailure("process_limit_backend must be cgroup or rlimit")
+    required = {"cpu", "memory"} | ({"pids"} if process_backend == "cgroup" else set())
+    if host.get("cgroupVersion") != "v2" or not required.issubset(set(host.get("cgroupControllers") or [])):
+        raise RuntimeFailure("Rootless cgroup v2 with delegated " + ", ".join(sorted(required)) + " controllers is required")
 
 
 def container_command(image, command, limits, name):
     if not isinstance(command, list) or not command or not all(isinstance(x, str) for x in command):
         raise RuntimeFailure("container command must be a nonempty string array")
+    backend = limits.get("process_limit_backend", "cgroup")
+    if backend not in ("cgroup", "rlimit"):
+        raise RuntimeFailure("process_limit_backend must be cgroup or rlimit")
+    pids = int(limits.get("pids", 64))
+    if pids < 1:
+        raise RuntimeFailure("pids limit must be positive")
     return ["podman", "run", "--rm", "--pull=never", "--name", name,
             "--network=none", "--read-only", "--log-driver=none", "--http-proxy=false", "--image-volume=ignore", "--entrypoint=", "--cap-drop=ALL", "--security-opt=no-new-privileges",
-            "--user=65532:65532", "--pid=private", "--ipc=private", "--uts=private",
-            "--cgroups=enabled", "--pids-limit=" + str(int(limits.get("pids", 64))),
+            "--user=65532:65532", "--cgroupns=private", "--pid=private", "--ipc=private", "--uts=private",
+            "--cgroups=enabled", "--pids-limit=" + str(pids if backend == "cgroup" else -1),
+            "--ulimit=nproc=" + str(pids) + ":" + str(pids),
             "--memory=" + str(limits.get("memory", "1g")), "--memory-swap=" + str(limits.get("memory", "1g")),
             "--cpus=" + str(float(limits.get("cpus", 1))), "--ulimit=nofile=256:256",
             "--ulimit=core=0:0", "--tmpfs=/workspace:rw,noexec,nosuid,nodev,size=" + str(limits.get("workspace", "256m")) + ",mode=1777",
@@ -73,6 +84,54 @@ def stop_container(proc, name):
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         pass
+
+
+def validate_effective_limits(observed, limits):
+    value = str(limits.get("memory", "1g")).lower()
+    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([kmgt]?)(?:i?b)?", value)
+    if not match:
+        raise RuntimeFailure("Unsupported memory size for resource verification")
+    maximum_memory = int(float(match.group(1)) * 1024 ** ("kmgt".find(match.group(2)) + 1 if match.group(2) else 0))
+    try:
+        memory = int(observed["memory.max"])
+        quota, period = observed["cpu.max"].split()
+        cpus = int(quota) / int(period)
+        nproc_soft, nproc_hard = observed["nproc"]
+        pids = int(limits.get("pids", 64))
+        valid = 0 < memory <= maximum_memory and 0 < cpus <= float(limits.get("cpus", 1)) + 1e-9
+        valid = valid and 0 < nproc_soft <= nproc_hard <= pids
+        valid = valid and observed["uid"] == 65532 and observed["cap_eff"] == "0000000000000000" and observed["no_new_privs"] == "1"
+        if limits.get("process_limit_backend", "cgroup") == "cgroup":
+            valid = valid and 0 < int(observed["pids.max"]) <= pids
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        valid = False
+    if not valid:
+        raise RuntimeFailure("OCI resource verification failed: CPU/memory/process limits must be finite and enforced; observed memory.max=" + str(observed.get("memory.max")) + ", cpu.max=" + str(observed.get("cpu.max")))
+
+
+def check_limits(sandbox):
+    """Probe the researcher-trusted evaluator image before any agent can execute."""
+    code = """import json,os,resource
+from pathlib import Path
+root=Path('/sys/fs/cgroup')
+relative=Path('/proc/self/cgroup').read_text().strip().split('::',1)[1].lstrip('/')
+root=root/relative
+result={name:(root/name).read_text().strip() if (root/name).exists() else None for name in ['memory.max','cpu.max','pids.max']}
+status=dict(line.split(':',1) for line in Path('/proc/self/status').read_text().splitlines())
+result.update(nproc=resource.getrlimit(resource.RLIMIT_NPROC),uid=os.getuid(),cap_eff=status['CapEff'].strip(),no_new_privs=status['NoNewPrivs'].strip())
+print(json.dumps(result),flush=True)
+"""
+    name = "sim2sim-probe-" + uuid.uuid4().hex
+    image = sandbox.get("evaluator_image", "localhost/sim2sim:latest")
+    proc = subprocess.Popen(container_command(image, ["python", "-c", code], sandbox, name),
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        result = Transport(proc, 4096).receive(time.monotonic() + 30)
+        validate_effective_limits(result, sandbox)
+    finally:
+        stop_container(proc, name)
+        proc.stdin.close()
+        proc.stdout.close()
 
 
 class BoundedEvents:
@@ -414,8 +473,9 @@ class VideoRecorder:
 def run(config):
     from .simulation import Simulation
 
-    check_rootless()
     sandbox = config["sandbox"]
+    check_rootless(sandbox.get("process_limit_backend", "cgroup"))
+    check_limits(sandbox)
     limits = config.get("budget", {})
     max_ticks = int(limits.get("physics_ticks", 3000))
     seconds = float(limits.get("active_seconds", 300))

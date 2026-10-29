@@ -20,7 +20,7 @@ class OCIIntegrationTests(unittest.TestCase):
             output = Path(directory) / "run"
             config = {
                 "source": {"scene": str(root / "environments/blocks/scene.xml")},
-                "sandbox": {"image": os.environ.get("SIM2SIM_AGENT_IMAGE", "localhost/sim2sim:latest"),
+                "sandbox": {"process_limit_backend": os.environ.get("SIM2SIM_PROCESS_LIMIT_BACKEND", "cgroup"), "image": os.environ.get("SIM2SIM_AGENT_IMAGE", "localhost/sim2sim:latest"),
                             "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", "localhost/sim2sim:latest"),
                             "command": ["python", "/opt/agent/scripted_agent.py", "--integration"]},
                 "output_dir": str(output), "record_video": True, "video_fps": 30,
@@ -32,7 +32,12 @@ class OCIIntegrationTests(unittest.TestCase):
                                "correspondence": {"block_red": "object", "block_blue": "other"}},
             }
             with patch.dict(os.environ, {"SIM2SIM_TEST_SECRET": "host-only"}):
-                result = run(config)
+                try:
+                    result = run(config)
+                except Exception:
+                    for log in output.rglob("*.log"):
+                        print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+                    raise
             self.assertEqual(result["total_ticks"], 30)
             self.assertEqual(result["submissions"], 2)
             termination = json.loads((output / "termination.json").read_text())

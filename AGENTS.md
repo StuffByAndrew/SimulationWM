@@ -79,12 +79,23 @@ For a full run, allocate a `test` compute node, build the image with rootless
 Podman, and execute the README commands there. Do not run container builds on the
 login node. Keep host-only inference keys out of repository files and logs.
 
-Validation record: 2026-10-28, latest completed compute suite **41 passed,
-1 skipped**, EGL. OCI integration is the skipped opt-in test. Numerical, image and video
-checks pass; complete OCI integration is blocked by the unenforced CPU/memory
-limits above. The suite after resource preflight changes is pending. Earlier job `56020252` on
-`holy8a26602` passed 31 tests in 40.86 seconds. Do not describe a pending or
-skipped integration check as successful.
+Validation record: 2026-10-28, job `56025393`, node `holy8a24401`, EGL,
+**42 passed, 1 skipped** in 38.85 seconds. The standalone video check decoded
+reset-separated segments and verified frames and FPS. OCI is the skipped opt-in
+test. A separate opt-in run verified the trusted probe rejects unlimited
+container CPU/memory bounds before agent launch in 3.10 seconds. Full OCI
+integration has not passed on this cluster. Do not describe fail-closed refusal
+or a skipped integration check as a successful isolated benchmark run.
+
+Rootless Podman diagnostics: job `56024690`, node `holy8a24401`, cgroup v2,
+cgroupfs manager, advertised controllers `cpuset,cpu,memory` (no pids). Actual
+containers reported `memory.max=max` and `cpu.max=max 100000`, including with
+`--cgroupns=private`. Controller availability alone is insufficient. Keep the
+trusted evaluator-image resource probe before all agent execution; it verifies
+finite CPU/memory limits, process bounds, UID and privilege flags. An explicit
+hard RLIMIT_NPROC backend is supported for otherwise correctly delegated hosts,
+but cannot repair missing CPU/memory enforcement. Do not remove bounds to make
+this cluster appear supported.
 
 The current design is in `docs/2026-10-28-design.md`. Preserve minimal scope:
 MuJoCo XML projects, one ideal point grasp, explicit submissions, configurable

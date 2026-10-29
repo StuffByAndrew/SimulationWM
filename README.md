@@ -6,7 +6,7 @@ pixel, moves the grasp point in world coordinates, and submits an MJCF project.
 The researcher retains the source scene, hidden probes, scores and recordings.
 
 The host runs physics and the protocol. A rootless Podman container runs the
-agent without network access or host mounts. A separate constrained container
+agent without network access or host directory mounts. A separate constrained container
 evaluates submitted XML and assets. The included scripted agent demonstrates the
 protocol; it is not a reconstruction solver.
 
@@ -40,20 +40,25 @@ Local cluster configuration may require a different allocation duration or
 Podman setup.
 
 The default `sandbox.process_limit_backend = "cgroup"` requires delegated CPU,
-memory and pids controllers. Hosts with enforced CPU/memory cgroups but no pids
-controller may explicitly select `process_limit_backend = "rlimit"` under
-`[sandbox]`. This applies hard `RLIMIT_NPROC` using `pids` (default 64) to the
-fixed nonroot subordinate real UID. The bound counts threads/processes across
-containers sharing that UID, so they can exhaust each other's slots.
+memory and pids controllers. Hosts with working CPU/memory cgroups but no pids
+controller can explicitly select `process_limit_backend = "rlimit"` under
+`[sandbox]`. This applies a hard `RLIMIT_NPROC` using `pids` (default 64), with
+a fixed nonroot subordinate UID, dropped capabilities and `no_new_privs`.
+Linux counts threads against this real UID; concurrent containers may share the
+accounting and exhaust each other's slots. This is not a per-container pids
+cgroup. [Linux documents the hard limit and its privilege rules](https://man7.org/linux/man-pages/man2/getrlimit.2.html).
 
-**Full sandbox runs are blocked on this cluster.** Diagnostic Slurm job
-`56024690` on `holy8a24401` showed that rootless Podman accepted `--memory=1g`
-and `--cpus=1` while exposing unlimited `memory.max` and `cpu.max`, including
-with a private cgroup namespace. The `rlimit` process alternative cannot supply
-missing CPU/memory enforcement. A trusted evaluator-image resource preflight
-refuses to start an agent unless actual cgroup limits are enforced. Running the
-complete benchmark requires administrator-provided delegation or a compatible
-host; choosing `rlimit` alone does not make this cluster suitable.
+Controller names alone do not establish enforcement. Before any agent starts,
+the runtime launches a small probe in the researcher-trusted evaluator image
+and checks its effective CPU quota, memory maximum, hard process limit, UID and
+privilege flags. It refuses missing or unlimited bounds. On the tested Slurm
+nodes, Podman advertises CPU/memory controllers but silently ignores the
+requested CPU/memory limits: the container reports `memory.max=max` and
+`cpu.max=max 100000`, including with an explicit private cgroup namespace.
+The probe therefore prevents agent launch on this setup. Selecting `rlimit`
+does not repair that restriction. Complete runs require a supported host with
+writable delegated CPU/memory cgroups, normally through a working rootless
+systemd user session or equivalent administrator configuration.
 
 ## Run
 
@@ -94,15 +99,14 @@ SIM2SIM_OCI_TEST=1 sbatch --export=ALL scripts/test.slurm
 SIM2SIM_OCI_TEST=1 SIM2SIM_PROCESS_LIMIT_BACKEND=rlimit sbatch --export=ALL scripts/test.slurm
 ```
 
-On 2026-10-28, the latest completed compute-node suite reported **41 passed,
-1 skipped**, using EGL. The skipped OCI integration test is opt-in through
-`SIM2SIM_OCI_TEST=1`. Earlier Slurm job `56020252` completed 31 tests in 40.86
-seconds; changes since those runs require validation.
+On 2026-10-28, Slurm job `56025393` on `holy8a24401` reported **42 passed,
+1 skipped** in 38.85 seconds with EGL. This includes decoded, playable video
+segments across reset. The skipped OCI test is explicitly opt-in. A separate
+opt-in check in that job verified that the trusted resource probe rejects this
+cluster's unlimited CPU/memory bounds before agent launch (3.10 seconds).
 
-Numerical, image and video tests pass in the compute suite. Full rootless OCI
-integration remains blocked by the cluster's unenforced CPU/memory controls;
-agent/evaluator integration is not validated here. The final suite after adding
-resource preflight is pending.
+Full rootless OCI integration remains blocked by the cluster's unenforced
+CPU/memory controls; complete agent/evaluator integration has not passed here.
 Metrics report discrepancies;
 they do not establish unique physical parameter identification or provide a
 calibrated aggregate pass threshold. See the evaluation documentation for metric
