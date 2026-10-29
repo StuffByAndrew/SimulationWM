@@ -1,0 +1,49 @@
+# Paths resolve from the directory where sim2sim is invoked.
+output_dir = "runs/example"
+task = "Reconstruct the observed scene as a MuJoCo XML project. Use interactions to infer geometry and physical parameters. Submit scene.xml and any local assets as a ZIP."
+record_video = true
+video_fps = 30
+
+[source]
+scene = "environments/blocks/scene.xml"
+
+[sandbox]
+image = "localhost/sim2sim:latest"
+evaluator_image = "localhost/sim2sim:latest"
+command = ["python", "/opt/agent/scripted_agent.py"]
+memory = "1g"
+cpus = 1
+pids = 64
+workspace = "256m"
+
+[budget]
+active_seconds = 300
+physics_ticks = 3000
+submissions = 3
+submission_bytes = 4194304
+max_message_bytes = 12582912
+
+[simulation]
+rgb = true
+depth = false
+calibration = true
+width = 320
+height = 240
+camera = "fixed"
+default_ticks = 20
+
+[evaluation]
+manifest = "manifest.toml"
+entrypoint = "scene.xml"
+width = 320
+height = 240
+timeout_seconds = 180
+
+# Optional fixed HTTPS chat-completions endpoint. Key is read only by the host.
+# [inference]
+# endpoint = "https://api.openai.com/v1/chat/completions"
+# model = "YOUR_MODEL"
+# api_key_env = "OPENAI_API_KEY"
+# max_calls = 20
+# max_output_tokens = 1024
+# max_total_tokens = 50000 # Reported-usage threshold; a completed call can cross it.
