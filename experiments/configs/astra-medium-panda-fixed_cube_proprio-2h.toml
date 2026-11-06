@@ -1,0 +1,64 @@
+evaluate_candidate_changes = true
+# Researcher-only specification. Never mount this file in the agent image.
+task = "Reconstruct the target object geometry and physical behavior as a self-contained MuJoCo scene.xml project. Use the provided public Panda fixture unchanged, the permitted observations and arm interactions, test your reconstruction, submit your best version, then finish."
+record_video = false
+plot_checkpoints = false
+reasoning_effort = "medium"
+video_fps = 10
+
+[experiment]
+name = "Astra medium · Panda fixed_cube_proprio · two hours"
+environment = "panda_fixed_cube_proprio"
+execution_mode = "development_shared_filesystem"
+model = "gpt-6-astra"
+model_constraints = ["Use standard MuJoCo primitives and joints for the target object; preserve the provided Panda robot fixture unchanged.", "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
+evaluation_metrics = ["dynamics", "chamfer", "image_mse"]
+
+[experiment.physical_parameters]
+scene = "A fixed 0.12 m cube anchored to the tabletop; shared Panda fixture. No free joint or ideal grasp."
+
+[source]
+scene = "environments/panda/fixed_cube_proprio/scene.xml"
+
+[sandbox]
+# No OCI settings: this deliberately selected backend uses native workers.
+
+[development_worker]
+address_space_bytes = 4294967296
+data_bytes = 1073741824
+file_bytes = 134217728
+open_files = 256
+render_backend = "egl"
+
+[budget]
+wall_only = true
+wall_seconds = 21600
+submission_bytes = 8388608
+max_message_bytes = 16777216
+audit_bytes = 8589934592
+event_log_bytes = 67108864
+
+[simulation]
+robot = "panda"
+rgb = false
+depth = false
+calibration = false
+wrench = false
+width = 320
+height = 240
+camera = "fixed"
+default_ticks = 20
+
+[evaluation]
+manifest = "fixed_cube_proprio/manifest.toml"
+source_dir = "environments/panda"
+source_entrypoint = "fixed_cube_proprio/scene.xml"
+entrypoint = "scene.xml"
+camera = "fixed"
+width = 320
+height = 240
+timeout_seconds = 180
+
+[evaluation.reconstruction]
+samples = 2048
+seed = 20261029

@@ -1,0 +1,62 @@
+evaluate_candidate_changes = true
+# Researcher-only specification. Never mount this file in the agent image.
+task = "Reconstruct the target object geometry and physical behavior as a self-contained MuJoCo scene.xml project. Preserve the provided public Panda fixture unchanged and use only the permitted observations and arm interactions. Treat your reconstruction simulation as your internal world model and the reference simulation as the real world. Keep going whenever any aspect of their geometry or dynamics could still differ: identify unresolved hypotheses, run informative interactions in both worlds, compare the permitted observations, revise your reconstruction, and test again. Use the remaining allocated time for this process. Do not call finish merely because the reconstruction loads, looks plausible, a submission is accepted, or an initial set of checks passes. Only finish early if the permitted evidence supports no remaining plausible geometry or dynamics discrepancy; otherwise continue investigating within the hard run limit. Submit improved versions as you go, and submit your best version before the deadline, allowing time for evaluation. Always obey the controller deadline and stop signal."
+record_video = false
+plot_checkpoints = false
+reasoning_effort = "medium"
+video_fps = 10
+
+[experiment]
+name = "Astra medium · Panda small damped_lever · six hours"
+environment = "panda_small_damped_lever"
+execution_mode = "development_shared_filesystem"
+model = "gpt-6-astra"
+model_constraints = ["Use standard MuJoCo primitives and joints for the target object; preserve the provided Panda robot fixture unchanged.", "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
+evaluation_metrics = ["dynamics", "hinges", "image_mse"]
+
+[experiment.physical_parameters]
+scene = "Target length scale 0.45; density unchanged, explicit mass scale 0.091125; hinge stiffness/damping/frictionloss scale 0.04100625; compact reachable tabletop; full-sized Panda."
+
+[source]
+scene = "environments/panda_small/damped_lever/scene.xml"
+
+[sandbox]
+# No OCI settings: this deliberately selected backend uses native workers.
+
+[development_worker]
+address_space_bytes = 4294967296
+data_bytes = 1073741824
+file_bytes = 134217728
+open_files = 256
+render_backend = "egl"
+
+[budget]
+wall_only = true
+wall_seconds = 21600
+submission_bytes = 8388608
+max_message_bytes = 16777216
+audit_bytes = 8589934592
+event_log_bytes = 67108864
+
+[simulation]
+robot = "panda"
+rgb = true
+depth = false
+calibration = true
+wrench = false
+width = 640
+height = 480
+camera = "fixed"
+wrist_camera = "wrist"
+default_ticks = 20
+
+[evaluation]
+manifest = "damped_lever/manifest.toml"
+source_dir = "environments/panda_small"
+source_entrypoint = "damped_lever/scene.xml"
+entrypoint = "scene.xml"
+camera = "fixed"
+width = 640
+height = 480
+timeout_seconds = 180
+hinge_matching = "single"

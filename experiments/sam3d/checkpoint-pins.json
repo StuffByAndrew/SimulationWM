@@ -1,0 +1,59 @@
+{
+ "code_commit": "f91db411c50efee93d8db7aeb323885650f6f722",
+ "lfs_bytes": {
+  "checkpoints/slat_decoder_gs.ckpt": 171476155,
+  "checkpoints/slat_decoder_gs_4.ckpt": 170269801,
+  "checkpoints/slat_decoder_mesh.ckpt": 363726862,
+  "checkpoints/slat_decoder_mesh.pt": 363728714,
+  "checkpoints/slat_encoder.ckpt": 173263986,
+  "checkpoints/slat_generator.ckpt": 4906537684,
+  "checkpoints/ss_decoder.ckpt": 147609242,
+  "checkpoints/ss_encoder.ckpt": 119085402,
+  "checkpoints/ss_generator.ckpt": 6690136964
+ },
+ "note": "Gated: Hugging Face hides LFS sha256 values without access. Small files are pinned by git blob sha1; LFS files by size here, and by sha256 in SAM3D_ROOT/sam3d-lock.json once scripts/sam3d-smoke.slurm full has run.",
+ "repo": "facebook/sam-3d-objects",
+ "revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+ "small_files": {
+  "checkpoints/pipeline.yaml": {
+   "bytes": 3548,
+   "git_blob_sha1": "0703a2eb4045418f1d6e38053712105d03f90d88"
+  },
+  "checkpoints/slat_decoder_gs.yaml": {
+   "bytes": 576,
+   "git_blob_sha1": "10683b1bd592e1db70eb7070a3365b536ad0ba9e"
+  },
+  "checkpoints/slat_decoder_gs_4.yaml": {
+   "bytes": 575,
+   "git_blob_sha1": "ef89609e6f0cf5a12398a5d5f000687bf6693916"
+  },
+  "checkpoints/slat_decoder_mesh.yaml": {
+   "bytes": 300,
+   "git_blob_sha1": "74735a4b9ba1fbd76b8d1a56f27b6ebe63aeafc9"
+  },
+  "checkpoints/slat_encoder.yaml": {
+   "bytes": 268,
+   "git_blob_sha1": "595fe5c60af4398e7b5ebbcec7b954364b51ae56"
+  },
+  "checkpoints/slat_generator.yaml": {
+   "bytes": 1986,
+   "git_blob_sha1": "859964b5e87666122a7137f6dc9934444d6182ca"
+  },
+  "checkpoints/ss_decoder.yaml": {
+   "bytes": 244,
+   "git_blob_sha1": "7982f7ff6cdb4bebcad49404ba03476fa69f4c6b"
+  },
+  "checkpoints/ss_encoder.safetensors": {
+   "bytes": 0,
+   "git_blob_sha1": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+  },
+  "checkpoints/ss_encoder.yaml": {
+   "bytes": 231,
+   "git_blob_sha1": "2a882b6ecbc1ba38853303eef3b79f8151303361"
+  },
+  "checkpoints/ss_generator.yaml": {
+   "bytes": 5076,
+   "git_blob_sha1": "35df0ea780c4c6f6eaf490c1a828ad054d4f9f0b"
+  }
+ }
+}

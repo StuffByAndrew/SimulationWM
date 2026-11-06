@@ -1,0 +1,81 @@
+evaluate_candidate_changes = true
+# Researcher-only specification. Never mount this file in the agent image.
+task = "Reconstruct the observed reset scene and its physical behavior as a self-contained MuJoCo scene.xml project. Use the permitted observations and interactions, test your reconstruction, submit your best version, then finish."
+record_video = true
+video_fps = 30
+
+[experiment]
+name = "Astra pilot — random primitive assembly"
+environment = "random_assembly"
+execution_mode = "strict_oci"
+model_constraints = ["Use standard MuJoCo primitives and joints.", "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
+evaluation_metrics = ["appearance", "dynamics", "reconstruction", "image_mse"]
+
+[experiment.physical_parameters]
+geometry = "Ten overlapping randomized primitives form one rigid free body; construction seed 20261028."
+density = "Every primitive has homogeneous volumetric density; assigned values are explicit in the private source, density seed 2026102801."
+contact = "The source shared geom default sets sliding friction 0.7 and condim 3."
+gravity = "Gravity is MuJoCo default [0, 0, -9.81] m/s²; timestep is 0.002 seconds."
+
+[source]
+scene = "environments/random_assembly/scene.xml"
+
+[sandbox]
+image = "localhost/sim2sim:latest"
+evaluator_image = "localhost/sim2sim:latest"
+command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
+process_limit_backend = "rlimit"
+memory = "1g"
+cpus = 1
+pids = 64
+workspace = "256m"
+
+[budget]
+wall_seconds = 1800
+active_seconds = 1800
+physics_ticks = 12000
+submissions = 6
+submission_bytes = 8388608
+max_message_bytes = 16777216
+audit_bytes = 536870912
+event_log_bytes = 8388608
+
+[simulation]
+rgb = true
+depth = false
+calibration = true
+wrench = true
+width = 320
+height = 240
+camera = "fixed"
+default_ticks = 20
+
+[evaluation]
+manifest = "manifest.toml"
+source_dir = "environments/random_assembly"
+source_entrypoint = "scene.xml"
+entrypoint = "scene.xml"
+camera = "fixed"
+width = 320
+height = 240
+timeout_seconds = 180
+
+[inference]
+# Fixed host-side gateway; the key is read from the host environment only and never enters the container.
+endpoint = "https://api.aqinference.com/v1/responses"
+provider = "openai"        # forced route: the broker rejects fallbacks and any other returned model
+model = "gpt-6-astra"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+metadata = { project = "amish-research", feature = "sim2sim-agent-eval" }
+api_key_env = "INFERENCE_API_KEY"
+max_calls = 2000
+max_cost_usd = 58.0        # per-run cap on gateway-reported cost
+cost_pool = "sim2sim-500"  # shared cap across concurrent runs; one host-only ledger file per run
+cost_pool_usd = 500.0
+cost_ledger_dir = "experiments/cost-ledger"
+call_reserve_usd = 3.0     # worst-case single call; graceful stop when a cap has less than 2x this left
+max_output_tokens = 16384
+max_request_bytes = 12582912
+max_response_bytes = 1048576
+timeout_seconds = 300

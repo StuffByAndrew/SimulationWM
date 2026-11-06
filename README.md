@@ -1,14 +1,22 @@
 # sim2sim
 
-A small MuJoCo benchmark for reconstructing a scene from camera observations and
-pixel interactions. An agent observes RGB, depth or camera calibration, grasps a
-pixel, moves the grasp point in world coordinates, and submits an MJCF project.
+A small MuJoCo benchmark for reconstructing a scene from camera or arm
+observations. In the original environments, an agent observes RGB, depth or
+camera calibration, grasps a pixel, moves the grasp point in world coordinates,
+and submits an MJCF project.
+An optional grasp wrench reports world-frame contact force and zero point torque.
 The researcher retains the source scene, hidden probes, scores and recordings.
 
-The host runs physics and the protocol. A rootless Podman container runs the
-agent without network access or host directory mounts. A separate constrained container
-evaluates submitted XML and assets. The included scripted agent demonstrates the
-protocol; it is not a reconstruction solver.
+Eight opt-in [Panda arm environments](docs/environments.md#panda-arm-variants)
+replace pixel grasping with seven-joint and gripper commands. Six retain RGB
+vision; the two-block and fixed-cube variants use arm proprioception only.
+
+The host runs physics and the protocol. In strict OCI mode, a rootless Podman
+container runs the agent without network access or host directory mounts, and a
+separate constrained container evaluates submitted XML and assets. The explicit
+development mode uses native workers and a shared filesystem instead; it has no
+OS isolation. The included scripted agent demonstrates the protocol; it is not
+a reconstruction solver.
 
 ## Setup
 
@@ -19,11 +27,16 @@ python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
 ```
 
+SciPy supplies nearest-neighbor surface distances and primitive assignment;
+Matplotlib generates standalone metric-progress plots. Both install through the
+project dependencies above. The `test` extra also installs PyYAML for validating
+the repository experiment skills; no alternate interpreter is needed.
+
 MuJoCo rendering needs a working EGL or OSMesa driver. On this cluster, EGL
 works on the tested compute node; the login node lacks the required software
 rendering driver. Rootless Podman with working cgroup resource limits is required
-for complete benchmark runs. The runtime fails closed when rootless Podman is
-unavailable.
+for complete strict OCI benchmark runs. That mode fails closed when rootless
+Podman is unavailable.
 
 **Run all heavy computation on Slurm's `test` partition.** Do not run physics,
 rendering, the full test suite, image builds or benchmark runs on a login node.
@@ -50,15 +63,55 @@ cgroup. [Linux documents the hard limit and its privilege rules](https://man7.or
 
 Controller names alone do not establish enforcement. Before any agent starts,
 the runtime launches a small probe in the researcher-trusted evaluator image
-and checks its effective CPU quota, memory maximum, hard process limit, UID and
-privilege flags. It refuses missing or unlimited bounds. On the tested Slurm
-nodes, Podman advertises CPU/memory controllers but silently ignores the
-requested CPU/memory limits: the container reports `memory.max=max` and
-`cpu.max=max 100000`, including with an explicit private cgroup namespace.
-The probe therefore prevents agent launch on this setup. Selecting `rlimit`
-does not repair that restriction. Complete runs require a supported host with
-writable delegated CPU/memory cgroups, normally through a working rootless
-systemd user session or equivalent administrator configuration.
+and checks its effective limits, UID, privilege flags and environment. On Slurm
+`test` nodes Podman silently ignores `--memory/--cpus` (`memory.max=max`), so use
+`process_limit_backend = "slurm_step"` there: every container runs in its own
+`srun --exact` step whose cgroup Slurm enforces, and the controller verifies each
+container's step memory, cpuset, UID, capabilities and process bound from the host
+before sending input. Build the image once with `sbatch scripts/build-image.slurm`
+(archive plus trusted ID in `experiments/images/trusted-image.json`); job scripts
+load it into job-private storage and refuse a different ID. Launch one or two
+prepared strict runs per allocation with `sbatch scripts/experiment-strict.slurm
+ID [ID]`. Evidence: `experiments/validation/sandbox-backend/`.
+
+## Configured experiments
+
+Use [experiment configuration and viewing](docs/experiments.md) to select an
+environment, actual private physical values, model instructions and evaluation
+families. The [Astra preset](experiments/configs/astra-random-assembly.toml) targets
+exactly `gpt-6-astra` with a 30-minute hard wall limit. Prepare a private source
+copy before changing densities or joint values; metadata alone does not apply
+physical changes. Researcher descriptions and values stay out of the agent task.
+
+```sh
+sbatch scripts/experiment.slurm experiments/configs/astra-random-assembly.toml --id astra-pilot-001
+.venv/bin/sim2sim dashboard --root experiments
+```
+
+The separately selected [development preset](experiments/configs/astra-random-assembly-development.toml)
+uses a spawned Astra agent and a public bridge with `--development`. It has no OS
+filesystem isolation and is never an automatic substitute for a blocked OCI run.
+The API preset is retained for later use. See the experiment guide for the
+explicit workflow and confidentiality limits.
+
+The [two-hour medium Astra batch](docs/experiments.md#two-hour-medium-astra-environment-batch)
+covers all six environments with separate Slurm jobs and a wall-only budget:
+7200 seconds, without tick or submission-count quotas. Its approved development
+workflow selects `gpt-6-astra` with medium reasoning. The
+[results dashboard](docs/dashboard.md) groups comparable curves, provides a
+metric checklist, and has a checkbox for recorded grasp points and trajectories.
+Its **Interactive physics** tab runs the source scene and any recorded
+reconstruction version in two live MuJoCo/Viser viewers. Launch it from a login
+node with `scripts/serve-dashboard.sh`, which requests a CPU-only Slurm `test` node.
+The optional `inspect` extra (`viser>=1.1,<2`, also in `test`) supplies the viewer.
+
+New attempts and their artifacts live under `experiments/runs/<id>/`; the private
+multi-experiment dashboard is `experiments/dashboard/index.html`. Strict OCI
+broker runs require a host credential and verified container limits. The explicit
+development mode uses neither the broker credential nor OCI limits. A blocked
+attempt records its status without pretending an agent ran. Configure and run experiments
+with [run-experiment](skills/run-experiment/SKILL.md); view recorded experiments
+directly in the [dashboard](docs/dashboard.md).
 
 ## Run
 
@@ -78,6 +131,22 @@ one configured HTTPS endpoint; the API key stays on the host.
 The output directory retains the resolved configuration, event log, submitted
 versions, private evaluation artifacts and reset-separated videos. Evaluation
 reports are researcher-only. The agent receives submission validation feedback.
+For enabled reconstruction metrics, `metric-history.png` tracks Chamfer distance,
+per-original-primitive density error and center-of-mass error at explicit
+submission checkpoints; `metric-history.json` retains the full measurements and
+COM error vectors. Missing measurements appear as gaps. These history files also
+remain private.
+
+Recorded runs can be inspected without rerunning physics, parsing candidate
+models, or making inference calls:
+
+```sh
+.venv/bin/sim2sim replay experiments/runs/sandbox-example --output experiments/runs/sandbox-example/replay
+```
+
+Replay verifies the audit files and exports the archived frames, state snapshots,
+wire bytes and a local `index.html` viewer. This is playback of the recorded
+history, not a new simulation or a reconstructed API response.
 
 - [Protocol and observation formats](docs/protocol.md)
 - [Environment authoring](docs/environments.md)
@@ -95,18 +164,36 @@ sbatch scripts/test.slurm
 MUJOCO_GL=osmesa sbatch --export=ALL scripts/test.slurm
 # Optional OCI integration; requires the prebuilt image and working Podman:
 SIM2SIM_OCI_TEST=1 sbatch --export=ALL scripts/test.slurm
-# On a host enforcing CPU/memory but lacking pids delegation:
-SIM2SIM_OCI_TEST=1 SIM2SIM_PROCESS_LIMIT_BACKEND=rlimit sbatch --export=ALL scripts/test.slurm
+# On Slurm test nodes (Slurm step cgroups enforce CPU/memory):
+SIM2SIM_OCI_TEST=1 SIM2SIM_PROCESS_LIMIT_BACKEND=slurm_step sbatch -c 4 --mem=8G --export=ALL scripts/test.slurm tests/test_oci.py
 ```
 
-On 2026-10-28, Slurm job `56025393` on `holy8a24401` reported **42 passed,
-1 skipped** in 38.85 seconds with EGL. This includes decoded, playable video
-segments across reset. The skipped OCI test is explicitly opt-in. A separate
-opt-in check in that job verified that the trusted resource probe rejects this
-cluster's unlimited CPU/memory bounds before agent launch (3.10 seconds).
+On 2026-10-28, Slurm `test` job `56066912` completed **149 passed, 1 skipped**
+in 82.76 seconds with EGL; the skip was OCI integration. After a real prepared
+experiment exposed an NFS `.nfs` file guard issue, a narrow fix passed **15**
+focused preparation, start, development and metadata checks in job `56069922`
+(24.26 seconds). The latter job is the validation after that fix; the full suite
+predates it. Earlier jobs `56050549`, `56053020` and `56047534` covered native
+candidate execution, video/runtime behavior and dynamics scenes.
 
-Full rootless OCI integration remains blocked by the cluster's unenforced
-CPU/memory controls; complete agent/evaluator integration has not passed here.
+A controlled trusted two-world fixture produced a verified replay with **254
+events and 55 frames**, including a real three-tick partial action. It is an
+offline test fixture, not a production isolated-agent run. The OCI test remains
+explicitly opt-in and skipped in the full suite.
+
+The trusted image was built and inspected in job `56063002`; its image ID is
+`d991f5411f7be34293e0bf3f986c10d92db56d27d3f5c9e2c17789819b5eaf46`.
+Its inspected contents excluded source scenes, configurations, experiments,
+documentation, repository metadata and credentials. The live resource probe still
+reported `memory.max=max` and `cpu.max=max 100000`. With the `slurm_step` backend,
+job `57174710` passed the isolated agent/evaluator OCI integration test.
+
+The explicitly approved shared-filesystem Astra development pilot completed in
+Slurm job `56069945`: the controller recorded `agent_finish` within its
+30-minute limit, three accepted submissions and 3000 physics ticks. Its private
+record is `experiments/runs/astra-development-20261028-002/`. This pilot has no
+OS filesystem isolation claim; the strict API pilot remains unrun.
+
 Metrics report discrepancies;
 they do not establish unique physical parameter identification or provide a
 calibrated aggregate pass threshold. See the evaluation documentation for metric
