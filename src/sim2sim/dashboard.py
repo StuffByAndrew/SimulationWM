@@ -1,6 +1,7 @@
 """Read-only offline experiment dashboard built from verified audit snapshots."""
 from __future__ import annotations
 import base64
+from datetime import datetime,timezone
 import hashlib
 import json
 import math
@@ -399,7 +400,9 @@ def _encode(value):
 
 
 def _catalog_script(runs,comparisons):
-    environments=[dict(path=path,robot=_environment(path.replace('/','_'))[0],scene=path.split('/')[-1]) for path in environment_scenes()]
+    # built: last modification of the scene's own files (scene, manifest, assets), the date it was last (re)built
+    built=lambda path:datetime.fromtimestamp(max(f.stat().st_mtime for f in (ENVIRONMENTS/path).iterdir() if f.is_file()),timezone.utc).isoformat()
+    environments=[dict(path=path,robot=_environment(path.replace('/','_'))[0],scene=path.split('/')[-1],built=built(path)) for path in environment_scenes()]
     return (f'window.__dashboardCatalog={_encode(runs)};window.__dashboardComparisons={_encode(comparisons)};'
             f'window.__dashboardEnvironments={_encode(environments)};').encode()
 

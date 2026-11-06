@@ -191,7 +191,7 @@ def test_dashboard_has_physics_view_with_version_scrubber():
     from sim2sim.dashboard_view import HTML, SCRIPT
     for marker in ('id="view-physics"', 'id="physics-reference"', 'id="physics-candidate"', 'id="version-timeline"',
                    'id="recordings-view"', 'id="physics-view" hidden', 'id="physics-couple"', 'id="physics-overlay"',
-                   'id="environments-view" hidden', 'id="gallery-frame"'):
+                   'id="environments-view" hidden', 'id="environment-frame"', 'id="environment-list"', 'id="environment-sort"'):
         assert marker in HTML
     assert "fetch('api/inspector/'+path" in SCRIPT and "'Content-Type':'application/json'" in SCRIPT
 
@@ -242,20 +242,36 @@ def test_live_coupled_grasp_moves_both_worlds_and_overlay_shows_both(live_app):
     _wait(lambda: all(viewer.gizmo is None for viewer in app.viewers.values()), message='gizmos removed')
 
 
-def test_live_gallery_shows_every_environment_scene(tmp_path):
+def test_live_environment_viewer_loads_one_scene_and_drags_it(tmp_path):
     if not ON_TEST_NODE:
         pytest.skip('Interactive physics runs only on a Slurm test allocation')
-    from sim2sim.inspector import InspectorApp
+    from sim2sim.inspector import ENVIRONMENT, InspectorApp
     for name in ('alpha', 'beta'):
         (tmp_path / 'environments' / name).mkdir(parents=True)
         (tmp_path / 'environments' / name / 'scene.xml').write_text(SOURCE)
     app = InspectorApp(tmp_path, ports=(0, 0, 0, 0), session_seconds=300, workspace=tmp_path / 'workspace',
                        environments=tmp_path / 'environments')
     try:
-        _wait(lambda: app.gallery.status != 'loading', timeout=120, message='gallery loaded')
-        gallery = app.state()['gallery']
-        assert gallery['status'] == 'ready' and [e['path'] for e in gallery['environments']] == ['alpha', 'beta']
-        assert all(e['status'] == 'ready' for e in gallery['environments']) and gallery['port']
+        viewer = app.viewers[ENVIRONMENT]
+        assert app.state()['environment']['path'] is None and viewer.positions is None  # nothing loads until one is picked
+        with pytest.raises(ValueError):
+            app.select_environment('gamma')
+        with pytest.raises(ValueError):
+            app.select_environment('../alpha')
+        app.select_environment('beta')
+        _wait(lambda: viewer.positions is not None, timeout=120, message='environment loaded')
+        box = next(i for i, b in enumerate(viewer.model['bodies']) if b['name'] == 'box')
+        app.control('couple', 'both', True)  # the run worlds' coupling never captures the environment viewer
+        app.control('grasp', ENVIRONMENT, {'origin': [0, 0, 1], 'direction': [0, 0, -1]})
+        _wait(lambda: viewer.summary.get('grasp') == 'box' and viewer.gizmo is not None, message='environment grasp')
+        assert viewer.summary['playing'] and all(app.viewers[name].gizmo is None for name in ('reference', 'candidate', 'overlay'))
+        app.drag(viewer, viewer.gizmo_origin + np.array([0, 0, .3]))
+        _wait(lambda: viewer.positions[box][2] > .25, timeout=30, message='box lifted')
+        state = app.state()['environment']
+        assert state['path'] == 'beta' and state['port'] == viewer.port and state['grasp'] == 'box'
+        app.select_environment('alpha')  # switching replaces the world
+        _wait(lambda: app.state()['environment']['path'] == 'alpha' and viewer.positions is not None and viewer.summary.get('grasp') is None,
+              timeout=120, message='switched environment')
     finally:
         app.close()
 
@@ -371,8 +387,11 @@ d.querySelector('[data-physics="reset"]').click();d.getElementById('view-recordi
 STATIC_CHECK = _PAGE % '''if(stage===0){d.getElementById('view-physics').click();stage=1;return;}
 const banner=d.getElementById('physics-unavailable');if(banner.hidden)return;if(!d.getElementById('server-life').hidden)return done(false,'FAIL: static snapshot shows server life');if(!banner.textContent.includes('Slurm test'))return done(false,'FAIL: banner text');
 if(stage===1){d.getElementById('view-environments').click();stage=2;return;}
-if(d.getElementById('gallery-unavailable').hidden)return;const cards=d.querySelectorAll('#environment-cards .env-card');if(!cards.length||cards.length!==w.__dashboardEnvironments.length)return done(false,'FAIL: environment cards '+cards.length);
-cards[0].querySelector('button').click();if(d.getElementById('recordings-view').hidden||d.querySelector('#tag-filters button[data-category="Scene"][aria-pressed=true]')?.dataset.value!==w.__dashboardEnvironments[0].scene)return done(false,'FAIL: show runs of an environment');done(true,'PASS: static snapshot explains missing inspector and lists environments');'''
+if(d.getElementById('environment-unavailable').hidden)return;const rows=d.querySelectorAll('#environment-list .env-row');if(!rows.length||rows.length!==w.__dashboardEnvironments.length)return done(false,'FAIL: environment list '+rows.length);
+if(!rows[0].textContent.includes('built 20'))return done(false,'FAIL: built date '+rows[0].textContent);
+for(const id of ['browser','run-heading','browse-toggle'])if(w.getComputedStyle(d.getElementById(id)).display!=='none')return done(false,'FAIL: run chrome shown in the environments view: '+id);
+d.getElementById('view-recordings').click();if(d.getElementById('recordings-view').hidden||w.getComputedStyle(d.getElementById('browse-toggle')).display==='none')return done(false,'FAIL: run chrome not restored');
+done(true,'PASS: static snapshot explains missing inspector; environments view lists environments without the run browser');'''
 
 
 ROBOT_FIRST_SCENE = '''<mujoco><compiler angle="radian" autolimits="true" meshdir="robot/assets"/>

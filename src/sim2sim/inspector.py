@@ -34,6 +34,7 @@ MAX_REQUEST = 64 * 1024
 SCORE_FIELDS = (('reconstruction', 'chamfer_distance_m'), ('reconstruction', 'center_of_mass_error_m'), ('reset', 'rgb_mse'))
 PLANE, SPHERE, CAPSULE, ELLIPSOID, CYLINDER, BOX, MESH = 0, 2, 3, 4, 5, 6, 7
 WORLDS = ('reference', 'candidate')
+ENVIRONMENT = 'environment'  # the Environments view's own world: never coupled or camera-synced with the run worlds
 
 
 def _lathe(profile, segments=32):
@@ -474,78 +475,17 @@ class Viewer:
                 self.status.content = f'**{self.label}**  \n' + (f'{self.description}  \n' if self.description else '') + '  \n'.join(notes)
 
 
-class Gallery:
-    """Every authored environment scene at its initial state, side by side in one Viser server (rows by robot family)."""
-    def __init__(self, port, root, workspace, seconds):
-        from .dashboard import environment_scenes
-        self.server = _server(port, 'Environments')
-        self.port, self.root = self.server.get_port(), Path(root)
-        self.environments = [dict(path=path, status='loading') for path in environment_scenes(root)]
-        self.status = 'loading'
-        threading.Thread(target=self._load, args=(Path(workspace), seconds), daemon=True).start()
-
-    def _describe(self, path, workspace, seconds):
-        from .runtime import zip_directory
-        family = path.split('/')[0]
-        received, done = {}, threading.Event()
-
-        def collect(message):
-            received.setdefault(message.get('type'), message)
-            if message.get('type') in ('state', 'error'):
-                done.set()
-        setup = dict(kind='source', archive_b64=base64.b64encode(zip_directory(self.root / family)).decode(),
-                     entrypoint=path.split('/', 1)[1] + '/scene.xml' if '/' in path else 'scene.xml',
-                     simulation={'robot': 'panda'} if (self.root / family / 'robot').is_dir() else {})
-        worker = WorldProcess(workspace, setup, collect, seconds)
-        try:
-            if not done.wait(120):
-                raise RuntimeFailure('environment worker timed out')
-        finally:
-            worker.close()
-        if 'error' in received:
-            raise RuntimeFailure(received['error']['error'])
-        return received['model'], received['state']
-
-    def _load(self, workspace, seconds):
-        try:
-            self._layout(workspace, seconds)
-            self.status = 'ready'
-        except Exception as exc:
-            self.status = f'error: {type(exc).__name__}: {exc}'
-            raise
-
-    def _layout(self, workspace, seconds):
-        loaded = []
-        for entry in self.environments:
-            try:
-                loaded.append((entry, *self._describe(entry['path'], workspace, seconds)))
-                entry['status'] = 'ready'
-            except Exception as exc:
-                entry.update(status='error', error=f'{type(exc).__name__}: {exc}')
-        scene, row_y, previous_family, cursor, row_depth, span = self.server.scene, 0.0, None, 0.0, 0.0, 1.0
-        with self.server.atomic():
-            for index, (entry, model, state) in enumerate(loaded):
-                family = entry['path'].split('/')[0] if '/' in entry['path'] else ''
-                extent, center = float(model['extent']), np.asarray(model['center'])
-                if family != previous_family and previous_family is not None:
-                    row_y, cursor, row_depth = row_y - 1.5 * row_depth, 0.0, 0.0
-                previous_family, row_depth = family, max(row_depth, 2 * extent)
-                root = f'/env{index}'
-                scene.add_frame(root, show_axes=False, position=(cursor + extent - center[0], row_y - center[1], 0.0))
-                frames, _, _ = _add_model(scene, model, root, keep=lambda geom: int(geom['type']) != PLANE)
-                _pose(frames, model, state)
-                scene.add_label(f'{root}/label', entry['path'], position=tuple(center + [0, 0, .9 * extent]), anchor='bottom-center')
-                cursor += 2.2 * extent
-                span = max(span, cursor)
-            look, position = (span / 2, row_y / 2, 0.0), (span / 2, row_y / 2 - 1.2 * span, .8 * span)
-            initial = self.server.initial_camera
-            initial.look_at, initial.position = look, position
-        for client in self.server.get_clients().values():
-            with client.atomic():
-                client.camera.look_at, client.camera.position = look, position
-
-    def state(self):
-        return dict(port=self.port, status=self.status, environments=self.environments)
+def environment_setup(root, path):
+    """Physics-worker setup for one authored environment scene (e.g. ``blocks`` or ``panda/blocks``) under ``root``."""
+    from .dashboard import environment_scenes
+    from .runtime import zip_directory
+    root = Path(root)
+    if path not in environment_scenes(root):
+        raise ValueError(f'unknown environment {path!r}')
+    family = path.split('/')[0]
+    return dict(kind='source', archive_b64=base64.b64encode(zip_directory(root / family)).decode(),
+                entrypoint=path.split('/', 1)[1] + '/scene.xml' if '/' in path else 'scene.xml',
+                simulation={'robot': 'panda'} if (root / family / 'robot').is_dir() else {})
 
 
 class InspectorApp:
@@ -556,13 +496,14 @@ class InspectorApp:
         self.session_seconds = session_seconds
         self.expires_at = _job_end() or time.time() + session_seconds
         self.lock = threading.RLock()
-        self.viewers, self.gallery = {}, None
+        self.viewers, self.environments_root, self.environment = {}, environments, None
         try:
             self.viewers['reference'] = Viewer(self, 'reference', 'Reference · private source scene', ports[0], ('reference',))
             self.viewers['candidate'] = Viewer(self, 'candidate', 'Reconstruction · recorded version', ports[1], ('candidate',))
             self.viewers['overlay'] = Viewer(self, 'overlay', 'Overlay · reference and reconstruction', ports[2], WORLDS)
-            if environments is not None:
-                self.gallery = Gallery(ports[3], environments, self.workspace / 'gallery', session_seconds)
+            if environments is not None:  # one authored environment at a time, independent of the run viewers
+                self.viewers[ENVIRONMENT] = Viewer(self, ENVIRONMENT, 'Environment', ports[3], (ENVIRONMENT,))
+                self.viewers[ENVIRONMENT].summary = dict(status='waiting', message='Pick an environment.')
         except Exception:
             for viewer in self.viewers.values():
                 viewer.server.stop()
@@ -573,6 +514,16 @@ class InspectorApp:
         self.source_camera, self.camera_owner = None, (None, 0.0)
         self.coupled, self.anchors = False, {}
         self.verified = {}
+
+    # Environment selection -------------------------------------------------------
+    def select_environment(self, path):
+        if self.environments_root is None:
+            raise ValueError('this inspector serves no environments')
+        setup = environment_setup(self.environments_root, path)  # validates the path against the authored scenes
+        with self.lock:
+            self._stop(ENVIRONMENT)
+            self.environment = path
+            self._start(ENVIRONMENT, setup, f'Authored environment `{path}` at its initial state')
 
     # Run and version selection ------------------------------------------------
     def select(self, request):
@@ -689,7 +640,9 @@ class InspectorApp:
         """Uncoupled: each world's own viewer drags its grasp. Coupled: once both parts are picked, every viewer drags both."""
         ready = all(world in self.anchors for world in WORLDS)
         for viewer in self.viewers.values():
-            if self.coupled:
+            if viewer.primary == ENVIRONMENT:
+                viewer.place_gizmo(self.anchors.get(ENVIRONMENT))
+            elif self.coupled:
                 viewer.place_gizmo(self.anchors[viewer.primary] if ready else None)
             else:
                 viewer.place_gizmo(self.anchors.get(viewer.primary) if viewer.single else None)
@@ -701,7 +654,11 @@ class InspectorApp:
             viewers = self._showing(world)
         kind = message.get('type')
         try:
-            if kind == 'model':
+            if kind == 'model' and world == ENVIRONMENT:
+                for viewer in viewers:
+                    viewer.show(world, message)
+                    viewer.set_camera(message.get('camera'), message['center'], float(message['extent']), move_clients=True)
+            elif kind == 'model':
                 for viewer in viewers:
                     viewer.show(world, message)
                 with self.lock:
@@ -762,20 +719,21 @@ class InspectorApp:
             return self.control('release', 'both')
         if op not in ('play', 'pause', 'reset', 'step', 'release', 'speed', 'grasp', 'target'):
             raise ValueError('unknown inspector control')
-        if world not in (*WORLDS, 'both'):
-            raise ValueError('world must be reference, candidate or both')
+        if world not in (*WORLDS, 'both', ENVIRONMENT):
+            raise ValueError('world must be reference, candidate, both or environment')
+        coupled = self.coupled and world != ENVIRONMENT
         # Coupled worlds share every playback control; grasps and targets stay per world.
-        worlds = WORLDS if world == 'both' or (self.coupled and op not in ('grasp', 'target')) else (world,)
+        worlds = WORLDS if world == 'both' or (coupled and op not in ('grasp', 'target')) else (world,)
         command = {'op': op}
         if op == 'speed':
             command['value'] = float(value)
         elif op == 'grasp':
-            command.update(value, play=not self.coupled)
+            command.update(value, play=not coupled)
         elif op == 'target':
             command['position'] = value
         with self.lock:
             workers = [self.workers.get(name) for name in worlds]
-            if op == 'grasp' and self.coupled:  # hold both worlds until the counterpart is picked
+            if op == 'grasp' and coupled:  # hold both worlds until the counterpart is picked
                 workers = [self.workers.get(name) for name in WORLDS]
                 commands = [{'op': 'pause'}] * len(workers)
                 commands[WORLDS.index(world)] = command
@@ -791,9 +749,10 @@ class InspectorApp:
             if viewer.gizmo_origin is None:
                 return
             offset = position - viewer.gizmo_origin
-            worlds = WORLDS if self.coupled else (viewer.primary,)
+            coupled = self.coupled and viewer.primary != ENVIRONMENT
+            worlds = WORLDS if coupled else (viewer.primary,)
             commands = [(self.workers.get(name), (self.anchors[name] + offset).tolist()) for name in worlds if name in self.anchors]
-            others = [other for other in self.viewers.values() if other is not viewer] if self.coupled else []
+            others = [other for other in self.viewers.values() if other is not viewer and other.primary != ENVIRONMENT] if coupled else []
         for worker, target in commands:
             if worker is not None:
                 worker.send({'op': 'target', 'position': target})
@@ -806,11 +765,11 @@ class InspectorApp:
         now = time.monotonic()
         with self.lock:
             owner, since = self.camera_owner
-            if not self.sync or (owner is not None and owner is not viewer and now - since < .4):
+            if viewer.primary == ENVIRONMENT or not self.sync or (owner is not None and owner is not viewer and now - since < .4):
                 return
             self.camera_owner = (viewer, now)
         for other in self.viewers.values():
-            if other is not viewer:
+            if other is not viewer and other.primary != ENVIRONMENT:
                 other.mirror_camera(camera)
 
     def state(self):
@@ -826,7 +785,8 @@ class InspectorApp:
                         unavailable=recorded.get('unavailable', []),
                         worlds={name: dict(self.viewers[name].summary, port=self.viewers[name].port) for name in WORLDS},
                         overlay_port=self.viewers['overlay'].port,
-                        gallery=self.gallery.state() if self.gallery else None)
+                        environment=dict(self.viewers[ENVIRONMENT].summary, path=self.environment, port=self.viewers[ENVIRONMENT].port)
+                        if ENVIRONMENT in self.viewers else None)
 
     def close(self):
         with self.lock:
@@ -837,8 +797,6 @@ class InspectorApp:
             worker.close()
         for viewer in self.viewers.values():
             viewer.server.stop()
-        if self.gallery:
-            self.gallery.server.stop()
         shutil.rmtree(self.workspace, ignore_errors=True)
 
 
@@ -904,6 +862,8 @@ def _handler(app, directory, live=None):
                     raise ValueError('request must be a JSON object')
                 if route == '/api/inspector/select':
                     app.select(body)
+                elif route == '/api/inspector/environment':
+                    app.select_environment(body.get('path'))
                 elif route == '/api/inspector/control':
                     app.control(body.get('op'), body.get('world', 'both'), body.get('value'))
                 else:
@@ -914,7 +874,7 @@ def _handler(app, directory, live=None):
     return Handler
 
 
-PORTS = ('HTTP', 'REFERENCE', 'CANDIDATE', 'OVERLAY', 'GALLERY')
+PORTS = ('HTTP', 'REFERENCE', 'CANDIDATE', 'OVERLAY', 'ENVIRONMENT')
 
 
 def serve(root, dashboard, ports, session_seconds, ready_file=None, physics=True):
@@ -931,7 +891,7 @@ def serve(root, dashboard, ports, session_seconds, ready_file=None, physics=True
         if app:
             app.close()
         raise
-    viewers = [*app.viewers.values(), app.gallery] if app else []
+    viewers = list(app.viewers.values()) if app else []  # reference, candidate, overlay, environment: the order of --ports
     ready = dict(node=socket.gethostname(), ports=[server.server_address[1], *(v.port for v in viewers)],
                  job=os.environ.get('SLURM_JOB_ID'))
     if ready_file:

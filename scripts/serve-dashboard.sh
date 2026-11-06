@@ -28,7 +28,7 @@ if [[ -n "${SLURM_JOB_ID:-}" ]]; then
     exit 2
 fi
 # Five consecutive ports free on this login node: HTTP, reference, reconstruction, overlay and environment viewers.
-read -r http reference candidate overlay gallery < <("$python_bin" - <<'PY'
+read -r http reference candidate overlay environment < <("$python_bin" - <<'PY'
 import socket
 for base in range(8000, 8100, 5):
     sockets = []
@@ -62,7 +62,7 @@ if (( static )); then
     print_client "-L 127.0.0.1:$http:127.0.0.1:$http"
     echo "Static mode: live recordings only; the physics and 3D environment views report that no inspector is running."
     PYTHONPATH="$repo_root/src" exec "$python_bin" -m sim2sim.cli inspect --no-physics "${root_args[@]}" --dashboard "$dashboard" \
-        --ports "$http" "$reference" "$candidate" "$overlay" "$gallery"
+        --ports "$http" "$reference" "$candidate" "$overlay" "$environment"
 fi
 
 IFS=: read -r -a parts <<<"$wall"
@@ -103,7 +103,7 @@ srun --partition=test --nodes=1 --ntasks=1 --cpus-per-task="$cpus" --mem="$mem" 
     --job-name=sim2sim-dashboard --chdir="$repo_root" \
     --export="ALL,MUJOCO_GL=disable,PYTHONPATH=$repo_root/src" \
     "$python_bin" -u -m sim2sim.cli inspect "${root_args[@]}" --dashboard "$dashboard" \
-    --ports "$http" "$reference" "$candidate" "$overlay" "$gallery" --session-seconds "$seconds" --ready-file "$ready" </dev/null &
+    --ports "$http" "$reference" "$candidate" "$overlay" "$environment" --session-seconds "$seconds" --ready-file "$ready" </dev/null &
 srun_pid=$!
 
 until [[ -s "$ready" ]]; do
@@ -139,7 +139,7 @@ echo
 
 # The node listens only on its loopback; forward the same ports from this login node.
 forwards=()
-for port in "$http" "$reference" "$candidate" "$overlay" "$gallery"; do forwards+=(-L "127.0.0.1:$port:127.0.0.1:$port"); done
+for port in "$http" "$reference" "$candidate" "$overlay" "$environment"; do forwards+=(-L "127.0.0.1:$port:127.0.0.1:$port"); done
 ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new "${forwards[@]}" "$node" &
 tunnel_pid=$!
 sleep 3

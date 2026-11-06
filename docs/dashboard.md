@@ -41,11 +41,16 @@ ablated factor. The **Experiment** filter shows only a pair's runs. Below the he
 the open run lists its experiments with one-click switching to every attempt of
 both conditions.
 
-The **Environments** tab shows every authored scene under `environments/` at its
-initial state in one 3D Viser view (rows: point grasp, Panda, small Panda; floors
-hidden). It also shows a card per environment with run counts by status; **Show runs**
-filters the browser to that scene and robot. Per-run perturbations are not shown
-there; they appear in each run's Interactive physics source.
+The **Environments** tab is its own view: the run browser, tags, search and run header
+are hidden while it is open. A list of every authored scene under `environments/`
+(robot, run count and when the scene's own files last changed, sortable by that date or
+by name) sits beside one live viewer. Picking an environment (opening the tab picks the
+newest) loads it from its initial state in a fresh limited physics worker
+(`POST /api/inspector/environment {"path": ...}`); click a movable object to attach the
+point grasp and drag the gizmo, with Play, Pause, Step, Reset, Release and speed in the
+viewer's panel. This world is never camera-synced or coupled with the run worlds of
+Interactive physics. Per-run perturbations are not shown there; they appear in each
+run's Interactive physics source.
 
 Run `sim2sim dashboard --root experiments` after recording experiments. `--root` may be repeated (e.g. lab storage plus home): runs from every root share one catalog, run directory names must be unique across roots, and the default output is the first root's `dashboard/`. `scripts/serve-dashboard.sh` takes several roots as a colon-separated `SIM2SIM_EXPERIMENTS`. Current strict waves: `.venv/bin/python -m sim2sim.cli dashboard --root /n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments --root experiments` (login node is fine), then `SIM2SIM_EXPERIMENTS=/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:$PWD/experiments scripts/serve-dashboard.sh`. The default output is `experiments/dashboard/index.html`; open it directly in Chromium or another modern browser. `--output` selects another artifact directory. Compatible runs live in `experiments/runs/<id>` and may include `experiment.json` and `status.json`. The dashboard never executes source scenes, candidate XML, models, inference or evaluation.
 
