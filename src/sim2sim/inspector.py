@@ -34,6 +34,7 @@ MAX_REQUEST = 64 * 1024
 SCORE_FIELDS = (('reconstruction', 'chamfer_distance_m'), ('reconstruction', 'center_of_mass_error_m'), ('reset', 'rgb_mse'))
 PLANE, SPHERE, CAPSULE, ELLIPSOID, CYLINDER, BOX, MESH = 0, 2, 3, 4, 5, 6, 7
 WORLDS = ('reference', 'candidate')
+AGENT_ASPECT = 320 / 240  # the agent's camera image (every experiment config); MuJoCo cameras carry no aspect
 ENVIRONMENT = 'environment'  # the Environments view's own world: never coupled or camera-synced with the run worlds
 
 
@@ -341,6 +342,11 @@ class Viewer:
             gui.add_button(text).on_click(lambda _, op=op: self.app.control(op, target))
         self.speed = gui.add_slider('Speed', min=0.05, max=2.0, step=0.05, initial_value=1.0)
         self.speed.on_update(lambda _: self.app.control('speed', target, self.speed.value))
+        # The scene's default ("fixed") camera, the one the agent observes through: jump to it, and draw its frustum.
+        self.camera_view = self.frustum = None
+        gui.add_button('Default camera view').on_click(lambda _: self.view_default_camera())
+        self.show_frustum = gui.add_checkbox('Show camera frustum', initial_value=False)
+        self.show_frustum.on_update(lambda _: self.draw_frustum())
         gui.add_markdown('Click a movable body to grasp that point; drag the gizmo to move the handle. Physics runs '
                          'while playing; grasping starts playback. With coupled grasping on, pick the part in each world '
                          'and one drag moves both handles by the same displacement.' if self.single else
@@ -390,7 +396,31 @@ class Viewer:
             if self.single:
                 self.summary = dict(status='ready', message='Loaded' + (f'; {skipped} unsupported geoms hidden' if skipped else ''))
 
+    def view_default_camera(self):
+        if not (self.camera_view and self.camera_view[0]):
+            return self.notice('This scene has no default camera.')
+        self.set_camera(*self.camera_view, move_clients=True)
+
+    def draw_frustum(self):
+        """Draw (or remove) the default camera's frustum: its pose and vertical field of view, at the agent's 320×240 aspect."""
+        import viser.transforms as tf
+        with self.lock:
+            if self.frustum is not None:
+                self.frustum.remove()
+                self.frustum = None
+            if not (self.show_frustum.value and self.camera_view and self.camera_view[0]):
+                return
+            camera, _, extent = self.camera_view
+            forward, up = np.asarray(camera['forward'], dtype=float), np.asarray(camera['up'], dtype=float)
+            # Viser frustums use the OpenCV camera frame: +X right, +Y down, +Z forward.
+            frame = np.column_stack([np.cross(forward, up), -up, forward])
+            self.frustum = self.server.scene.add_camera_frustum(
+                '/default_camera', fov=math.radians(camera['fovy']), aspect=AGENT_ASPECT, scale=max(.05, .15 * float(extent)),
+                color=(255, 212, 107), wxyz=tf.SO3.from_matrix(frame).wxyz, position=tuple(camera['pos']))
+
     def set_camera(self, camera, center, extent, move_clients):
+        self.camera_view = (camera, center, extent)
+        self.draw_frustum()
         if camera:
             position = np.asarray(camera['pos'])
             forward = np.asarray(camera['forward'])

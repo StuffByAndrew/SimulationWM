@@ -48,7 +48,9 @@ by name) sits beside one live viewer. Picking an environment (opening the tab pi
 newest) loads it from its initial state in a fresh limited physics worker
 (`POST /api/inspector/environment {"path": ...}`); click a movable object to attach the
 point grasp and drag the gizmo, with Play, Pause, Step, Reset, Release and speed in the
-viewer's panel. This world is never camera-synced or coupled with the run worlds of
+viewer's panel. Every viewer panel (here and in Interactive physics) also has **Default camera view**,
+which moves the view to the scene's `fixed` camera (the one the agent observes through: pose and vertical field of view),
+and **Show camera frustum**, which draws that camera's frustum at the agent's 320×240 image aspect. This world is never camera-synced or coupled with the run worlds of
 Interactive physics. Below the viewer, **Base prompt given to the agent** shows the task text exactly as
 the agent receives it for that environment (current stop-when-done task plus the robot family's model constraints) and the
 shared system prompt, read from `experiments/configs/generate-waves.py` and `examples/sandbox_agent.py` without running

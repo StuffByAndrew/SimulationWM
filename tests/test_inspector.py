@@ -261,6 +261,17 @@ def test_live_environment_viewer_loads_one_scene_and_drags_it(tmp_path):
         app.select_environment('beta')
         _wait(lambda: viewer.positions is not None, timeout=120, message='environment loaded')
         box = next(i for i, b in enumerate(viewer.model['bodies']) if b['name'] == 'box')
+        import viser.transforms as tf
+        camera = viewer.camera_view[0]  # the scene's default camera: jump to it and draw its frustum
+        viewer.show_frustum.value = True
+        viewer.draw_frustum()
+        assert np.allclose(viewer.frustum.position, camera['pos'])
+        assert np.allclose(tf.SO3(np.asarray(viewer.frustum.wxyz)).apply(np.array([0., 0., 1.])), camera['forward'], atol=1e-6)
+        viewer.view_default_camera()
+        assert np.allclose(viewer.server.initial_camera.position, camera['pos'])
+        viewer.show_frustum.value = False
+        viewer.draw_frustum()
+        assert viewer.frustum is None
         app.control('couple', 'both', True)  # the run worlds' coupling never captures the environment viewer
         app.control('grasp', ENVIRONMENT, {'origin': [0, 0, 1], 'direction': [0, 0, -1]})
         _wait(lambda: viewer.summary.get('grasp') == 'box' and viewer.gizmo is not None, message='environment grasp')
