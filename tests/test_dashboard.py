@@ -392,6 +392,7 @@ def test_live_dashboard_lists_new_runs_and_reverifies_only_changed_records(tmp_p
     fixture_run(tmp_path,'run-a')
     live=dashboard.LiveDashboard([tmp_path])
     assert b'"run-a"' in live.catalog_script() and b'__dashboardEnvironments' in live.catalog_script()
+    assert b'__dashboardAgentSystem' in live.catalog_script()
     calls=[];original=dashboard._run_snapshot
     monkeypatch.setattr(dashboard,'_run_snapshot',lambda run,*rest:calls.append(run.name) or original(run,*rest))
     identifier=hashlib.sha256(b'run-a').hexdigest()[:16]
@@ -404,3 +405,16 @@ def test_live_dashboard_lists_new_runs_and_reverifies_only_changed_records(tmp_p
     # A static build records the same keys, so a later live server reuses its verified snapshot.
     build_dashboard(tmp_path);calls.clear()
     assert dashboard.LiveDashboard([tmp_path]).run_script(identifier).startswith(b'window.__dashboardRunData(') and calls==[]
+
+
+def test_environment_base_prompts_are_the_base_task_without_experiment_additions():
+    from sim2sim.dashboard import REPO, _assignments, agent_prompts, environment_scenes
+    g = _assignments(REPO / 'experiments/configs/generate-waves.py')
+    system, prompts = agent_prompts()
+    assert system.startswith('You are an autonomous research agent') and set(prompts) == set(environment_scenes())
+    additions = [value for name, value in g.items() if name.endswith('_HINT') or name.startswith('MASS_') or name == 'ALL_ANGLES']
+    for path, prompt in prompts.items():
+        assert prompt['task'].startswith(g['TASK_CONVERGE']) and '\nModel constraints:\n- ' in prompt['task']
+        assert ('Panda robot fixture' in prompt['task']) == (path.split('/')[0] in ('panda', 'panda_small'))
+        assert not any(addition in prompt['task'] for addition in additions), path
+        assert prompt['level'] == '' or prompt['task'].startswith(g['TASK_CONVERGE'] + ' ' + prompt['level'])

@@ -389,6 +389,7 @@ const banner=d.getElementById('physics-unavailable');if(banner.hidden)return;if(
 if(stage===1){d.getElementById('view-environments').click();stage=2;return;}
 if(d.getElementById('environment-unavailable').hidden)return;const rows=d.querySelectorAll('#environment-list .env-row');if(!rows.length||rows.length!==w.__dashboardEnvironments.length)return done(false,'FAIL: environment list '+rows.length);
 if(!rows[0].textContent.includes('built 20'))return done(false,'FAIL: built date '+rows[0].textContent);
+rows[0].click();if(!d.getElementById('environment-task').textContent.includes('Model constraints:'))return done(false,'FAIL: base prompt not shown');
 for(const id of ['browser','run-heading','browse-toggle'])if(w.getComputedStyle(d.getElementById(id)).display!=='none')return done(false,'FAIL: run chrome shown in the environments view: '+id);
 d.getElementById('view-recordings').click();if(d.getElementById('recordings-view').hidden||w.getComputedStyle(d.getElementById('browse-toggle')).display==='none')return done(false,'FAIL: run chrome not restored');
 done(true,'PASS: static snapshot explains missing inspector; environments view lists environments without the run browser');'''

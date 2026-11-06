@@ -49,7 +49,11 @@ newest) loads it from its initial state in a fresh limited physics worker
 (`POST /api/inspector/environment {"path": ...}`); click a movable object to attach the
 point grasp and drag the gizmo, with Play, Pause, Step, Reset, Release and speed in the
 viewer's panel. This world is never camera-synced or coupled with the run worlds of
-Interactive physics. Per-run perturbations are not shown there; they appear in each
+Interactive physics. Below the viewer, **Base prompt given to the agent** shows the task text exactly as
+the agent receives it for that environment (current stop-when-done task plus the robot family's model constraints) and the
+shared system prompt, read from `experiments/configs/generate-waves.py` and `examples/sandbox_agent.py` without running
+the generator. Per-experiment additions (named parameters, stated masses, tool hints) are left out; a sentence that every
+configured run of an environment appends (the tetra-spring levels' stated stiffness or mass) is kept and labeled. Per-run perturbations are not shown there; they appear in each
 run's Interactive physics source.
 
 Run `sim2sim dashboard --root experiments` after recording experiments. `--root` may be repeated (e.g. lab storage plus home): runs from every root share one catalog, run directory names must be unique across roots, and the default output is the first root's `dashboard/`. `scripts/serve-dashboard.sh` takes several roots as a colon-separated `SIM2SIM_EXPERIMENTS`. Current strict waves: `.venv/bin/python -m sim2sim.cli dashboard --root /n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments --root experiments` (login node is fine), then `SIM2SIM_EXPERIMENTS=/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:$PWD/experiments scripts/serve-dashboard.sh`. The default output is `experiments/dashboard/index.html`; open it directly in Chromium or another modern browser. `--output` selects another artifact directory. Compatible runs live in `experiments/runs/<id>` and may include `experiment.json` and `status.json`. The dashboard never executes source scenes, candidate XML, models, inference or evaluation.

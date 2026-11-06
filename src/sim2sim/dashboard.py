@@ -15,7 +15,8 @@ from .audit import AuditFailure,read_audit,_atomic,_json,_digest,_safe_file
 from .replay import _observations,_declared_hashes
 from .dashboard_view import HTML,SCRIPT
 
-ENVIRONMENTS=Path(__file__).resolve().parents[2]/'environments'
+REPO=Path(__file__).resolve().parents[2]
+ENVIRONMENTS=REPO/'environments'
 _VS=re.compile(r'\s*\(vs\.?\s+([^)]*)\)')
 
 
@@ -323,6 +324,36 @@ def environment_scenes(root=ENVIRONMENTS):
     return [scene.parent.relative_to(root).as_posix() for pattern in ('*/scene.xml','*/*/scene.xml') for scene in sorted(root.glob(pattern))]
 
 
+def _assignments(path,names=None):
+    """Top-level assignments of a repository Python file, evaluated without running anything else in it (no loops, calls
+    at statement level or file writes). The wave generator writes configs when run, so it is never imported."""
+    import ast
+    tree=ast.parse(Path(path).read_text())
+    body=[node for node in tree.body if isinstance(node,ast.Assign) and (names is None or any(isinstance(t,ast.Name) and t.id in names for t in node.targets))]
+    namespace={'Path':Path,'__file__':str(path)}
+    exec(compile(ast.Module(body=body,type_ignores=[]),str(path),'exec'),namespace)
+    return namespace
+
+
+def agent_prompts(repo=REPO):
+    """System prompt and, per environment, the base task text the agent under investigation receives: the current (stop-when-done)
+    task, the model constraints for its robot family, and a level statement only when every configured stop-when-done run of
+    that environment appends the same sentence. Per-experiment additions (named parameters, stated masses, tool hints) differ
+    across runs of an environment and are left out."""
+    g=_assignments(repo/'experiments/configs/generate-waves.py')
+    system=_assignments(repo/'examples/sandbox_agent.py',{'SYSTEM'})['SYSTEM']
+    base=g['TASK_CONVERGE']
+    runs=[condition for _,_,_,conditions in g['WAVES'].values() for condition in conditions.values()]
+
+    def prompt(path):
+        configured={o.get('task',g['TASK']) for env,_,o in runs if env==path}
+        configured={task for task in configured if task.startswith(base)}
+        level=next(iter(configured))[len(base):] if len(configured)==1 else ''
+        constraints=g['PANDA_CONSTRAINTS'] if path.split('/')[0] in ('panda','panda_small') else g['CONSTRAINTS']
+        return dict(task=base+level+'\nModel constraints:\n'+'\n'.join('- '+c for c in constraints),level=level.strip())
+    return system,{path:prompt(path) for path in environment_scenes(repo/'environments')}
+
+
 def _environment(value):
     """Recorded environment name -> (robot label, scene, environment path)."""
     for prefix,robot in (('panda_small_','Panda (small)'),('panda_','Panda')):
@@ -402,9 +433,10 @@ def _encode(value):
 def _catalog_script(runs,comparisons):
     # built: last modification of the scene's own files (scene, manifest, assets), the date it was last (re)built
     built=lambda path:datetime.fromtimestamp(max(f.stat().st_mtime for f in (ENVIRONMENTS/path).iterdir() if f.is_file()),timezone.utc).isoformat()
-    environments=[dict(path=path,robot=_environment(path.replace('/','_'))[0],scene=path.split('/')[-1],built=built(path)) for path in environment_scenes()]
+    system,prompts=agent_prompts()
+    environments=[dict(path=path,robot=_environment(path.replace('/','_'))[0],scene=path.split('/')[-1],built=built(path),**prompts[path]) for path in environment_scenes()]
     return (f'window.__dashboardCatalog={_encode(runs)};window.__dashboardComparisons={_encode(comparisons)};'
-            f'window.__dashboardEnvironments={_encode(environments)};').encode()
+            f'window.__dashboardEnvironments={_encode(environments)};window.__dashboardAgentSystem={_encode(system)};').encode()
 
 
 def _record_key(run):
