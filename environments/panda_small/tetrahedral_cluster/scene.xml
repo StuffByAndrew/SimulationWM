@@ -1,0 +1,26 @@
+<mujoco model="panda_small_tetrahedral_cluster">
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets" />
+  <option timestep="0.002" integrator="implicitfast" />
+  <visual>
+    <map znear="0.01" zfar="12" />
+  </visual>
+  <default>
+    <geom friction=".7 .01 .001" condim="3" />
+  </default>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76" />
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false" />
+    <camera name="fixed" pos="1.12 -1.55 1.3" xyaxes="0.7500101721022835 0.6614262935075256 -0.0 -0.2370336825870734 0.2687792650764136 0.9335806017608731" fovy="54" />
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1" />
+    <body name="cluster" pos="0 -0.15 0.42578125">
+      <freejoint name="cluster_free" />
+      <geom name="sphere_1kg" type="sphere" pos="0 -0.02706329391 0" size="0.025" mass="0.003814697265625" rgba=".86 .23 .16 1" />
+      <geom name="sphere_2kg" type="sphere" pos="-0.0234375 0.01353164688 0" size="0.025" mass="0.00762939453125" rgba=".17 .49 .72 1" />
+      <geom name="sphere_4kg" type="sphere" pos="0.0234375 0.01353164688 0" size="0.025" mass="0.0152587890625" rgba=".93 .65 .15 1" />
+      <geom name="sphere_8kg" type="sphere" pos="0 0 0.03827327719" size="0.025" mass="0.030517578125" rgba=".24 .65 .40 1" />
+    </body>
+    <geom name="table" type="box" pos="0 -.08 .35" size=".38 .34 .05" rgba=".65 .52 .37 1" />
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1" />
+  </worldbody>
+  <include file="../robot/panda.xml" />
+</mujoco>

@@ -1,0 +1,47 @@
+name = "tetrahedral_cluster"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["cluster"]
+
+[correspondence]
+cluster = "cluster"
+
+[[probes]]
+name = "front_sphere_pull_release"
+body = "cluster"
+local_point = [0.0, -0.30, 0.02]
+displacement = [0.12, 0.0, 0.14]
+ticks = 160
+
+[[probes]]
+name = "right_sphere_drag_release"
+body = "cluster"
+local_point = [0.28, 0.05, 0.02]
+displacement = [0.18, 0.0, 0.0]
+ticks = 200
+
+[[probes]]
+name = "top_sphere_lift_release"
+body = "cluster"
+local_point = [0.04, -0.05, 0.36]
+displacement = [-0.10, 0.06, 0.20]
+ticks = 180
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261031
+
+# Private expert manipulation (metric `expert`) and policy-transfer task (metric `policy_transfer`).
+[[expert_trajectories]]
+name = "tip_and_drag"
+frame_ticks = 10
+actions = [{op = "grasp", body = "cluster", local_point = [0.0, -0.30, 0.02]},
+           {op = "move", displacement = [0.0, 0.0, 0.2], ticks = 120}, {op = "move", displacement = [0.15, 0.1, 0.0], ticks = 150},
+           {op = "release", ticks = 250}]
+
+[[transfer_tasks]]
+name = "cluster_fling"
+body = "cluster"
+local_point = [0.28, 0.05, 0.02]
+goal_offset_m = [0.2, 0.0, 0.0]

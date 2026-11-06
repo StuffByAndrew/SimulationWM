@@ -1,0 +1,33 @@
+name = "panda_small_fixed_cube_proprio"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = []
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+object_bodies = ["fixed_cube"]
+object_geoms = ["fixed_cube"]
+
+[[arm_probes]]
+name = "fixed_cube_grasp"
+target_body = "fixed_cube"
+[[arm_probes.steps]]
+joint_targets = [1.0018837818253539, 0.3023508871366604, -0.9735103467637236, -2.382256453978118, 0.4307779145914634, 2.511005902632637, 2.050915830743504]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8012863151966634, 0.6479538731574609, -0.6929625256200567, -2.2907840745685135, 0.9205523454181594, 2.635898392401925, 1.717545776995681]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8012863151966634, 0.6479538731574609, -0.6929625256200567, -2.2907840745685135, 0.9205523454181594, 2.635898392401925, 1.717545776995681]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.0018837818253539, 0.3023508871366604, -0.9735103467637236, -2.382256453978118, 0.4307779145914634, 2.511005902632637, 2.050915830743504]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.0018837818253539, 0.3023508871366604, -0.9735103467637236, -2.382256453978118, 0.4307779145914634, 2.511005902632637, 2.050915830743504]
+gripper_width_m = 0.08
+ticks = 200

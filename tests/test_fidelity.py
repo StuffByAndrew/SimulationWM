@@ -96,3 +96,70 @@ def test_custom_hook_failure_explicit(tmp_path):
     assert report['status'] == 'failed'
     assert report['scores'] is None
     assert 'AttributeError' in report['error']
+
+
+def test_named_hinge_metrics_exact_zero(tmp_path):
+    scores=evaluate(tmp_path,'damped_lever')
+    hinge=scores['hinges']['hinge']
+    assert hinge['status']=='ok'
+    assert hinge['source_damping']==pytest.approx(.12)
+    assert hinge['source_frictionloss']==pytest.approx(.05)
+    assert hinge['damping_absolute_error']==0
+    assert hinge['frictionloss_absolute_error']==0
+    assert motion_error(scores)==pytest.approx(0,abs=1e-9)
+
+
+@pytest.mark.parametrize('old,new,key,expected', [
+    ('damping=".12"','damping="1.2"','damping',1.08),
+    ('frictionloss=".05"','frictionloss=".8"','frictionloss',.75)])
+def test_named_hinge_parameter_and_heldout_dynamics(tmp_path,old,new,key,expected):
+    scores=evaluate(tmp_path,'damped_lever',lambda s:s.replace(old,new))
+    hinge=scores['hinges']['hinge']
+    assert hinge['status']=='ok'
+    assert hinge[key+'_absolute_error']==pytest.approx(expected)
+    assert hinge[key+'_relative_error']>0
+    assert motion_error(scores)>1e-7
+
+
+def test_missing_named_hinge_explicit_unavailable(tmp_path):
+    scores=evaluate(tmp_path,'damped_lever',lambda s:s.replace('name="hinge"','name="renamed_hinge"'),hinge_correspondence={'hinge':'hinge'})
+    assert scores['hinges']['hinge']['status']=='unavailable'
+    assert scores['parameters']['status']=='failed'
+    assert scores['reset']['rgb_error']==pytest.approx(0,abs=1e-9)
+
+
+def test_named_hinge_mapping_ignores_joint_array_order():
+    import mujoco
+    from types import SimpleNamespace
+    from sim2sim.evaluation import _hinges
+    def sim(order):
+        xml='<mujoco><worldbody>'
+        for name,damping,friction in order:
+            xml+=f'<body name="{name}" pos="0 0 1"><joint name="{name}" type="hinge" damping="{damping}" frictionloss="{friction}"/><geom type="sphere" size=".1"/></body>'
+        return SimpleNamespace(_model=mujoco.MjModel.from_xml_string(xml+'</worldbody></mujoco>'))
+    source=sim([('one',.2,.3),('two',.7,.8)])
+    candidate=sim([('second',.7,.8),('first',.2,.3)])
+    hinges=_hinges(source,candidate,{'one':'first','two':'second'})
+    assert all(h['damping_absolute_error']==0 and h['frictionloss_absolute_error']==0 and h['stiffness_absolute_error']==0 for h in hinges.values())
+
+
+def test_automatic_single_hinge_renamed_candidate(tmp_path):
+    scores=evaluate(tmp_path,'damped_lever',lambda s:s.replace('name="hinge"','name="arbitrary_agent_joint"'),hinge_matching='single')
+    assert scores['hinges']['hinge']['status']=='ok'
+    assert scores['hinges']['hinge']['candidate_joint']=='arbitrary_agent_joint'
+    assert scores['hinges']['hinge']['damping_absolute_error']==0
+    assert scores['hinges']['hinge']['frictionloss_absolute_error']==0
+
+
+@pytest.mark.parametrize('candidate_count',[0,2])
+def test_automatic_single_hinge_missing_or_ambiguous(candidate_count):
+    import mujoco
+    from types import SimpleNamespace
+    from sim2sim.evaluation import _hinges
+    def model(count):
+        joints=''.join(f'<joint name="j{i}" type="hinge" axis="0 1 0"/>' for i in range(count))
+        return SimpleNamespace(_model=mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body>'+joints+'<geom type="sphere" size=".1"/></body></worldbody></mujoco>'))
+    result=_hinges(model(1),model(candidate_count),None,'single')
+    assert result['j0']['status']=='unavailable'
+    assert result['j0']['candidate_hinge_count']==candidate_count

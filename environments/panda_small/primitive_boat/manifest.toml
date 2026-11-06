@@ -1,0 +1,49 @@
+name = "panda_small_primitive_boat"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["boat"]
+seed = 20261029
+
+object_bodies = ["boat"]
+object_geoms = ["hull", "deck", "near_gunwale", "rear_gunwale", "bow", "stern", "cabin", "cabin_roof", "mast", "rear_fender"]
+
+[correspondence]
+boat = "boat"
+
+[[probes]]
+name = "boat_lift"
+body = "boat"
+local_point = [0.03, -0.00375, 0.05475]
+displacement = [0.0, 0.0, 0.027]
+ticks = 160
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261029
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "cabin_grasp"
+target_body = "boat"
+[[arm_probes.steps]]
+joint_targets = [1.052617254007396, 0.23041381205993286, -1.0079570488465552, -2.3774371621904944, 0.31856742119903203, 2.477061602345932, 2.1589974959330234]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8349790580313176, 0.5790995245687649, -0.7131276459752272, -2.313707371041226, 0.8164764746103002, 2.628015714459525, 1.817080869091117]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8349790580313176, 0.5790995245687649, -0.7131276459752272, -2.313707371041226, 0.8164764746103002, 2.628015714459525, 1.817080869091117]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.052617254007396, 0.23041381205993286, -1.0079570488465552, -2.3774371621904944, 0.31856742119903203, 2.477061602345932, 2.1589974959330234]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.052617254007396, 0.23041381205993286, -1.0079570488465552, -2.3774371621904944, 0.31856742119903203, 2.477061602345932, 2.1589974959330234]
+gripper_width_m = 0.08
+ticks = 200

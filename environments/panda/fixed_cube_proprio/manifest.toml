@@ -1,0 +1,25 @@
+name = "panda_fixed_cube_proprio"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = []
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+object_bodies = ["fixed_cube"]
+object_geoms = ["fixed_cube"]
+
+[[arm_probes]]
+name = "fixed_cube_contact"
+target_body = "fixed_cube"
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.8157845441, 0.0, -1.5048818075, 0.0, 2.0342999602, -0.7853]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.8157845441, 0.0, -1.5048818075, 0.0, 2.0342999602, -0.7853]
+gripper_width_m = 0.0
+ticks = 250
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.08
+ticks = 300

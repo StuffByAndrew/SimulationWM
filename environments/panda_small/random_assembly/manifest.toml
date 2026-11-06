@@ -1,0 +1,49 @@
+name = "panda_small_random_assembly"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["assembly"]
+seed = 20261028
+
+object_bodies = ["assembly"]
+object_geoms = ["part_01", "part_02", "part_03", "part_04", "part_05", "part_06", "part_07", "part_08", "part_09", "part_10"]
+
+[correspondence]
+assembly = "assembly"
+
+[[probes]]
+name = "assembly_lift"
+body = "assembly"
+local_point = [0.022312836, -0.00720618, 0]
+displacement = [0, 0, 0.024]
+ticks = 150
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261028
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "part_09_grasp"
+target_body = "assembly"
+[[arm_probes.steps]]
+joint_targets = [1.074501676003687, 0.31566099781371054, -0.9983171137879738, -2.331316649276754, 0.42749839350515234, 2.460808007252548, 2.1154219759714388]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8808203621902096, 0.6458535665203926, -0.732769466903654, -2.259261878945122, 0.8805896957649634, 2.592254840012804, 1.8122803293920378]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8808203621902096, 0.6458535665203926, -0.732769466903654, -2.259261878945122, 0.8805896957649634, 2.592254840012804, 1.8122803293920378]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.074501676003687, 0.31566099781371054, -0.9983171137879738, -2.331316649276754, 0.42749839350515234, 2.460808007252548, 2.1154219759714388]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.074501676003687, 0.31566099781371054, -0.9983171137879738, -2.331316649276754, 0.42749839350515234, 2.460808007252548, 2.1154219759714388]
+gripper_width_m = 0.08
+ticks = 200

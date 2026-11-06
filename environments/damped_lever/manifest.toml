@@ -1,0 +1,41 @@
+name = "damped_lever"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["lever"]
+hinge_matching = "single"
+
+[correspondence]
+lever = "lever"
+
+[[probes]]
+name = "lever_pull_down_release"
+body = "lever"
+local_point = [0.35, -0.04, 0.0]
+displacement = [-0.05, 0.0, -0.17]
+ticks = 180
+
+[[probes]]
+name = "lever_lift_release"
+body = "lever"
+local_point = [0.35, -0.04, 0.0]
+displacement = [-0.05, 0.0, 0.17]
+ticks = 180
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261030
+
+# Private expert manipulation (metric `expert`) and policy-transfer task (metric `policy_transfer`).
+[[expert_trajectories]]
+name = "pump_and_release"
+frame_ticks = 10
+actions = [{op = "grasp", body = "lever", local_point = [0.35, -0.04, 0.0]},
+           {op = "move", displacement = [-0.05, 0.0, -0.17], ticks = 100}, {op = "move", displacement = [0.0, 0.0, 0.3], ticks = 100},
+           {op = "release", ticks = 300}]
+
+[[transfer_tasks]]
+name = "lever_set_low"
+body = "lever"
+local_point = [0.35, -0.04, 0.0]
+goal_offset_m = [-0.01, 0.0, -0.05]

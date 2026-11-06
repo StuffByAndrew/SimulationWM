@@ -1,8 +1,9 @@
-"""Private MuJoCo state and the pixel-only interaction boundary.
+"""Private MuJoCo state and opt-in pixel or Panda arm interaction boundaries.
 
 Observations contain base64 PNG ``rgb`` (RGB8) and ``depth`` (uint16,
 millimeters, saturated at 65535). Pixel coordinates start at the top left.
-Only rendered observations cross this boundary; ray hits and state stay private.
+The Panda path exposes only named arm/finger proprioception; ray hits and other
+model state stay private.
 """
 from __future__ import annotations
 
@@ -14,6 +15,10 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 from PIL import Image
+
+
+# Panda fingertip pad face (fixture class fingertip_pad_collision_1) in its finger body frame: x across, z along the finger.
+TAXEL_HALF_WIDTH, TAXEL_Z = .0085, (.036, .053)
 
 
 def _load_xml(path, ancestors=()):
@@ -65,10 +70,15 @@ class PointGrasp:
 class Simulation:
     def __init__(self, scene_path, config=None):
         self.config = dict(config or {})
+        self.robot = self.config.get("robot")
+        if self.robot not in (None, "panda"):
+            raise ValueError("unsupported robot")
         self.width = int(self.config.get("width", 640))
         self.height = int(self.config.get("height", 480))
         if self.width <= 0 or self.height <= 0:
             raise ValueError("image dimensions must be positive")
+        if self.config.get("tactile", False) is not False and (self.config["tactile"] is not True or self.robot != "panda"):
+            raise ValueError("tactile is a boolean and requires robot='panda'")
         self.camera = self.config.get("camera", "fixed")
         self.default_ticks = int(self.config.get("default_ticks", 60))
         self.total_ticks = self.ticks = 0
@@ -102,7 +112,9 @@ class Simulation:
         if names is None:
             names = [b.get("name") for b in world.iter("body")
                      if b.get("name") and (b.find("joint") is not None or b.find("freejoint") is not None)]
-        self._body_names = list(names)
+        # Panda agents use arm actions only; the researcher inspector may opt in
+        # to point grasps on explicitly listed non-robot bodies.
+        self._body_names = [] if self.robot == "panda" and not self.config.get("panda_point_grasps") else list(names)
         equality = root.find("equality")
         if equality is None:
             equality = ET.SubElement(root, "equality")
@@ -121,6 +133,7 @@ class Simulation:
         glob.set("offheight", str(max(self.height, int(glob.get("offheight", 480)))))
         self._model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
         self._data = mujoco.MjData(self._model)
+        self._wrench_data = None
         if "timestep" in self.config:
             self._model.opt.timestep = float(self.config["timestep"])
         self._constraints = {}
@@ -129,6 +142,9 @@ class Simulation:
             eq = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_EQUALITY, f"_grasp_connect_{i}")
             target = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, f"_grasp_target_{i}")
             self._constraints[body] = (eq, int(self._model.body_mocapid[target]))
+        if self.robot == "panda":
+            self._init_panda()
+            self._reset_panda()
         mujoco.mj_forward(self._model, self._data)
         self._camera_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera)
         if self._camera_id < 0:
@@ -139,7 +155,20 @@ class Simulation:
             raise ValueError("only perspective observation cameras are supported")
         if np.any(self._model.cam_sensorsize[self._camera_id] != 0):
             raise ValueError("use fovy camera calibration; custom sensor/focal camera intrinsics are unsupported")
-        self._renderer = mujoco.Renderer(self._model, height=self.height, width=self.width)
+        self._wrist_camera_id = None
+        wrist = self.config.get("wrist_camera")
+        if wrist is not None:
+            if self.robot != "panda" or not isinstance(wrist, str) or not wrist:
+                raise ValueError("wrist_camera requires a named Panda hand camera")
+            cam = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, wrist)
+            hand = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, "hand")
+            if cam < 0 or hand < 1 or int(self._model.cam_bodyid[cam]) != hand or int(self._model.cam_mode[cam]) != 0:
+                raise ValueError("wrist camera must be fixed directly on the Panda hand")
+            if (hasattr(self._model, "cam_projection") and int(self._model.cam_projection[cam]) != 0) or np.any(self._model.cam_sensorsize[cam] != 0):
+                raise ValueError("wrist camera requires perspective fovy calibration")
+            self._wrist_camera_id = cam
+        self._camera_data = mujoco.MjData(self._model) if self._wrist_camera_id is not None else None
+        self._renderer = None
         self._grasp_controller = self.config.get("grasp_controller_factory", PointGrasp)(self)
 
     @staticmethod
@@ -148,39 +177,154 @@ class Simulation:
         Image.fromarray(array).save(output, format="PNG")
         return base64.b64encode(output.getvalue()).decode("ascii")
 
-    def calibration(self):
+    def calibration(self, camera_id=None, data=None):
         """Public camera calibration; OpenGL camera axes: x right, y up, -z forward."""
-        cam = self._camera_id
+        cam = self._camera_id if camera_id is None else camera_id
+        data = self._data if data is None else data
         focal = self.height / (2 * np.tan(np.deg2rad(self._model.cam_fovy[cam]) / 2))
         pose = np.eye(4)
-        pose[:3, :3] = self._data.cam_xmat[cam].reshape(3, 3)
-        pose[:3, 3] = self._data.cam_xpos[cam]
+        pose[:3, :3] = data.cam_xmat[cam].reshape(3, 3)
+        pose[:3, 3] = data.cam_xpos[cam]
         return {"intrinsics": [[float(focal), 0, self.width / 2 - .5],
                                [0, float(focal), self.height / 2 - .5], [0, 0, 1]],
                 "world_from_camera": pose.tolist(), "axes": "x_right_y_up_minus_z_forward",
                 "width": self.width, "height": self.height}
 
+    def _wrench(self):
+        """Object reaction on the ideal handle, expressed about its point anchor.
+
+        Connect equations are world Cartesian anchor1-anchor2 coordinates.
+        Body1 is the object, so the handle reaction is minus their multiplier.
+        A point constraint transmits no couple; body-COM moments are not exposed.
+        """
+        force = np.zeros(3)
+        active = self._grasp is not None and bool(self._data.eq_active[self._grasp[0]])
+        if active:
+            # mj_step integrates qpos after computing constraint forces. Solve a
+            # copied current state so sensing cannot alter warm starts, derived
+            # render state, physics, simulation time, or tick budgets.
+            if self._wrench_data is None:
+                self._wrench_data = mujoco.MjData(self._model)
+            mujoco.mj_copyData(self._wrench_data, self._model, self._data)
+            mujoco.mj_forward(self._model, self._wrench_data)
+            equality = self._grasp[0]
+            rows = np.flatnonzero((self._wrench_data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+                                  & (self._wrench_data.efc_id == equality))
+            if len(rows) != 3:
+                raise RuntimeError("active point grasp must supply three constraint-force rows")
+            force = -self._wrench_data.efc_force[rows]
+        return {"force": force.tolist(), "torque": [0.0, 0.0, 0.0],
+                "frame": "world", "reference": "grasp_point", "sign": "object_on_handle",
+                "active": active, "force_unit": "N", "torque_unit": "N m"}
+
+    def _init_panda(self):
+        def ids(kind, names):
+            result = np.array([mujoco.mj_name2id(self._model, kind, name) for name in names])
+            if np.any(result < 0):
+                raise ValueError("Panda scene is missing required named joints or actuators")
+            return result
+        joints = ids(mujoco.mjtObj.mjOBJ_JOINT, [f"joint{i}" for i in range(1, 8)])
+        fingers = ids(mujoco.mjtObj.mjOBJ_JOINT, ["finger_joint1", "finger_joint2"])
+        self._arm_actuators = ids(mujoco.mjtObj.mjOBJ_ACTUATOR, [f"actuator{i}" for i in range(1, 8)])
+        self._gripper_actuator = int(ids(mujoco.mjtObj.mjOBJ_ACTUATOR, ["actuator8"])[0])
+        if np.any(self._model.jnt_type[joints] != mujoco.mjtJoint.mjJNT_HINGE):
+            raise ValueError("Panda arm joints must be hinges")
+        if np.any(self._model.jnt_type[fingers] != mujoco.mjtJoint.mjJNT_SLIDE):
+            raise ValueError("Panda finger joints must be slides")
+        self._arm_qpos = self._model.jnt_qposadr[joints].copy()
+        self._arm_dofs = self._model.jnt_dofadr[joints].copy()
+        self._finger_qpos = self._model.jnt_qposadr[fingers].copy()
+        self._finger_dofs = self._model.jnt_dofadr[fingers].copy()
+        self._arm_ranges = self._model.jnt_range[joints].copy()
+        self._arm_limited = self._model.jnt_limited[joints].astype(bool)
+        self._proprioception_data = None
+        if self.config.get("tactile", False):
+            self._fingers = ids(mujoco.mjtObj.mjOBJ_BODY, ["left_finger", "right_finger"]).tolist()
+
+    def _reset_panda(self):
+        home = np.array([0, 0, 0, -1.57079, 0, 1.57079, -.7853])
+        self._data.qpos[self._arm_qpos] = home
+        self._data.qpos[self._finger_qpos] = .04
+        self._data.ctrl[self._arm_actuators] = home
+        self._data.ctrl[self._gripper_actuator] = 255
+
+    def _proprioception(self):
+        # mj_step forces precede integration. Solve a copied current state so
+        # effort sensing cannot change warm starts, physics time or tick budgets.
+        if self._proprioception_data is None:
+            self._proprioception_data = mujoco.MjData(self._model)
+        mujoco.mj_copyData(self._proprioception_data, self._model, self._data)
+        mujoco.mj_forward(self._model, self._proprioception_data)
+        width = float(np.clip(np.sum(self._data.qpos[self._finger_qpos]), 0, .08))
+        return {"joint_positions_rad": self._data.qpos[self._arm_qpos].tolist(),
+                "joint_velocities_rad_s": self._data.qvel[self._arm_dofs].tolist(),
+                "actuator_effort_nm": self._proprioception_data.actuator_force[self._arm_actuators].tolist(),
+                "finger_positions_m": self._data.qpos[self._finger_qpos].tolist(),
+                "finger_velocities_m_s": self._data.qvel[self._finger_dofs].tolist(),
+                "gripper_width_m": width, "gripper_opening": width / .08}
+
+    def _tactile(self):
+        """Normal contact force on each Panda finger: a 3x3 taxel grid over the fingertip pad face, rows distal to
+        proximal and columns across the finger, plus the whole finger's total. Uses the state _proprioception just
+        forwarded; contacts with anything count, as on a real touch sensor, and their positions stay private."""
+        data, force, out = self._proprioception_data, np.zeros(6), {}
+        for side, body in zip(("left", "right"), self._fingers):
+            grid, total = np.zeros((3, 3)), 0.0
+            for i in range(data.ncon):
+                contact = data.contact[i]
+                if body not in (self._model.geom_bodyid[contact.geom1], self._model.geom_bodyid[contact.geom2]):
+                    continue
+                mujoco.mj_contactForce(self._model, data, i, force)
+                total += abs(force[0])
+                x, _, z = data.xmat[body].reshape(3, 3).T @ (contact.pos - data.xpos[body])
+                column, row = int((x + TAXEL_HALF_WIDTH) // (2 * TAXEL_HALF_WIDTH / 3)), int((TAXEL_Z[1] - z) // ((TAXEL_Z[1] - TAXEL_Z[0]) / 3))
+                if 0 <= row < 3 and 0 <= column < 3:
+                    grid[row, column] += abs(force[0])
+            out[side] = {"pad_normal_force_n": grid.tolist(), "finger_normal_force_n": total}
+        return {**out, "unit": "N", "layout": "pad rows distal to proximal, columns across the finger"}
+
     def observe(self, full=False):
-        self._renderer.disable_depth_rendering()
-        self._renderer.update_scene(self._data, camera=self.camera)
-        rgb = self._renderer.render().copy()
-        self._renderer.enable_depth_rendering()
-        depth = self._renderer.render().copy()
-        self._renderer.disable_depth_rendering()
-        depth_mm = np.clip(np.nan_to_num(depth, nan=65.535, posinf=65.535) * 1000, 0, 65535).astype(np.uint16)
-        result = {"rgb": self._png(rgb), "depth": self._png(depth_mm),
-                "width": self.width, "height": self.height, "time": float(self._data.time),
-                "ticks": self.ticks, "total_ticks": self.total_ticks,
-                "grasped": self._grasp is not None,
-                "depth_format": "png_uint16_mm", "rgb_format": "png_rgb8"}
-        if not full and not self.config.get("rgb", True):
-            result.pop("rgb")
-            result.pop("rgb_format")
-        if not full and not self.config.get("depth", False):
-            result.pop("depth")
-            result.pop("depth_format")
-        if full or self.config.get("calibration", True):
-            result["calibration"] = self.calibration()
+        result = {"width": self.width, "height": self.height, "time": float(self._data.time),
+                  "ticks": self.ticks, "total_ticks": self.total_ticks,
+                  "grasped": self._grasp is not None}
+        rgb_enabled = full or self.config.get("rgb", True)
+        depth_enabled = full or self.config.get("depth", False)
+        camera_data = self._data
+        if self._camera_data is not None:
+            # mj_step integrates qpos after its derived camera/geometry poses.
+            # Refresh a copy so images and calibration match current joint state
+            # without changing the live solver warm start or physics state.
+            mujoco.mj_copyData(self._camera_data, self._model, self._data)
+            mujoco.mj_forward(self._model, self._camera_data)
+            camera_data = self._camera_data
+        cameras = [("", self._camera_id)]
+        if self._wrist_camera_id is not None:
+            cameras.append(("wrist_", self._wrist_camera_id))
+        for prefix, camera_id in cameras:
+            if rgb_enabled or depth_enabled:
+                if self._renderer is None:
+                    self._renderer = mujoco.Renderer(self._model, height=self.height, width=self.width)
+                self._renderer.disable_depth_rendering()
+                self._renderer.update_scene(camera_data, camera=camera_id)
+                if rgb_enabled:
+                    result[prefix + "rgb"] = self._png(self._renderer.render().copy())
+                    result[prefix + "rgb_format"] = "png_rgb8"
+                if depth_enabled:
+                    self._renderer.enable_depth_rendering()
+                    depth = self._renderer.render().copy()
+                    self._renderer.disable_depth_rendering()
+                    depth_mm = np.clip(np.nan_to_num(depth, nan=65.535, posinf=65.535) * 1000,
+                                       0, 65535).astype(np.uint16)
+                    result[prefix + "depth"] = self._png(depth_mm)
+                    result[prefix + "depth_format"] = "png_uint16_mm"
+            if full or self.config.get("calibration", True):
+                result[prefix + "calibration"] = self.calibration(camera_id, camera_data)
+        if self.config.get("wrench", False):
+            result["wrench"] = self._wrench()
+        if self.robot == "panda":
+            result["proprioception"] = self._proprioception()
+            if self.config.get("tactile", False):
+                result["tactile"] = self._tactile()
         return result
 
     def _raycast(self, pixel):
@@ -193,9 +337,12 @@ class Simulation:
                               (1 - 2 * (v + .5) / self.height) * scale, -1.0])
         direction = self._data.cam_xmat[cam].reshape(3, 3) @ direction
         direction /= np.linalg.norm(direction)
-        origin = self._data.cam_xpos[cam].copy()
+        return self._ray_hit(self._data.cam_xpos[cam].copy(), direction)
+
+    def _ray_hit(self, origin, direction, geomgroup=None):
+        """Nearest graspable body and world hit point along a unit ray, or None."""
         geom = np.array([-1], dtype=np.int32)
-        distance = mujoco.mj_ray(self._model, self._data, origin, direction, None, 1, -1, geom)
+        distance = mujoco.mj_ray(self._model, self._data, origin, direction, geomgroup, 1, -1, geom)
         if distance < 0:
             return None
         body = int(self._model.geom_bodyid[geom[0]])
@@ -221,12 +368,41 @@ class Simulation:
             if self._callback:
                 self._callback(self)
 
+    def _arm_target(self, action):
+        if self.robot != "panda":
+            raise ValueError("arm_target requires robot='panda'")
+        ticks = action.get("ticks", self.default_ticks)
+        if isinstance(ticks, bool) or not isinstance(ticks, (int, np.integer)) or not 1 <= ticks <= 100000:
+            raise ValueError("ticks must be an integer between 1 and 100000")
+        targets = np.asarray(action["joint_targets"], dtype=float)
+        if targets.shape != (7,) or not np.isfinite(targets).all():
+            raise ValueError("joint_targets must contain seven finite radians")
+        if np.any(self._arm_limited & ((targets < self._arm_ranges[:, 0]) | (targets > self._arm_ranges[:, 1]))):
+            raise ValueError("joint_targets exceed Panda joint limits")
+        width = action["gripper_width_m"]
+        if isinstance(width, bool) or not isinstance(width, (int, float)) or not np.isfinite(width) or not 0 <= width <= .08:
+            raise ValueError("gripper_width_m must be between 0 and 0.08")
+        actuator_ids = np.append(self._arm_actuators, self._gripper_actuator)
+        start = self._data.ctrl[actuator_ids].copy()
+        end = np.append(targets, width / .08 * 255)
+        for i in range(int(ticks)):
+            self._data.ctrl[actuator_ids] = start + (end - start) * ((i + 1) / ticks)
+            mujoco.mj_step(self._model, self._data)
+            self.ticks += 1
+            self.total_ticks += 1
+            if self._callback:
+                self._callback(self)
+
     def step(self, op, args=None):
         return self.action(dict(args or {}, op=op))
 
-    def action(self, action):
+    def action(self, action, *, render=True):
         op = action.get("op", action.get("action", "observe"))
-        if op == "observe":
+        if self.robot == "panda" and op in ("grasp", "move", "release"):
+            raise ValueError("point grasp actions are disabled for Panda")
+        if op == "arm_target":
+            self._arm_target(action)
+        elif op == "observe":
             if action.get("ticks", 0):
                 self._advance(action["ticks"])
         elif op == "grasp":
@@ -249,12 +425,15 @@ class Simulation:
             mujoco.mj_resetData(self._model, self._data)
             self._grasp = None
             self.ticks = 0
+            if self.robot == "panda":
+                self._reset_panda()
             mujoco.mj_forward(self._model, self._data)
         elif op in ("wait", "advance"):
             self._advance(action.get("ticks", self.default_ticks))
         else:
             raise ValueError(f"unknown action: {op}")
-        return self.observe()
+        return self.observe() if render else None
 
     def close(self):
-        self._renderer.close()
+        if self._renderer is not None:
+            self._renderer.close()

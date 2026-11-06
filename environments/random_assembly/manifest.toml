@@ -1,0 +1,34 @@
+name = "random_assembly"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["assembly"]
+seed = 20261028
+
+[correspondence]
+assembly = "assembly"
+
+[[probes]]
+name = "assembly_lift"
+body = "assembly"
+local_point = [0.1859403, -0.0600515, 0.0]
+displacement = [0.0, 0.0, 0.20]
+ticks = 150
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261028
+
+# Private expert manipulation (metric `expert`) and policy-transfer task (metric `policy_transfer`).
+[[expert_trajectories]]
+name = "lift_carry_drop"
+frame_ticks = 10
+actions = [{op = "grasp", body = "assembly", local_point = [0.1859403, -0.0600515, 0.0]},
+           {op = "move", displacement = [0.0, 0.0, 0.25], ticks = 120}, {op = "move", displacement = [-0.2, 0.15, 0.0], ticks = 150},
+           {op = "release", ticks = 250}]
+
+[[transfer_tasks]]
+name = "assembly_fling"
+body = "assembly"
+local_point = [0.1859403, -0.0600515, 0.0]
+goal_offset_m = [0.2, 0.0, 0.0]

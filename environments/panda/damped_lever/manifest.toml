@@ -1,0 +1,51 @@
+name = "panda_damped_lever"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["lever"]
+hinge_matching = "single"
+
+object_bodies = ["lever"]
+object_geoms = ["arm", "handle"]
+
+[correspondence]
+lever = "lever"
+
+[[probes]]
+name = "lever_pull_down_release"
+body = "lever"
+local_point = [0.35, -0.04, 0.0]
+displacement = [-0.05, 0.0, -0.17]
+ticks = 180
+
+[[probes]]
+name = "lever_lift_release"
+body = "lever"
+local_point = [0.35, -0.04, 0.0]
+displacement = [-0.05, 0.0, 0.17]
+ticks = 180
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261030
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "reach_close_retreat"
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.08
+ticks = 250
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.4, 0.0, -1.8, 0.0, 2.2, -0.7853]
+gripper_width_m = 0.08
+ticks = 350
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.4, 0.0, -1.8, 0.0, 2.2, -0.7853]
+gripper_width_m = 0.0
+ticks = 150
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.0
+ticks = 300

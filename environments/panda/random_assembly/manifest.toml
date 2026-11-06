@@ -1,0 +1,44 @@
+name = "panda_random_assembly"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["assembly"]
+seed = 20261028
+
+object_bodies = ["assembly"]
+object_geoms = ["part_01", "part_02", "part_03", "part_04", "part_05", "part_06", "part_07", "part_08", "part_09", "part_10"]
+
+[correspondence]
+assembly = "assembly"
+
+[[probes]]
+name = "assembly_lift"
+body = "assembly"
+local_point = [0.1859403, -0.0600515, 0.0]
+displacement = [0.0, 0.0, 0.20]
+ticks = 150
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261028
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "reach_close_retreat"
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.08
+ticks = 250
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.4, 0.0, -1.8, 0.0, 2.2, -0.7853]
+gripper_width_m = 0.08
+ticks = 350
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.4, 0.0, -1.8, 0.0, 2.2, -0.7853]
+gripper_width_m = 0.0
+ticks = 150
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.0
+ticks = 300

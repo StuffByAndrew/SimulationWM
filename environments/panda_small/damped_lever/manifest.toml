@@ -1,0 +1,56 @@
+name = "panda_small_damped_lever"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["lever"]
+hinge_matching = "single"
+
+object_bodies = ["lever"]
+object_geoms = ["arm", "handle"]
+
+[correspondence]
+lever = "lever"
+
+[[probes]]
+name = "lever_pull_down_release"
+body = "lever"
+local_point = [0.1575, -0.018000000000000002, 0.0]
+displacement = [-0.022500000000000003, 0.0, -0.07650000000000001]
+ticks = 180
+
+[[probes]]
+name = "lever_lift_release"
+body = "lever"
+local_point = [0.1575, -0.018000000000000002, 0.0]
+displacement = [-0.022500000000000003, 0.0, 0.07650000000000001]
+ticks = 180
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261030
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "handle_grasp"
+target_body = "lever"
+[[arm_probes.steps]]
+joint_targets = [1.9321764161714798, -1.7527999999999997, -0.9079979246002033, -2.014144246066413, -1.437673527262519, 0.8865780541897655, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.7102811026180635, -1.7527999999999997, -1.2209978199551346, -2.202182947453382, -1.5197516192991396, 1.1703379323961185, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.7102811026180635, -1.7527999999999997, -1.2209978199551346, -2.202182947453382, -1.5197516192991396, 1.1703379323961185, -2.8872999999999998]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.9321764161714798, -1.7527999999999997, -0.9079979246002033, -2.014144246066413, -1.437673527262519, 0.8865780541897655, -2.8872999999999998]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.9321764161714798, -1.7527999999999997, -0.9079979246002033, -2.014144246066413, -1.437673527262519, 0.8865780541897655, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 200

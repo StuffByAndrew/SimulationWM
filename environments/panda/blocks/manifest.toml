@@ -1,0 +1,59 @@
+name = "panda_blocks"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["block_red", "block_blue"]
+
+object_bodies = ["block_red", "block_blue"]
+object_geoms = ["red", "blue"]
+
+[correspondence]
+block_red = "block_red"
+block_blue = "block_blue"
+
+[[probes]]
+name = "red_lift"
+body = "block_red"
+local_point = [0.0, 0.0, 0.06]
+displacement = [0.0, 0.0, 0.15]
+ticks = 120
+
+[[probes]]
+name = "blue_slide"
+body = "block_blue"
+local_point = [0.0, 0.0, 0.05]
+displacement = [-0.15, 0.0, 0.0]
+ticks = 120
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "red_contact"
+target_body = "block_red"
+[[arm_probes.steps]]
+joint_targets = [0.1225863691, 0.8401971120, 0.0979636394, -1.4719082715, 0.0399960011, 2.0710571938, -0.7853]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.1225863691, 0.8401971120, 0.0979636394, -1.4719082715, 0.0399960011, 2.0710571938, -0.7853]
+gripper_width_m = 0.0
+ticks = 250
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.08
+ticks = 300
+
+[[arm_probes]]
+name = "blue_contact"
+target_body = "block_blue"
+[[arm_probes.steps]]
+joint_targets = [-0.1435402460, 0.9887418842, -0.1063269522, -1.2744344470, -0.0437747367, 2.2811110980, -0.7853]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [-0.1435402460, 0.9887418842, -0.1063269522, -1.2744344470, -0.0437747367, 2.2811110980, -0.7853]
+gripper_width_m = 0.0
+ticks = 250
+[[arm_probes.steps]]
+joint_targets = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+gripper_width_m = 0.08
+ticks = 300

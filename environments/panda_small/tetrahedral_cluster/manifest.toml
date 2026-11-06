@@ -1,0 +1,62 @@
+name = "panda_small_tetrahedral_cluster"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["cluster"]
+
+object_bodies = ["cluster"]
+object_geoms = ["sphere_1kg", "sphere_2kg", "sphere_4kg", "sphere_8kg"]
+
+[correspondence]
+cluster = "cluster"
+
+[[probes]]
+name = "front_sphere_pull_release"
+body = "cluster"
+local_point = [0.0, -0.046875, 0.003125]
+displacement = [0.01875, 0.0, 0.021875000000000002]
+ticks = 160
+
+[[probes]]
+name = "right_sphere_drag_release"
+body = "cluster"
+local_point = [0.043750000000000004, 0.0078125, 0.003125]
+displacement = [0.028124999999999997, 0.0, 0.0]
+ticks = 200
+
+[[probes]]
+name = "top_sphere_lift_release"
+body = "cluster"
+local_point = [0.00625, -0.0078125, 0.056249999999999994]
+displacement = [-0.015625, 0.009375, 0.03125]
+ticks = 180
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261031
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "sphere_8kg_grasp"
+target_body = "cluster"
+[[arm_probes.steps]]
+joint_targets = [1.0870019797928017, 0.16304172989073928, -1.0803180682338849, -2.38000299738366, 0.2250051041906265, 2.444801126737379, 2.194686569926452]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8647912244036743, 0.5382611056505733, -0.782253479182777, -2.3356057091843807, 0.7766715041209313, 2.5999459358601715, 1.8147745592602853]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.8647912244036743, 0.5382611056505733, -0.782253479182777, -2.3356057091843807, 0.7766715041209313, 2.5999459358601715, 1.8147745592602853]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.0870019797928017, 0.16304172989073928, -1.0803180682338849, -2.38000299738366, 0.2250051041906265, 2.444801126737379, 2.194686569926452]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.0870019797928017, 0.16304172989073928, -1.0803180682338849, -2.38000299738366, 0.2250051041906265, 2.444801126737379, 2.194686569926452]
+gripper_width_m = 0.08
+ticks = 200

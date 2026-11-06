@@ -1,0 +1,34 @@
+name = "primitive_boat"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["boat"]
+seed = 20261029
+
+[correspondence]
+boat = "boat"
+
+[[probes]]
+name = "boat_lift"
+body = "boat"
+local_point = [0.20, -0.025, 0.365]
+displacement = [0.0, 0.0, 0.18]
+ticks = 160
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261029
+
+# Private expert manipulation (metric `expert`) and policy-transfer task (metric `policy_transfer`).
+[[expert_trajectories]]
+name = "lift_tilt_drop"
+frame_ticks = 10
+actions = [{op = "grasp", body = "boat", local_point = [0.20, -0.025, 0.365]},
+           {op = "move", displacement = [0.0, 0.0, 0.18], ticks = 120}, {op = "move", displacement = [-0.15, 0.1, 0.0], ticks = 120},
+           {op = "release", ticks = 250}]
+
+[[transfer_tasks]]
+name = "boat_fling"
+body = "boat"
+local_point = [0.20, -0.025, 0.365]
+goal_offset_m = [0.0, 0.2, 0.0]

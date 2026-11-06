@@ -1,0 +1,75 @@
+name = "panda_small_blocks_proprio"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["block_red", "block_blue"]
+
+object_bodies = ["block_red", "block_blue"]
+object_geoms = ["red", "blue"]
+
+[correspondence]
+block_red = "block_red"
+block_blue = "block_blue"
+
+[[probes]]
+name = "red_lift"
+body = "block_red"
+local_point = [0.0, 0.0, 0.0225]
+displacement = [0.0, 0.0, 0.056249999999999994]
+ticks = 120
+
+[[probes]]
+name = "blue_slide"
+body = "block_blue"
+local_point = [0.0, 0.0, 0.018750000000000003]
+displacement = [-0.056249999999999994, 0.0, 0.0]
+ticks = 120
+
+# Private metric selection; fixture and Panda geoms are excluded.
+
+[[arm_probes]]
+name = "red_grasp"
+target_body = "block_red"
+[[arm_probes.steps]]
+joint_targets = [1.0897632913725432, 0.3050210613370162, -0.951063507194596, -2.371775583846194, 0.4260621308311435, 2.5086593068108183, 2.166592090362273]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.892199508931586, 0.6442039868870607, -0.6757784029013616, -2.2829480545876817, 0.8984478463989023, 2.6407613646344332, 1.844526423386414]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [0.892199508931586, 0.6442039868870607, -0.6757784029013616, -2.2829480545876817, 0.8984478463989023, 2.6407613646344332, 1.844526423386414]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [1.0897632913725432, 0.3050210613370162, -0.951063507194596, -2.371775583846194, 0.4260621308311435, 2.5086593068108183, 2.166592090362273]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [1.0897632913725432, 0.3050210613370162, -0.951063507194596, -2.371775583846194, 0.4260621308311435, 2.5086593068108183, 2.166592090362273]
+gripper_width_m = 0.08
+ticks = 200
+
+[[arm_probes]]
+name = "blue_grasp"
+target_body = "block_blue"
+[[arm_probes.steps]]
+joint_targets = [-1.4650827211108037, 1.563645583867323, 1.6098823082943285, -2.1770378340680088, -1.570797483397882, 1.535791451399118, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [-1.3499405547380605, 1.2793273197822428, 1.206559464907985, -2.146945683706777, -1.5707955724983607, 2.0310534950868915, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [-1.3499405547380605, 1.2793273197822428, 1.206559464907985, -2.146945683706777, -1.5707955724983607, 2.0310534950868915, -2.8872999999999998]
+gripper_width_m = 0.0
+ticks = 400
+[[arm_probes.steps]]
+joint_targets = [-1.4650827211108037, 1.563645583867323, 1.6098823082943285, -2.1770378340680088, -1.570797483397882, 1.535791451399118, -2.8872999999999998]
+gripper_width_m = 0.0
+ticks = 500
+[[arm_probes.steps]]
+joint_targets = [-1.4650827211108037, 1.563645583867323, 1.6098823082943285, -2.1770378340680088, -1.570797483397882, 1.535791451399118, -2.8872999999999998]
+gripper_width_m = 0.08
+ticks = 200

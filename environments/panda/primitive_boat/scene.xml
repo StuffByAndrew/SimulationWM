@@ -1,0 +1,33 @@
+<mujoco model="panda_primitive_boat">
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets" />
+  <option timestep="0.002" integrator="implicitfast" />
+  <visual>
+    <map znear="0.01" zfar="12" />
+    <rgba haze=".75 .78 .80 1" />
+  </visual>
+  <default>
+    <geom friction=".65 .015 .001" condim="3" solref=".01 1" />
+  </default>
+  <worldbody>
+    <light name="key" pos="-1 -2 3" dir=".2 .5 -1" diffuse=".85 .82 .76" />
+    <light name="fill" pos="1 2 2" dir="-.2 -.4 -1" diffuse=".35 .39 .45" />
+    <camera name="fixed" pos="1.45 -2.4 .95" xyaxes="0.858498925 0.512815363 -0.000000000 -0.119044170 0.199290621 0.972682751" fovy="50" />
+    <geom name="floor" type="plane" size="3 3 .1" rgba=".68 .70 .71 1" />
+    <body name="boat" pos="0 0 0.4">
+      <freejoint name="boat_free" />
+      <geom name="hull" type="ellipsoid" pos="0 0 0.11065" size="0.5221 0.18374 0.10565" rgba="0.1177 0.3030 0.4136 1" density="676.795" />
+      <geom name="deck" type="box" pos="0 0 0.18" size="0.39636 0.1518 .035" rgba="0.6840 0.5033 0.3247 1" density="801.363" />
+      <geom name="near_gunwale" type="capsule" fromto="-.40 -.16 0.225 .40 -.16 0.225" size="0.03476" rgba="0.8412 0.7701 0.5429 1" density="501.371" />
+      <geom name="rear_gunwale" type="capsule" fromto="-.40 .16 0.225 .40 .16 0.225" size="0.03486" rgba="0.8060 0.7181 0.4323 1" density="828.261" />
+      <geom name="bow" type="ellipsoid" pos=".40 0 .155" size="0.14278 0.14831 0.08388" rgba="0.1958 0.3591 0.4616 1" density="669.326" />
+      <geom name="stern" type="box" pos="-.40 0 .17" size="0.09773 0.13665 0.05437" rgba="0.1600 0.3597 0.3954 1" density="387.520" />
+      <geom name="cabin" type="box" pos="-.10 0 0.3" size="0.14382 0.11738 0.10224" rgba="0.9051 0.8372 0.7067 1" density="488.075" />
+      <geom name="cabin_roof" type="box" pos="-.10 0 0.405" size="0.16974 0.13935 .025" rgba="0.6494 0.2492 0.2075 1" density="713.620" />
+      <geom name="mast" type="capsule" pos=".20 0 .365" size=".025 .165" rgba="0.7210 0.4678 0.2710 1" density="404.330" />
+      <geom name="rear_fender" type="sphere" pos="-.10 .18 .15" size=".035" rgba="0.2995 0.3091 0.3335 1" density="876.272" />
+    </body>
+    <geom name="table" type="box" pos="0 0 .35" size=".75 .75 .05" rgba=".65 .52 .37 1" />
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1" />
+  </worldbody>
+  <include file="../robot/panda.xml" />
+</mujoco>

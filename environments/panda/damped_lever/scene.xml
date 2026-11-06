@@ -1,0 +1,26 @@
+<mujoco model="panda_damped_lever">
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets" />
+  <option timestep="0.002" integrator="implicitfast" />
+  <visual>
+    <map znear="0.01" zfar="12" />
+  </visual>
+  <default>
+    <geom friction=".7 .01 .001" condim="3" />
+  </default>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76" />
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false" />
+    <camera name="fixed" pos="1.1 -1.65 1.45" xyaxes="0.875655077 0.482937042 0.000000000 -0.146527814 0.265682300 0.952860176" fovy="58" />
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1" />
+    <geom name="fixture_base" type="box" pos="0 .12 .035" size=".17 .15 .035" rgba=".28 .31 .34 1" />
+    <geom name="fixture_post" type="box" pos="0 .12 .46" size=".055 .045 .39" rgba=".40 .44 .48 1" />
+    <geom name="fixture_axle" type="cylinder" fromto="0 .025 .85 0 .12 .85" size=".025" rgba=".22 .25 .28 1" contype="0" conaffinity="0" />
+    <body name="lever" pos="0 0 .85">
+      <joint name="hinge" type="hinge" axis="0 1 0" damping=".12" frictionloss=".05" range="-1.134464013796314 1.134464013796314" />
+      <geom name="arm" type="capsule" fromto="0 0 0 .35 0 0" size=".025" density="750" rgba=".84 .57 .17 1" />
+      <geom name="handle" type="sphere" pos=".35 0 0" size=".055" density="1100" rgba=".77 .19 .14 1" />
+    </body>
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1" />
+  </worldbody>
+  <include file="../robot/panda.xml" />
+</mujoco>
