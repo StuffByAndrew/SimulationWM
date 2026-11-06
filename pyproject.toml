@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sim2sim"
 version = "0.1.0"
-description = "Camera-only interactive MuJoCo reconstruction benchmark"
+description = "Interactive MuJoCo reconstruction benchmark with camera or arm observations"
 requires-python = ">=3.11"
-dependencies = ["mujoco>=3.2,<4", "numpy>=1.26", "Pillow>=10", "imageio[ffmpeg]>=2.34"]
+dependencies = ["mujoco>=3.2,<4", "numpy>=1.26", "Pillow>=10", "imageio[ffmpeg]>=2.34", "scipy>=1.11,<2", "matplotlib>=3.8,<4"]
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+test = ["pytest>=8", "PyYAML>=6,<7", "viser>=1.1,<2"]
+inspect = ["viser>=1.1,<2"]
 
 [project.scripts]
 sim2sim = "sim2sim.cli:main"

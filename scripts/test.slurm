@@ -4,15 +4,15 @@
 #SBATCH --time=00:10:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
-#SBATCH --output=sim2sim-tests-%j.out
+#SBATCH --output=experiments/validation/tests-%j.log
 set -euo pipefail
 
 if [[ -z "${SLURM_JOB_ID:-}" ]]; then
     echo 'Submit this script through sbatch on the test partition; do not run it on a login node.' >&2
     exit 2
 fi
-if [[ "${SLURM_JOB_PARTITION:-}" != test ]]; then
-    echo 'This project requires the Slurm test partition for heavy computation.' >&2
+if [[ ! "${SLURM_JOB_PARTITION:-}" =~ ^(test|sapphire)$ ]]; then
+    echo 'This project requires the Slurm test (or sapphire) partition for heavy computation.' >&2
     exit 2
 fi
 if [[ -n "${SIM2SIM_ROOT:-}" ]]; then
@@ -25,4 +25,8 @@ export MUJOCO_GL="${MUJOCO_GL:-egl}"
 export PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}"
 python_bin="${SIM2SIM_PYTHON:-$repo_root/.venv/bin/python}"
 printf 'node=%s job=%s backend=%s repository=%s\n' "$(hostname)" "$SLURM_JOB_ID" "$MUJOCO_GL" "$repo_root"
-exec "$python_bin" -m pytest -q "$@"
+if [[ "${SIM2SIM_OCI_TEST:-}" == 1 ]]; then
+    source scripts/podman-job.sh  # job-private Podman storage holding the verified trusted image
+    load_trusted_image
+fi
+"$python_bin" -m pytest -q "$@"

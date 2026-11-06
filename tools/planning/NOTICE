@@ -1,0 +1,14 @@
+sim2sim Panda planning helpers (plan.py)
+
+Parts of plan.py are adapted from RoboSimStudio
+(https://github.com/robosimstudio/robosimstudio, commit d474a18b0b70c8f8fae3bbd8ce43a8456e57969b),
+Copyright 2026 Kaiyuan Chen, licensed under the Apache License, Version 2.0 (a copy is in LICENSE beside
+this file; also https://www.apache.org/licenses/LICENSE-2.0).
+
+Adapted algorithms, rewritten for numpy and MuJoCo (no RoboSimStudio code or dependency is included):
+  Panda.grasp, _basis, _score  - robosimstudio/solvers/grasp/antipodal.py, robosimstudio_policy_agent/grasp_tools.py
+  Panda.linear                 - robosimstudio/solvers/ik/solver.py (plan_line), robosimstudio/solvers/ik/arm_ik.py
+                                 (plan_cartesian), robosimstudio_policy_agent/motion_tools.py (plan_linear)
+  Panda.clearance              - robosimstudio/core/probes/clearance.py
+Changes: surface points are sampled from MuJoCo collision primitives and meshes, pad and approach clearance use
+MuJoCo collision of the whole Panda model, and grasp and pregrasp poses are validated by inverse kinematics.

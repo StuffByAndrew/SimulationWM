@@ -1,0 +1,257 @@
+"""Gateway broker parsing and in-container harness loop; no live API, container or native simulation."""
+import base64
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import zipfile
+from unittest.mock import patch
+
+import pytest
+
+from sim2sim.client import Client
+from sim2sim.cli import main as cli
+from sim2sim.runtime import TOOL_TRANSPORT_NOTE, _inference_process, BudgetStop, InferenceBroker, RuntimeFailure, WallClock, read_cost_pool, run
+
+spec = importlib.util.spec_from_file_location("sandbox_agent", Path(__file__).resolve().parents[1] / "examples/sandbox_agent.py")
+agent = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(agent)
+
+CONFIG = {"endpoint": "https://api.aqinference.com/v1/responses", "provider": "openai", "model": "gpt-6-astra",
+          "reasoning_effort": "medium", "reasoning_summary": "auto", "api_key_env": "INFERENCE_API_KEY",
+          "metadata": {"project": "amish-research", "feature": "sim2sim-agent-eval"}, "max_calls": 5, "max_cost_usd": 0.01}
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * 16).decode()
+# Recorded gateway response shapes (ids shortened; values as returned on 2026-11-02).
+TOOL_CALL = {"id": "resp_08552d", "content": "", "toolCalls": [{"id": "call_43TM", "type": "function", "function": {"name": "bash", "arguments": "{\"command\":\"echo hi\"}"}}],
+             "finishReason": "tool_calls", "usage": {"promptTokens": 89, "completionTokens": 19, "totalTokens": 108, "cacheReadTokens": 0, "cacheWriteTokens": 0,
+             "reasoningTokens": 0, "cacheStatus": "uncached"}, "cost": {"input": 0.00089, "output": 0.00095, "request": None, "image": None, "total": 0.00184,
+             "currency": "USD", "source": "openrouter_catalog", "confidence": "estimated"}, "model": "gpt-6-astra", "provider": "openai", "latencyMs": 1500,
+             "route": {"provider": "openai", "model": "gpt-6-astra", "routedVia": "direct", "fallbackUsed": False, "attempts": [{"attempt": 0, "provider": "openai",
+             "model": "gpt-6-astra", "status": "success", "statusCode": 200, "latencyMs": 1500, "retryCount": 0, "fallbackReason": None, "error": None}]}}
+CACHED = {**TOOL_CALL, "content": "91", "toolCalls": None, "finishReason": None, "cost": {"total": 0.010058, "currency": "USD"},
+          "usage": {"promptTokens": 3, "completionTokens": 5, "totalTokens": 8, "cacheReadTokens": 9503, "cacheWriteTokens": 22, "reasoningTokens": 0, "cacheStatus": "cache_read_write"}}
+TOOLS = [{"name": "bash", "description": "Run a command", "parameters": {"type": "object", "properties": {"command": {"type": "string"}}}}]
+
+
+class Response:
+    def __init__(self, value):
+        self.data = io.BytesIO(json.dumps(value).encode())
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def read1(self, count): return self.data.read(count)
+
+
+def test_gateway_payload_parsing_and_cost_budget():
+    seen = []
+    class Opener:
+        def open(self, request, timeout):
+            seen.append((json.loads(request.data), request.headers))
+            return Response(TOOL_CALL)
+    broker = InferenceBroker(CONFIG)
+    messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": [{"type": "text", "text": "look"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64," + PNG}}]},
+                {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "name": "bash", "arguments": "{\"command\":\"ls\"}"}]},
+                {"role": "tool", "tool_call_id": "call_1", "content": [{"type": "text", "text": "scene.xml"}]}]
+    with patch.dict(os.environ, {"INFERENCE_API_KEY": "HOST-ONLY-TEST-KEY"}), patch("sim2sim.runtime.urllib.request.build_opener", return_value=Opener()):
+        answer = broker._call({"op": "inference", "messages": messages, "tools": TOOLS}, 1)
+    payload = seen[0][0]
+    assert payload["model"] == "gpt-6-astra" and payload["provider"] == "openai" and payload["store"] is False
+    assert payload["metadata"] == CONFIG["metadata"] and payload["reasoning"] == {"effort": "medium", "summary": "auto"}
+    assert payload["tools"] == [{"type": "function", "function": {**TOOLS[0]}}]
+    assert payload["input"] == [{"role": "system", "content": [{"type": "input_text", "text": TOOL_TRANSPORT_NOTE}]},
+        {"role": "system", "content": [{"type": "input_text", "text": "rules"}]},
+        {"role": "user", "content": [{"type": "input_text", "text": "look"}, {"type": "input_image", "imageUrl": "data:image/png;base64," + PNG}]},
+        {"role": "user", "content": [{"type": "input_text", "text": "[host] Result of your bash call (id call_1, arguments {\"command\":\"ls\"}):"},
+                                     {"type": "input_text", "text": "scene.xml"}]}]
+    assert answer["tool_calls"] == [{"id": "call_43TM", "name": "bash", "arguments": "{\"command\":\"echo hi\"}"}]
+    assert answer["cost_usd"] == 0.00184 and answer["usage"]["accountedTokens"] == 108 and answer["summaries"] == []
+    assert "route" not in answer and "HOST-ONLY-TEST-KEY" not in json.dumps(answer)
+    assert broker.parse(CACHED, {"bash"})["usage"]["accountedTokens"] == 8 + 9503 + 22
+    broker.calls = 1
+    assert broker.charge(answer)["remaining_cost_usd"] == pytest.approx(0.01 - 0.00184)
+    broker.charge(broker.parse(CACHED, {"bash"}))
+    with pytest.raises(RuntimeFailure, match="cost budget exhausted"):
+        broker.call({"messages": messages}, 1)
+    with pytest.raises(RuntimeFailure, match="omitted cost"):
+        InferenceBroker(CONFIG).charge(broker.parse({**CACHED, "cost": {"total": None}}, {"bash"}))
+
+
+def test_gateway_rejections():
+    broker = InferenceBroker(CONFIG)
+    for result in ({**TOOL_CALL, "model": "gpt-6-sol"}, {**TOOL_CALL, "route": {**TOOL_CALL["route"], "fallbackUsed": True}},
+                   {**TOOL_CALL, "route": {**TOOL_CALL["route"], "provider": "openrouter"}}, {**TOOL_CALL, "route": None}):
+        with pytest.raises(RuntimeFailure, match="substitution"):
+            broker.parse(result, {"bash"})
+    with pytest.raises(RuntimeFailure, match="invalid tool call"):
+        broker.parse(TOOL_CALL, {"observe"})
+    user = {"role": "user", "content": "x"}
+    for request in ({"messages": [user, {"role": "tool", "tool_call_id": "call_9", "content": "x"}]},
+                    {"messages": [{"role": "assistant", "content": "", "tool_calls": [{"id": "c", "name": "rm", "arguments": "{}"}]}], "tools": TOOLS},
+                    {"messages": [{"role": "assistant", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64," + PNG}}]}]},
+                    {"messages": [user], "model": "gpt-6-sol"}, {"messages": [user], "tools": [{"name": "bad name", "parameters": {"type": "object"}}]},
+                    {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}]}]}):
+        with pytest.raises(RuntimeFailure):
+            broker.payload(request)
+    for config in ({**CONFIG, "api": "responses"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
+        with pytest.raises(RuntimeFailure):
+            InferenceBroker(config)
+
+
+def test_wall_clock_kills_registered_work_and_rejects_nonfinite_budgets():
+    for value in (float("nan"), float("inf"), -float("inf"), 0, -1, True):
+        with pytest.raises(RuntimeFailure):
+            WallClock(value)
+    process = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(5)"])
+    clock = WallClock(.05)
+    try:
+        clock.register(process)
+        assert clock.expired.wait(1)
+        assert process.wait(timeout=1) != 0
+        with pytest.raises(RuntimeFailure, match="Hard wall"):
+            clock.check()
+    finally:
+        clock.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+
+def test_configured_provider_missing_key_cannot_launch_agent(tmp_path):
+    config = {"sandbox": {"image": "test", "command": ["agent"]}, "inference": CONFIG, "output_dir": str(tmp_path / "run")}
+    with patch.dict(os.environ, {}, clear=True), patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits"), \
+         patch("sim2sim.runtime.subprocess.Popen") as launch:
+        with pytest.raises(RuntimeFailure, match="credential is missing"):
+            run(config)
+    launch.assert_not_called()
+
+
+class Controller(Client):
+    """The real client over an in-memory controller that records wire requests."""
+    def __init__(self, replies, now, wall=3600.):
+        self.task = {"type": "task", "task": "Reconstruct the scene.", "deadline_unix": now() + wall,
+                     "actions": ["observe", "grasp", "move", "release", "reset", "load_reconstruction", "submit", "inference", "progress", "finish"],
+                     "action_schema": {"observe": {"ticks": "optional"}, "grasp": {"pixel": "[u,v]"}, "move": {"displacement": "[dx,dy,dz]", "ticks": 20},
+                                       "release": {"ticks": "optional"}, "reset": "restore", "load_reconstruction": {"project_b64": "zip"},
+                                       "submit": {"project_b64": "zip"}, "finish": "end run"},
+                     "budgets": {"wall_only": True, "active_seconds": None, "wall_seconds": wall},
+                     "inference": {"model": "gpt-6-astra", "enabled": True}, "submission": {"max_bytes": 1 << 20},
+                     "observation": {"rgb": PNG, "width": 4, "height": 4, "time": 0., "calibration": {"intrinsics": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]}}}
+        self.replies, self.requests, self.notes = list(replies), [], []
+
+    def request(self, op, **kwargs):
+        self.requests.append({"op": op, **kwargs})
+        if op == "inference":
+            InferenceBroker(CONFIG).payload(self.requests[-1])  # The harness wire shape passes strict broker validation.
+            if not self.replies:
+                return {"ok": True, "inference": {"budget_stop": True, "reason": "host stop"}}
+            calls = [{"id": "call_%d_%d" % (len(self.requests), i), "name": name, "arguments": json.dumps(args)} for i, (name, args) in enumerate(self.replies.pop(0))]
+            return {"ok": True, "inference": {"content": "Testing the next hypothesis.", "tool_calls": calls, "usage": None}}
+        if op == "progress":
+            self.notes.append((kwargs["origin"], kwargs["text"]))
+            return {"ok": True}
+        if op == "submit":
+            return {"ok": True, "submission": 1, "status": "ok"}
+        if op == "finish":
+            return {"ok": True, "status": "finished"}
+        return {"ok": True, "world": kwargs["world"], "observation": {"rgb": PNG, "time": .04, "grasped": False}, "remaining_ticks": None}
+
+
+def test_harness_loop_bash_actions_guarded_finish(tmp_path):
+    replies = [[("bash", {"command": "mkdir -p project && echo '<mujoco/>' > project/scene.xml && cat project/scene.xml"})],
+               [("load_reconstruction", {}), ("observe", {"world": "reference", "ticks": 2}), ("observe", {"world": "reconstruction", "ticks": 2})],
+               [("finish", {})], [("submit", {})], [("finish", {})], [("finish", {})]]
+    controller = Controller(replies, now=lambda: 1000.)
+    loop = agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.)
+    loop.run()
+    ops = [r["op"] for r in controller.requests if r["op"] not in ("inference", "progress")]
+    assert ops == ["load_reconstruction", "observe", "observe", "submit", "finish"]
+    inferences = [r for r in controller.requests if r["op"] == "inference"]
+    assert len(inferences) == 6 and all(r["messages"][0] == {"role": "system", "content": agent.SYSTEM} for r in inferences)
+    assert {tool["name"] for tool in inferences[0]["tools"]} == {"bash", "view_image", "observe", "grasp", "move", "release", "reset", "load_reconstruction", "submit", "finish"}
+    results = [m for m in inferences[-1]["messages"] if m["role"] == "tool"]
+    assert "exit code 0\n<mujoco/>" in results[0]["content"][0]["text"]
+    assert all("remaining wall time 1:00:00" in m["content"][-1]["text"] for m in results)
+    assert any(part["type"] == "image_url" for part in results[2]["content"]) and (tmp_path / "observations/00003-reference-rgb.png").exists()
+    assert "no reconstruction has been submitted" in results[4]["content"][0]["text"]
+    assert "you have NOT validated" in results[6]["content"][0]["text"]
+    archive = zipfile.ZipFile(io.BytesIO(base64.b64decode([r for r in controller.requests if r["op"] == "submit"][0]["project_b64"])))
+    assert archive.read("scene.xml") == b"<mujoco/>\n"
+    assert [text for origin, text in controller.notes if "Intercepted" in text] == ["Intercepted an early finish request with 1:00:00 remaining."]
+    assert ("model", "Testing the next hypothesis.") in controller.notes
+
+
+def test_harness_deadline_compaction_and_image_pruning(tmp_path):
+    clock = [0.]
+    controller = Controller([[("observe", {"world": "reference"})]] * 30, now=lambda: clock[0], wall=1000.)
+    loop = agent.Agent(controller, workspace=tmp_path, max_images=4, keep_turns=2, reserve_seconds=100, keep_image_files=3, now=lambda: clock[0])
+    original = loop.infer
+    def infer(messages):
+        clock[0] += 60
+        reply = original(messages)
+        reply["usage"] = {"promptTokens": 10, "cacheReadTokens": 200000 if len(loop.turns) == 6 else 0, "cacheWriteTokens": 0}
+        return reply
+    loop.infer = infer
+    loop.run()
+    assert controller.requests[-1]["op"] == "finish" and "automatically" in controller.notes[-1][1]
+    assert loop.summary == "Testing the next hypothesis." and len(loop.turns) <= 2 + 15
+    assert len(list((tmp_path / "observations").iterdir())) == 3
+    images = [p for m in loop.messages()[2:] if isinstance(m["content"], list) for p in m["content"] if p["type"] == "image_url"]
+    assert len(images) <= 4
+
+
+def test_shared_cost_pool_ledger_threshold_and_monitor(tmp_path, capsys):
+    config = {**CONFIG, "max_cost_usd": 58., "cost_pool": "wave1", "cost_pool_usd": 10., "cost_ledger_dir": str(tmp_path), "call_reserve_usd": 1.}
+    (tmp_path / "wave1").mkdir()
+    (tmp_path / "wave1/other.json").write_text(json.dumps({"cost_usd": 5., "inflight_reserve_usd": 1., "calls": 3, "tokens": 900}))
+    broker = InferenceBroker(config, run_id="mine")
+    assert broker.stop_reason() is None
+    broker.calls = 1
+    broker.charge(broker.parse({**CACHED, "cost": {"total": 2.5, "currency": "USD"}}, {"bash"}))
+    broker.write_ledger(0.)
+    assert broker.stop_reason() == "Shared inference cost pool exhausted"  # 10 - (5 + 1) - 2.5 < 2 reserves
+    with pytest.raises(BudgetStop, match="pool exhausted"):
+        broker.call({"messages": [{"role": "user", "content": "x"}]}, 1)
+    record = read_cost_pool(tmp_path / "wave1")["mine"]
+    assert set(record) == {"run_id", "pool", "cost_usd", "inflight_reserve_usd", "calls", "tokens", "updated_at"} and record["cost_usd"] == 2.5
+    assert cli(["cost", "--pool", "wave1", "--ledger", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["total_cost_usd"] == 7.5
+    with pytest.raises(RuntimeFailure, match="already exists"):
+        InferenceBroker(config, run_id="mine")
+    solo = InferenceBroker({**config, "cost_pool_usd": 1000.}, run_id="solo")
+    with pytest.raises(RuntimeFailure, match="omitted cost"):
+        solo.charge(solo.parse({**CACHED, "cost": None}, {"bash"}))
+    assert solo.stop_reason() == "Provider omitted cost; further inference is disabled"
+    # A transiently torn/stale read (NFS replace race, wave-1 job 57186237) is retried, not treated as exhaustion.
+    real = Path.read_text
+    flaky = iter([OSError(116, "Stale file handle"), "{"])
+    def read_text(self, *args, **kwargs):
+        if self.name == "other.json":
+            value = next(flaky, None)
+            if isinstance(value, Exception):
+                raise value
+            if value is not None:
+                return value
+        return real(self, *args, **kwargs)
+    with patch.object(Path, "read_text", read_text), patch("sim2sim.runtime.time.sleep"):
+        assert read_cost_pool(tmp_path / "wave1")["other"]["cost_usd"] == 5.
+    (tmp_path / "wave1/other.json").write_text("{")
+    assert "unreadable" in InferenceBroker({**config, "cost_pool_usd": 1000.}, run_id="third").stop_reason()
+    assert InferenceBroker({**CONFIG, "max_cost_usd": 15., "call_reserve_usd": 3.}).stop_reason() is None
+    # The spawned network worker must not rebuild the pool (regression: smoke run 57180717 failed here).
+    import multiprocessing
+    parent, child = multiprocessing.Pipe(duplex=False)
+    with patch.object(InferenceBroker, "_call", lambda self, request, timeout: {"ledger": self.ledger}):
+        _inference_process(config, {}, 1, child)
+    assert parent.recv() == (True, {"ledger": None})
+    assert InferenceBroker({**CONFIG, "max_cost_usd": 5., "call_reserve_usd": 3.}).stop_reason() == "Run inference cost budget exhausted"
+
+
+@pytest.mark.parametrize("submit_first", [False, True])
+def test_harness_budget_stop_submits_unsubmitted_work_then_finishes(tmp_path, submit_first):
+    replies = [[("bash", {"command": "mkdir -p project && echo '<mujoco/>' > project/scene.xml"})]] + ([[("submit", {})]] if submit_first else [])
+    controller = Controller(replies, now=lambda: 1000.)
+    agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.).run()
+    assert [r["op"] for r in controller.requests if r["op"] not in ("inference", "progress")] == ["submit", "finish"]
+    assert any(text.startswith("Inference budget exhausted (host stop)") for _, text in controller.notes)

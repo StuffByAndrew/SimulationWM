@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+from contextlib import nullcontext
 import zipfile
 
 from sim2sim.runtime import (RuntimeFailure, Transport, check_rootless, container_command,
@@ -43,7 +44,23 @@ class RuntimeTests(unittest.TestCase):
         invoke("rlimit")
         cmd = container_command("local/image", ["python"], {"process_limit_backend": "rlimit"}, "test")
         self.assertIn("--pids-limit=-1", cmd)
-        self.assertIn("--ulimit=nproc=64:64", cmd)
+        self.assertEqual(cmd[-4:], ["/usr/bin/prlimit", "--nproc=64:64", "--", "python"])
+
+    def test_slurm_step_command_and_in_container_checks(self):
+        limits = {"process_limit_backend": "slurm_step", "memory": "8g", "cpus": 4, "pids": 128}
+        with patch.dict("os.environ", {"SLURM_JOB_ID": "7", "XDG_RUNTIME_DIR": "/tmp/x", "OPENAI_API_KEY": "secret"}):
+            cmd = container_command("local/image", ["python"], limits, "n")
+        self.assertEqual(cmd[:8], ["srun", "--jobid=7", "--exact", "--nodes=1", "--ntasks=1", "--cpus-per-task=4", "--mem=8192M", "--quiet"])
+        self.assertIn("XDG_RUNTIME_DIR=/tmp/x", cmd)
+        self.assertFalse(any("secret" in x or x.startswith(("--memory", "--cpus=", "--pids")) for x in cmd))
+        self.assertIn("--cgroups=disabled", cmd)
+        self.assertEqual(cmd[-4:], ["/usr/bin/prlimit", "--nproc=128:128", "--", "python"])
+        with self.assertRaises(RuntimeFailure):
+            container_command("local/image", ["python"], {**limits, "cpus": 1.5}, "n")
+        observed = {"memory.max": "max", "cpu.max": "max 100000", "nproc": [128, 128], "uid": 65532, "cap_eff": "0000000000000000", "no_new_privs": "1"}
+        validate_effective_limits(observed, limits)
+        with self.assertRaises(RuntimeFailure):
+            validate_effective_limits({**observed, "nproc": [256, 256]}, limits)
 
     def test_sandbox_has_no_host_mounts_or_network(self):
         cmd = container_command("local/image", ["python", "agent.py"], {}, "test")
@@ -116,14 +133,14 @@ class RuntimeTests(unittest.TestCase):
         writer = io.StringIO()
         client = Client(io.StringIO('{"type":"task"}\n{"ok":true,"observation":{"ticks":2}}\n'), writer)
         self.assertEqual(client.observe(ticks=2), {"ticks": 2})
-        self.assertEqual(json.loads(writer.getvalue()), {"op": "observe", "ticks": 2})
+        self.assertEqual(json.loads(writer.getvalue()), {"op": "observe", "ticks": 2, "world": "reference"})
 
 
 if __name__ == "__main__":
     unittest.main()
 
 class HostBudgetTests(unittest.TestCase):
-    def run_agent(self, directory, script, budget=None, evaluate=None):
+    def run_agent(self, directory, script, budget=None, evaluate=None, candidate_factory=None, tick_delay=0, simulation=None, extra=None):
         import types
         from sim2sim.runtime import run
 
@@ -132,12 +149,14 @@ class HostBudgetTests(unittest.TestCase):
                 self.total_ticks = self.ticks = 0
                 self._callback = None
             def observe(self):
-                return {"total_ticks": self.total_ticks}
+                return {"total_ticks": self.total_ticks, "original_mass": "PRIVATE-CANARY", "qpos": [1,2,3], "body_hits": [9]}
             def action(self, request):
                 if request["op"] == "reset":
                     self.ticks = 0
                 else:
                     for _ in range(request.get("ticks", 0)):
+                        if tick_delay:
+                            time.sleep(tick_delay)
                         self.total_ticks += 1
                         self.ticks += 1
                         if self._callback:
@@ -156,16 +175,86 @@ class HostBudgetTests(unittest.TestCase):
         source = Path(directory) / "source"
         source.mkdir()
         (source / "scene.xml").write_text("<mujoco/>")
-        config = {"source": {"scene": str(source / "scene.xml")}, "sandbox": {"image": "test"}, "record_video": False,
+        if (simulation or {}).get("robot") == "panda":
+            (source / "robot/assets").mkdir(parents=True)
+            (source / "robot/panda.xml").write_text("<mujoco/>")
+            (source / "robot/IMPORT.md").write_text("Robot notes.\n\nThe sibling scenes hold PRIVATE blocks.\n")
+        config = {"source": {"scene": str(source / "scene.xml")}, "sandbox": {"image": "test", "command": ["agent"]}, "record_video": False,
                   "output_dir": str(Path(directory) / "run"), "budget": budget or {"physics_ticks": 3, "active_seconds": 2},
-                  "evaluation": {}}
-        cmd = [sys.executable, "-u", "-c", "import json,sys,time\njson.loads(input())\n" + script]
-        with patch.dict(sys.modules, {"sim2sim.simulation": types.SimpleNamespace(Simulation=FakeSimulation)}), \
-             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits"), patch("sim2sim.runtime.container_command", return_value=cmd), \
+                  "evaluation": {}, "simulation": simulation or {}, **(extra or {})}
+        self.host_operations = []
+        def host_command(command, **kwargs):
+            self.host_operations.append(command[1])
+            return subprocess.CompletedProcess(command, 0, stdout="test-image-id")
+        def plot_history(*args, **kwargs):
+            self.host_operations.append("plot")
+        cmd = [sys.executable, "-u", "-c", "import json,sys,time\ntask=json.loads(input())\n" + script]
+        candidate_patch = patch("sim2sim.runtime.CandidateSession", candidate_factory) if candidate_factory else nullcontext()
+        with candidate_patch, patch.dict(sys.modules, {"sim2sim.simulation": types.SimpleNamespace(Simulation=FakeSimulation)}), \
+             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.container_command", return_value=cmd), \
              patch("sim2sim.runtime.stop_container", side_effect=stop), \
              patch("sim2sim.runtime.evaluate_in_container", side_effect=evaluate), \
-             patch("sim2sim.runtime.subprocess.run"):
+             patch("sim2sim.plotting.update_metric_history", side_effect=plot_history), \
+             patch("sim2sim.runtime.subprocess.run", side_effect=host_command):
             return run(config)
+
+    def test_continuation_prior_is_verified_hashed_and_mounted(self):
+        import hashlib
+        from sim2sim import runtime
+        with tempfile.TemporaryDirectory() as directory:
+            prior = Path(directory) / "prior"
+            (prior / "project").mkdir(parents=True)
+            (prior / "project/scene.xml").write_text("<mujoco/>")
+            (prior / "progress-notes.txt").write_text("notes\n")
+            hashes = {"project/scene.xml": hashlib.sha256(b"<mujoco/>").hexdigest(), "progress-notes.txt": hashlib.sha256(b"notes\n").hexdigest()}
+            with patch("sim2sim.runtime.launch_container", wraps=runtime.launch_container) as launch:
+                self.run_agent(directory, 'print(\'{"op":"finish"}\',flush=True)\ninput()\n',
+                               extra={"continuation": {"public_dir": str(prior), "files_sha256": hashes}})
+            ((volume, target),) = launch.call_args.kwargs["mounts"]
+            self.assertTrue(volume.startswith("sim2sim-public-"))
+            self.assertEqual(target, "/opt/public/prior")
+            from sim2sim.audit import read_audit
+            fixtures = [event for _, event in read_audit(Path(directory) / "run") if event.get("kind") == "public_fixture"]
+            self.assertEqual([(event["path"], event["files_sha256"]) for event in fixtures], [("/opt/public/prior", hashes)])
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "prior").mkdir()
+            (Path(directory) / "prior/progress-notes.txt").write_text("changed\n")
+            with self.assertRaisesRegex(RuntimeFailure, "changed after preparation"):
+                self.run_agent(directory, "", extra={"continuation": {"public_dir": str(Path(directory) / "prior"), "files_sha256": {}}})
+
+    def test_panda_action_schema_payload_and_shared_ticks(self):
+        script = '''
+assert "arm_target" in task["actions"]
+assert not set(["grasp", "move", "release"]) & set(task["actions"])
+assert task["public_tool_config"]["robot"] == "panda"
+assert task["public_robot_path"] == "/opt/public/robot"
+for action in [{"op":"arm_target","joint_targets":[0]*7,"gripper_width_m":0.04,"ticks":2}, {"op":"reset"}, {"op":"arm_target","joint_targets":[0]*7,"gripper_width_m":0.08,"ticks":2}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ json.loads(input())
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, simulation={"robot": "panda", "rgb": False, "depth": False, "calibration": False})
+            self.assertEqual(result["total_ticks"], 2)
+            self.assertIn("volume", self.host_operations)
+            from sim2sim.audit import read_audit
+            events = [event for _, event in read_audit(Path(directory)/"run")]
+            actions = [event["resolved_action"] for event in events if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "arm_target"]
+            self.assertEqual(actions, [{"op": "arm_target", "world": "reference", "ticks": 2, "joint_targets": [0]*7, "gripper_width_m": .04}])
+
+    def test_observe_only_reference_rejects_interaction(self):
+        script = '''
+assert task["worlds"]["reference"].startswith("Observe-only") and task["action_schema"]["grasp"]["world"] == "reconstruction only"
+for action, ok in [({"op":"grasp","pixel":[1,1]}, False), ({"op":"move","displacement":[0,0,.1],"ticks":1}, False), ({"op":"observe","ticks":1}, True)]:
+ print(json.dumps(action),flush=True)
+ reply=json.loads(input())
+ assert reply["ok"] is ok, reply
+ assert ok or "observe-only" in reply["error"], reply
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, simulation={"reference_interaction": False})
+            self.assertEqual(result["total_ticks"], 1)
 
     def test_reset_never_refunds_ticks(self):
         script = '''
@@ -181,6 +270,11 @@ input()
             self.assertEqual(result["total_ticks"], 2)
             events = [json.loads(x) for x in (Path(directory)/"run/events.jsonl").read_text().splitlines()]
             self.assertFalse(events[2]["ok"])
+            from sim2sim.audit import read_audit
+            responses = [event["payload"] for _,event in read_audit(Path(directory)/"run")
+                         if event.get("kind") == "boundary" and event.get("direction") == "response"]
+            self.assertTrue(all("original_mass" not in response.get("observation", {}) and "qpos" not in response.get("observation", {})
+                                and "body_hits" not in response.get("observation", {}) for response in responses))
             termination = json.loads((Path(directory)/"run/termination.json").read_text())
             self.assertEqual(termination["remaining_ticks"], 1)
 
@@ -207,3 +301,267 @@ input()
         with tempfile.TemporaryDirectory() as directory:
             result = self.run_agent(directory, script, {"physics_ticks": 3, "active_seconds": .3}, evaluate)
             self.assertEqual(result["submissions"], 1)
+            self.assertLess(self.host_operations.index("pause"), self.host_operations.index("plot"))
+            self.assertLess(self.host_operations.index("plot"), self.host_operations.index("unpause"))
+
+    def test_wrench_default_is_independent_and_absent_from_observation(self):
+        script = """assert task['observation_contract']['modalities']['wrench'] is False
+assert task['observation_contract']['modalities']['rgb'] is True
+assert 'wrench' not in task['observation']
+assert 'original_mass' not in task['observation'] and 'qpos' not in task['observation'] and 'body_hits' not in task['observation']
+print('{"op":"finish"}',flush=True)
+input()
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            self.run_agent(directory, script)
+
+    def test_lossless_boundaries_include_rejected_and_inference_requests(self):
+        from sim2sim.audit import read_audit
+        script = '''
+for action in [{"op":"observe","world":"invalid","pixel":"long-"*500},{"op":"reset","ticks":-1},{"op":"inference","messages":[{"role":"user","content":"complete private inference prompt"}]}]:
+ print(json.dumps(action),flush=True)
+ assert not json.loads(input())["ok"]
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.run_agent(directory, script)
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            requests = [event for event in records if event.get("kind") == "boundary" and event.get("direction") == "request"]
+            self.assertEqual(len(requests), 4)
+            self.assertEqual(requests[0]["payload"]["pixel"], "long-"*500)
+            self.assertEqual(requests[2]["payload"]["messages"][0]["content"], "complete private inference prompt")
+            for event in requests:
+                self.assertEqual(json.loads(base64.b64decode(event["wire_b64"])), event["payload"])
+            self.assertTrue(any(event.get("kind") == "rejection" for event in records))
+
+    def test_agent_never_sees_spend_and_budget_stop_suspends(self):
+        """Cost is orchestrator-only: no USD, cap or remaining-budget field reaches the agent side."""
+        from sim2sim.audit import read_audit
+        from sim2sim.runtime import BudgetStop
+        script = r'''
+import re
+assert not re.search(r"cost|usd|dollar|max_calls|max_total_tokens|remaining_(calls|tokens|cost)", json.dumps(task), re.I), task["inference"]
+print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
+reply=json.loads(input())["inference"]
+assert set(reply) == {"content","tool_calls","usage"} and set(reply["usage"]) == {"promptTokens","cacheReadTokens","cacheWriteTokens"}, reply
+print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
+assert json.loads(input())["inference"] == {"budget_stop": True, "reason": "host stop"}
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        value = {"content": "ok", "tool_calls": [], "finish_reason": "stop", "model": "m", "summaries": [], "cost_usd": 1.25,
+                 "usage": {"promptTokens": 3, "completionTokens": 1, "totalTokens": 4, "cacheReadTokens": 0, "cacheWriteTokens": 0,
+                           "reasoningTokens": 0, "accountedTokens": 4},
+                 "calls": 1, "remaining_calls": 9, "cumulative_tokens": 4, "remaining_tokens": None, "cumulative_cost_usd": 1.25,
+                 "remaining_cost_usd": 0.75}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("sim2sim.runtime.InferenceBroker.call", side_effect=[value, BudgetStop("Run inference cost budget exhausted")]):
+            self.run_agent(directory, script)
+            status = json.loads((Path(directory)/"run/termination.json").read_text())
+            self.assertEqual((status["status"], status["reason"]), ("finished", "budget_suspended"))
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            self.assertEqual([e["cost_usd"] for e in records if e.get("kind") == "inference_accounting"], [1.25])
+            self.assertEqual([e["reason"] for e in records if e.get("kind") == "inference_suspended"], ["Run inference cost budget exhausted"])
+
+    def test_partial_timeout_records_exact_confirmed_reference_ticks(self):
+        from sim2sim.audit import read_audit
+        script = '''
+print('{"op":"observe","ticks":10}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(RuntimeFailure):
+                self.run_agent(directory, script, {"physics_ticks": 10, "active_seconds": .12}, tick_delay=.04)
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            ticks = [event for event in records if event.get("kind") == "tick"]
+            self.assertGreater(len(ticks), 0)
+            self.assertLess(len(ticks), 10)
+            status = json.loads((Path(directory)/"run/termination.json").read_text())
+            self.assertEqual(status["total_ticks"], len(ticks))
+            end = next(event for event in records if event.get("kind") == "action_end")
+            self.assertEqual(end["executed_ticks"], len(ticks))
+
+    def test_panda_partial_timeout_keeps_targets_and_executed_ticks(self):
+        from sim2sim.audit import read_audit
+        action = {"op": "arm_target", "joint_targets": [0]*7, "gripper_width_m": .04, "ticks": 10}
+        script = "print(" + repr(json.dumps(action)) + ",flush=True)\ninput()"
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(RuntimeFailure):
+                self.run_agent(directory, script, {"physics_ticks": 10, "active_seconds": .12},
+                               tick_delay=.04, simulation={"robot": "panda"})
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            ticks = [event for event in records if event.get("kind") == "tick"]
+            self.assertGreater(len(ticks), 0)
+            self.assertLess(len(ticks), 10)
+            begin = next(event for event in records if event.get("kind") == "action_begin")
+            self.assertEqual(begin["resolved_action"], dict(action, world="reference"))
+            end = next(event for event in records if event.get("kind") == "action_end")
+            self.assertEqual(end["executed_ticks"], len(ticks))
+
+    def test_audit_reservation_refuses_load_before_worker_launch(self):
+        from sim2sim.audit import read_audit
+        def forbidden_worker(*args):
+            raise AssertionError("Worker launch must follow a successful reservation")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeFailure, "audit byte budget"):
+                self.run_agent(directory, "print('{\"op\":\"load_reconstruction\",\"project_b64\":\"eA==\"}',flush=True)\ninput()",
+                               {"physics_ticks": 10, "active_seconds": 2, "audit_bytes": 40*1024*1024}, candidate_factory=forbidden_worker)
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            self.assertTrue(any(event.get("payload", {}).get("op") == "load_reconstruction" for event in records))
+            self.assertFalse(any(event.get("kind") == "action_begin" for event in records))
+
+    def test_worlds_are_independent_and_share_nonrefundable_budget(self):
+        from sim2sim.candidate_worker import state_digest
+        from sim2sim.audit import read_audit
+        class FakeCandidate:
+            def __init__(self, sandbox, output, audit):
+                self.closed = False
+                self.name = "candidate-test"
+                self.ticks = self.total = 0
+                self.last = None
+            def close(self):
+                self.closed = True
+            def exchange(self, request, deadline, token, action_id, on_tick=None):
+                if request["op"] == "load":
+                    assert "graspable_bodies" not in request["config"]
+                    assert "trusted_camera" not in request["config"]
+                    assert request["config"]["camera"] == "own"
+                else:
+                    action = request["action"]
+                    if action["op"] == "reset":
+                        self.ticks = 0
+                    for _ in range(action["ticks"]):
+                        self.ticks += 1
+                        self.total += 1
+                        on_tick(self.packet("tick"))
+                self.last = self.packet("result")
+                return self.last
+            def packet(self, kind):
+                state = {"ticks": self.ticks, "total_ticks": self.total, "time": self.ticks*.002}
+                observation = {"ticks": self.ticks, "total_ticks": self.total}
+                return {"type": kind, "ok": True, "state": state, "state_sha256": state_digest(state),
+                        "observation": observation, "full_observation": observation}
+        script = '''
+def call(action):
+ print(json.dumps(action),flush=True)
+ return json.loads(input())
+assert call({"op":"observe","ticks":2})["observation"]["total_ticks"] == 2
+assert call({"op":"load_reconstruction","project_b64":"eA==","camera":"own"})["ok"]
+assert call({"op":"observe","world":"reconstruction","ticks":2})["observation"]["total_ticks"] == 2
+assert call({"op":"observe","ticks":1})["observation"]["total_ticks"] == 3
+assert call({"op":"reset","world":"reconstruction"})["observation"]["ticks"] == 0
+assert not call({"op":"observe","world":"reconstruction","ticks":1})["ok"]
+assert call({"op":"load_reconstruction","project_b64":"eA==","camera":"own"})["remaining_ticks"] == 0
+assert call({"op":"observe","ticks":0})["observation"]["total_ticks"] == 3
+call({"op":"finish"})
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, {"physics_ticks": 5, "active_seconds": 3}, candidate_factory=FakeCandidate)
+            self.assertEqual(result["world_ticks"], {"reference": 3, "reconstruction": 2})
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            begins = [event for event in records if event.get("kind") == "action_begin"]
+            self.assertTrue(all("ticks" in event["resolved_action"] for event in begins))
+            self.assertEqual(sum(event.get("kind") == "tick" for event in records), 5)
+
+    def test_malformed_json_is_durable_before_rejection(self):
+        from sim2sim.audit import read_audit
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeFailure, "invalid JSON"):
+                self.run_agent(directory, "print('{not-json',flush=True)\ninput()")
+            records = [event for _, event in read_audit(Path(directory)/"run")]
+            received = next(event for event in records if event.get("kind") == "boundary" and event.get("direction") == "request")
+            self.assertEqual(base64.b64decode(received["wire_b64"]), b'{not-json\n')
+            self.assertTrue(received["complete"])
+            self.assertFalse(any(event.get("kind") == "action_begin" for event in records))
+
+    def test_progress_is_timestamped_in_sidefile_and_audit(self):
+        from sim2sim.audit import read_audit
+        script = '''
+print('{"op":"progress","text":"Testing a public geometric hypothesis.","origin":"model"}',flush=True)
+assert json.loads(input())["ok"]
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.run_agent(directory, script)
+            note = json.loads((Path(directory)/"run/progress.jsonl").read_text())
+            self.assertEqual(note["origin"], "model")
+            self.assertIn("utc_time", note)
+            self.assertGreaterEqual(note["wall_elapsed"], note["active_elapsed"])
+            events = [event for _,event in read_audit(Path(directory)/"run")]
+            self.assertIn(note, events)
+
+    def test_hard_wall_includes_private_evaluation_time(self):
+        called = []
+        def evaluate(*args):
+            called.append(True)
+            time.sleep(2)
+            return {"status":"ok", "scores":{}}
+        script = '''
+print('{"op":"submit","project_b64":"eA=="}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, {"physics_ticks":3,"active_seconds":2,"wall_seconds":1.5}, evaluate)
+            self.assertEqual((result["status"], result["reason"], result["submissions"]), ("finished", "wall_deadline", 1))
+            self.assertTrue(called)
+            status = json.loads((Path(directory)/"run/termination.json").read_text())
+            self.assertTrue(status["hard_wall_expired"])
+            self.assertEqual(status["reason"], "wall_deadline")
+            from sim2sim.audit import read_audit
+            reports = [event["report"]["status"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "evaluation"]
+            self.assertEqual(reports, ["ok"])  # finished before the deadline-interrupted delivery
+
+    def test_deadline_records_unfinished_evaluation_as_unevaluated(self):
+        def evaluate(*args):
+            time.sleep(2)
+            raise RuntimeFailure("Hard wall-time budget exhausted")
+        script = '''
+print('{"op":"submit","project_b64":"eA=="}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, {"physics_ticks":3,"active_seconds":2,"wall_seconds":1.5}, evaluate)
+            self.assertEqual(result["reason"], "wall_deadline")
+            from sim2sim.audit import read_audit
+            reports = [event["report"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "evaluation"]
+            self.assertEqual([report["status"] for report in reports], ["unevaluated"])
+
+
+def test_slurm_step_freeze_resends_signal_after_controller_timeout(tmp_path):
+    """A stalled slurmctld RPC (wave-2 job 57226610) must not end the run: resend until the freezer state is reached."""
+    import subprocess
+    from unittest.mock import patch
+    from sim2sim import runtime
+    events = tmp_path / "cgroup.events"
+    events.write_text("populated 1\nfrozen 1\n")
+    calls = []
+    def scancel(args, **options):
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(args, options["timeout"])
+        events.write_text("populated 1\nfrozen 0\n")
+    clock = [0.]
+    with patch.dict(runtime.SLURM_STEPS, {"agent": ("1.2", tmp_path)}), patch.object(runtime.subprocess, "run", scancel), \
+            patch.object(runtime.time, "monotonic", lambda: clock[0]), \
+            patch.object(runtime.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s)):
+        runtime._set_paused("agent", False, "slurm_step")
+    assert calls == [["scancel", "--signal=CONT", "1.2"]] * 2
+
+
+def test_prepared_output_accepts_continuation_prior_directory(tmp_path):
+    """Regression (c1-assembly-*-20261103-001): a prepared continuation's prior/ carry-over is a directory."""
+    from sim2sim.runtime import validate_prepared_output
+    (tmp_path / "source").mkdir()
+    (tmp_path / "prior/project").mkdir(parents=True)
+    (tmp_path / "prior/project/scene.xml").write_text("<mujoco/>")
+    for name in ("experiment.json", "status.json", "config-private.json"):
+        (tmp_path / name).write_text("{}")
+    validate_prepared_output(tmp_path)
+    (tmp_path / "prior/link").symlink_to(tmp_path / "status.json")
+    try:
+        validate_prepared_output(tmp_path)
+    except RuntimeFailure:
+        return
+    raise AssertionError("symlink inside prior/ must be refused")

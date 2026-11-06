@@ -1,5 +1,5 @@
 # Paths resolve from the directory where sim2sim is invoked.
-output_dir = "runs/example"
+output_dir = "experiments/runs/sandbox-example"
 task = "Reconstruct the observed scene as a MuJoCo XML project. Use interactions to infer geometry and physical parameters. Submit scene.xml and any local assets as a ZIP."
 record_video = true
 video_fps = 30
@@ -10,26 +10,36 @@ scene = "environments/blocks/scene.xml"
 [sandbox]
 image = "localhost/sim2sim:latest"
 evaluator_image = "localhost/sim2sim:latest"
-command = ["python", "/opt/agent/scripted_agent.py"]
+command = ["python", "/opt/agent/sandbox_agent.py"]
 memory = "1g"
 cpus = 1
 pids = 64
 # For hosts delegating cpu/memory but no pids controller, explicitly select
 # the hard RLIMIT_NPROC backend for this fixed nonroot UID.
 # process_limit_backend = "rlimit"
+# On Slurm test nodes (scripts/experiment-strict.slurm), every container runs in
+# its own exact Slurm step; integer cpus and whole-MiB memory are then required:
+# process_limit_backend = "slurm_step"
 workspace = "256m"
+# Optional evaluator/candidate-worker bounds; omitted keys use the agent values.
+# [sandbox.worker]
+# memory = "4g"
+# cpus = 2
 
 [budget]
-active_seconds = 300
+active_seconds = 1800 # the sandbox agent ends its session 6 minutes before the earlier deadline
+wall_seconds = 1800 # includes preflight, initialization, inference and private scoring
 physics_ticks = 3000
 submissions = 3
 submission_bytes = 4194304
 max_message_bytes = 12582912
+audit_bytes = 536870912 # durable lossless wire/state/frame archive budget
 
 [simulation]
 rgb = true
 depth = false
 calibration = true
+wrench = false
 width = 320
 height = 240
 camera = "fixed"
@@ -42,11 +52,22 @@ width = 320
 height = 240
 timeout_seconds = 180
 
-# Optional fixed HTTPS chat-completions endpoint. Key is read only by the host.
-# [inference]
-# endpoint = "https://api.openai.com/v1/chat/completions"
-# model = "YOUR_MODEL"
-# api_key_env = "OPENAI_API_KEY"
-# max_calls = 20
-# max_output_tokens = 1024
-# max_total_tokens = 50000 # Reported-usage threshold; a completed call can cross it.
+[inference]
+# Fixed host-side gateway; the key is read from the host environment only and never enters the container.
+endpoint = "https://api.aqinference.com/v1/responses"
+provider = "openai"        # forced route: the broker rejects fallbacks and any other returned model
+model = "gpt-6-astra"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+metadata = { project = "amish-research", feature = "sim2sim-agent-eval" }
+api_key_env = "INFERENCE_API_KEY"
+max_calls = 2000
+max_cost_usd = 58.0        # per-run cap on gateway-reported cost
+cost_pool = "sim2sim-500"  # shared cap across concurrent runs; one host-only ledger file per run
+cost_pool_usd = 500.0
+cost_ledger_dir = "experiments/cost-ledger"
+call_reserve_usd = 3.0     # worst-case single call; graceful stop when a cap has less than 2x this left
+max_output_tokens = 16384
+max_request_bytes = 12582912
+max_response_bytes = 1048576
+timeout_seconds = 300

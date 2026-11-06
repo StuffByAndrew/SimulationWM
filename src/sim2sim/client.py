@@ -27,25 +27,34 @@ class Client:
             raise RuntimeError(response.get("error", "Host operation failed"))
         return response
 
-    def observe(self, ticks=0):
-        return self.request("observe", ticks=ticks)["observation"]
+    def observe(self, ticks=0, *, world="reference"):
+        return self.request("observe", ticks=ticks, world=world)["observation"]
 
-    def grasp(self, pixel):
-        return self.request("grasp", pixel=list(pixel))["observation"]
+    def arm_target(self, joint_targets, gripper_width_m, ticks=20, *, world="reference"):
+        return self.request("arm_target", joint_targets=list(joint_targets),
+                            gripper_width_m=gripper_width_m, ticks=ticks, world=world)["observation"]
 
-    def move(self, displacement, ticks=20):
-        return self.request("move", displacement=list(displacement), ticks=ticks)["observation"]
+    def grasp(self, pixel, *, world="reference"):
+        return self.request("grasp", pixel=list(pixel), world=world)["observation"]
 
-    def release(self, ticks=0):
-        return self.request("release", ticks=ticks)["observation"]
+    def move(self, displacement, ticks=20, *, world="reference"):
+        return self.request("move", displacement=list(displacement), ticks=ticks, world=world)["observation"]
 
-    def reset(self):
-        return self.request("reset")["observation"]
+    def release(self, ticks=0, *, world="reference"):
+        return self.request("release", ticks=ticks, world=world)["observation"]
 
-    def inference(self, messages):
-        return self.request("inference", messages=messages)["inference"]
+    def reset(self, *, world="reference"):
+        return self.request("reset", world=world)["observation"]
 
-    def submit(self, project_dir):
+    def inference(self, messages, tools=None):
+        return self.request("inference", messages=messages, **({"tools": tools} if tools else {}))["inference"]
+
+    def sam3d(self, image_png, mask_png, seed=0):
+        """SAM 3D Objects on one image and object mask (PNG bytes): mesh_ply_b64, vertices, faces, layout, frame."""
+        encode = lambda data: base64.b64encode(data).decode()
+        return self.request("sam3d", image_png_b64=encode(image_png), mask_png_b64=encode(mask_png), seed=seed)["sam3d"]
+
+    def _project(self, project_dir):
         root = Path(project_dir).resolve()
         data = io.BytesIO()
         with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -57,7 +66,17 @@ class Client:
         maximum = int(self.task["submission"]["max_bytes"])
         if len(data.getvalue()) > maximum:
             raise ValueError("Project exceeds compressed submission limit")
-        return self.request("submit", project_b64=base64.b64encode(data.getvalue()).decode())
+        return base64.b64encode(data.getvalue()).decode()
+
+    def load_reconstruction(self, project_dir, *, entrypoint="scene.xml", camera="fixed"):
+        return self.request("load_reconstruction", world="reconstruction", project_b64=self._project(project_dir),
+                            entrypoint=entrypoint, camera=camera)
+
+    def submit(self, project_dir):
+        return self.request("submit", project_b64=self._project(project_dir))
+
+    def progress(self, text, *, origin="agent"):
+        return self.request("progress", text=text, origin=origin)
 
     def finish(self):
         return self.request("finish")

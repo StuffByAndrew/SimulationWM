@@ -44,3 +44,26 @@ def test_playable_simulation_time_videos_split_on_reset():
                     reader.close()
     finally:
         sim.close()
+
+
+def test_recorded_frame_video_cadence_is_independent_of_action_count(tmp_path):
+    import base64
+    import io
+    from PIL import Image
+    from sim2sim.runtime import FrameVideoRecorder
+    png = io.BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(png, format="PNG")
+    rgb = base64.b64encode(png.getvalue()).decode()
+    recorder = FrameVideoRecorder(tmp_path, 30)
+    for tick in range(21):
+        # Every tiny action has a full audit image, but video stays at30fps.
+        recorder.push({"rgb": rgb, "time": tick*.002}, tick, 0, final=True)
+    recorder.close()
+    index = json.loads((tmp_path / "video-index.json").read_text())
+    assert index[0]["frames"] == 3
+    reader = imageio.get_reader(tmp_path / index[0]["file"])
+    try:
+        assert reader.count_frames() == 3
+        assert reader.get_meta_data()["fps"] == 30
+    finally:
+        reader.close()

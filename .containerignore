@@ -1,0 +1,11 @@
+*
+!Containerfile
+!pyproject.toml
+!src/
+!src/**
+!examples/
+!examples/sandbox_agent.py
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+!Containerfile.tools
