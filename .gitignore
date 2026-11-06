@@ -7,3 +7,17 @@ runs/
 build/
 dist/
 sim2sim-tests-*.out
+MUJOCO_LOG.TXT
+
+/experiments/validation/*
+!/experiments/validation/.gitkeep
+/experiments/dashboard/*
+!/experiments/dashboard/serve.sh
+sim2sim-experiment-*.out
+/tools/segmentation/vendor/
+# Local agent worktrees, report outputs and data, live spend records and stray job output
+/.claude/
+/experiments/reports/
+/experiments/cost-ledger/
+/oom
+/*.log
