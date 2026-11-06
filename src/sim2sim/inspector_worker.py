@@ -172,7 +172,8 @@ class Session:
                 return {"type": "grasp", "ok": False, "reason": reason}
             body, point = hit
             self.sim._grasp_controller.attach(body, point)
-            self.target, self.playing = point.copy(), True
+            # Coupled grasps hold the world paused until the counterpart part is picked too.
+            self.target, self.playing = point.copy(), bool(message.get("play", True))
             return {"type": "grasp", "ok": True, "point": point.tolist(),
                     "body": mujoco.mj_id2name(self.sim._model, mujoco.mjtObj.mjOBJ_BODY, body)}
         elif op == "target":

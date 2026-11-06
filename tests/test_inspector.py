@@ -165,10 +165,33 @@ def test_api_requires_json_and_serves_current_view_code(tmp_path):
         server.server_close()
 
 
+def test_live_server_without_physics_serves_current_catalog_and_snapshots(tmp_path):
+    from sim2sim.dashboard import LiveDashboard
+    inspector_run(tmp_path)
+    live = LiveDashboard([tmp_path])
+    server = ThreadingHTTPServer(('127.0.0.1', 0), _handler(None, live.output, live))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{server.server_address[1]}'
+    try:
+        catalog = urllib.request.urlopen(base + '/catalog.js', timeout=5).read().decode()
+        assert '"inspect-fixture"' in catalog
+        identifier = hashlib.sha256(b'inspect-fixture').hexdigest()[:16]
+        assert urllib.request.urlopen(f'{base}/runs/{identifier}.js', timeout=30).read().startswith(b'window.__dashboardRunData(')
+        inspector_run(tmp_path, 'added-later')
+        assert '"added-later"' in urllib.request.urlopen(base + '/catalog.js', timeout=5).read().decode()
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + '/api/inspector/state', timeout=5)
+        assert error.value.code == 503
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_dashboard_has_physics_view_with_version_scrubber():
     from sim2sim.dashboard_view import HTML, SCRIPT
     for marker in ('id="view-physics"', 'id="physics-reference"', 'id="physics-candidate"', 'id="version-timeline"',
-                   'id="recordings-view"', 'id="physics-view" hidden'):
+                   'id="recordings-view"', 'id="physics-view" hidden', 'id="physics-couple"', 'id="physics-overlay"',
+                   'id="environments-view" hidden', 'id="gallery-frame"'):
         assert marker in HTML
     assert "fetch('api/inspector/'+path" in SCRIPT and "'Content-Type':'application/json'" in SCRIPT
 
@@ -188,9 +211,53 @@ def live_app(tmp_path):
         pytest.skip('Interactive physics runs only on a Slurm test allocation')
     from sim2sim.inspector import InspectorApp
     inspector_run(tmp_path)
-    app = InspectorApp(tmp_path, ports=(0, 0), session_seconds=300, workspace=tmp_path / 'workspace')
+    app = InspectorApp(tmp_path, ports=(0, 0, 0, 0), session_seconds=300, workspace=tmp_path / 'workspace')
     yield app
     app.close()
+
+
+def test_live_coupled_grasp_moves_both_worlds_and_overlay_shows_both(live_app):
+    app = live_app
+    app.select({'run': 'inspect-fixture', 'time': 2.0})
+    reference, candidate, overlay = (app.viewers[name] for name in ('reference', 'candidate', 'overlay'))
+    _wait(lambda: reference.positions is not None and candidate.positions is not None, message='both worlds ready')
+    _wait(lambda: all(overlay.layers[w]['positions'] is not None for w in ('reference', 'candidate')), message='overlay layers')
+    assert 0 in overlay.layers['reference']['frames'] and 0 not in overlay.layers['candidate']['frames']  # no duplicate floor
+    box = next(i for i, b in enumerate(reference.model['bodies']) if b['name'] == 'box')
+    guess = next(i for i, b in enumerate(candidate.model['bodies']) if b['name'] == 'guess')
+    app.control('couple', 'both', True)
+    down = {'origin': [0, 0, 1], 'direction': [0, 0, -1]}
+    app.control('grasp', 'reference', down)
+    _wait(lambda: reference.summary.get('grasp') == 'box', message='reference part picked')
+    assert all(viewer.gizmo is None for viewer in app.viewers.values()) and not reference.summary['playing']
+    app.control('grasp', 'candidate', down)
+    _wait(lambda: all(viewer.gizmo is not None for viewer in app.viewers.values()), message='coupled gizmos')
+    _wait(lambda: reference.summary['playing'] and candidate.summary['playing'], message='coupled worlds play together')
+    app.drag(overlay, overlay.gizmo_origin + np.array([0, 0, .3]))
+    _wait(lambda: reference.positions[box][2] > .25 and candidate.positions[guess][2] > .25, timeout=30, message='both lifted')
+    assert np.allclose(candidate.gizmo.position, candidate.gizmo_origin + [0, 0, .3])
+    assert app.state()['coupled'] and app.state()['overlay_port'] == overlay.port
+    app.control('release', 'reference')  # coupled playback controls act on both worlds
+    _wait(lambda: reference.summary.get('grasp') is None and candidate.summary.get('grasp') is None, message='both released')
+    _wait(lambda: all(viewer.gizmo is None for viewer in app.viewers.values()), message='gizmos removed')
+
+
+def test_live_gallery_shows_every_environment_scene(tmp_path):
+    if not ON_TEST_NODE:
+        pytest.skip('Interactive physics runs only on a Slurm test allocation')
+    from sim2sim.inspector import InspectorApp
+    for name in ('alpha', 'beta'):
+        (tmp_path / 'environments' / name).mkdir(parents=True)
+        (tmp_path / 'environments' / name / 'scene.xml').write_text(SOURCE)
+    app = InspectorApp(tmp_path, ports=(0, 0, 0, 0), session_seconds=300, workspace=tmp_path / 'workspace',
+                       environments=tmp_path / 'environments')
+    try:
+        _wait(lambda: app.gallery.status != 'loading', timeout=120, message='gallery loaded')
+        gallery = app.state()['gallery']
+        assert gallery['status'] == 'ready' and [e['path'] for e in gallery['environments']] == ['alpha', 'beta']
+        assert all(e['status'] == 'ready' for e in gallery['environments']) and gallery['port']
+    finally:
+        app.close()
 
 
 def test_live_versions_grasp_and_worker_errors(live_app):
@@ -253,7 +320,7 @@ def test_dashboard_physics_tab_with_live_backend(live_app, tmp_path):
                                  '--disable-background-networking', '--no-first-run', '--window-size=1440,1250',
                                  '--virtual-time-budget=30000', '--dump-dom', f'--user-data-dir={tmp_path}/profile',
                                  f'http://127.0.0.1:{server.server_address[1]}/selftest.html'],
-                                capture_output=True, text=True, timeout=90)
+                                capture_output=True, text=True, timeout=180)
     finally:
         server.shutdown()
         server.server_close()
@@ -267,8 +334,9 @@ def test_static_dashboard_reports_missing_inspector(tmp_path):
     browser = shutil.which('chromium-browser') or shutil.which('chromium')
     if not browser or not ON_TEST_NODE:
         pytest.skip('Browser validation runs only on a Slurm test allocation with Chromium')
-    from sim2sim.dashboard import build_dashboard
-    inspector_run(tmp_path)
+    from sim2sim.dashboard import build_dashboard, environment_scenes
+    run = inspector_run(tmp_path)
+    (run / 'experiment.json').write_text(json.dumps({'name': 'Static fixture', 'environment': environment_scenes()[0]}))
     build_dashboard(tmp_path)
     page = tmp_path / 'dashboard/selftest.html'
     page.write_text(STATIC_CHECK)
@@ -282,7 +350,7 @@ def test_static_dashboard_reports_missing_inspector(tmp_path):
 _PAGE = '''<!doctype html><body><iframe id="dashboard" src="index.html" style="width:1400px;height:1100px"></iframe><pre id="result"></pre>
 <script>
 const started=Date.now();let stage=0;
-function done(ok,text){document.getElementById('result').textContent=text;document.body.dataset.test=ok?'passed':'failed';clearInterval(timer);}
+function done(ok,text){document.getElementById('result').textContent=text;document.body.dataset.test=ok?'passed':'failed';clearInterval(timer);document.getElementById('dashboard').src='about:blank';}  // stop the WebGL viewers once decided
 const timer=setInterval(()=>{try{const w=document.getElementById('dashboard').contentWindow,d=w.document;
 if(Date.now()-started>25000)return done(false,'FAIL: timeout at stage '+stage+' '+(d.getElementById('version-label')?.textContent||'')+' '+(d.getElementById('physics-unavailable')?.textContent||''));
 if(!w.__dashboardTest||!w.__dashboardTest.getRun())return;
@@ -297,9 +365,14 @@ if(stage===2){if(state.selected!==0||!d.getElementById('version-label').textCont
 const slider=d.getElementById('version-timeline');slider.value='0.5';slider.dispatchEvent(new w.Event('input'));slider.dispatchEvent(new w.Event('change'));stage=3;return;}
 if(stage===3){if(state.selected!==null)return;if(!d.getElementById('version-label').textContent.includes('No reconstruction had been loaded'))return done(false,'FAIL: empty label');
 d.getElementById('version-next').click();stage=4;return;}
-if(stage===4){if(state.selected!==0)return;const life=d.getElementById('server-life');if(life.hidden||!/Server time left [0-9]/.test(life.textContent))return done(false,'FAIL: server time left '+life.textContent);d.querySelector('[data-physics="reset"]').click();d.getElementById('view-recordings').click();if(d.getElementById('recordings-view').hidden)return done(false,'FAIL: back to recordings');done(true,'PASS: physics tab, live version scrubber and markers');}'''
+if(stage===4){if(state.selected!==0)return;const life=d.getElementById('server-life');if(life.hidden||!/Server time left [0-9]/.test(life.textContent))return done(false,'FAIL: server time left '+life.textContent);if(!d.getElementById('overlay-window').hidden)return done(false,'FAIL: overlay shown uncoupled');d.getElementById('physics-couple').click();stage=5;return;}
+if(stage===5){if(!state.coupled)return;if(d.getElementById('overlay-window').hidden||!d.getElementById('physics-overlay').src.includes(':'+state.overlay_port+'/'))return done(false,'FAIL: overlay pane');if(!d.getElementById('couple-status').textContent.includes('Pick the reference and reconstruction part'))return done(false,'FAIL: couple status '+d.getElementById('couple-status').textContent);
+d.querySelector('[data-physics="reset"]').click();d.getElementById('view-recordings').click();if(d.getElementById('recordings-view').hidden)return done(false,'FAIL: back to recordings');done(true,'PASS: physics tab, live version scrubber, markers and coupled overlay');}'''
 STATIC_CHECK = _PAGE % '''if(stage===0){d.getElementById('view-physics').click();stage=1;return;}
-const banner=d.getElementById('physics-unavailable');if(banner.hidden)return;if(!d.getElementById('server-life').hidden)return done(false,'FAIL: static snapshot shows server life');if(!banner.textContent.includes('Slurm test'))return done(false,'FAIL: banner text');done(true,'PASS: static snapshot explains missing inspector');'''
+const banner=d.getElementById('physics-unavailable');if(banner.hidden)return;if(!d.getElementById('server-life').hidden)return done(false,'FAIL: static snapshot shows server life');if(!banner.textContent.includes('Slurm test'))return done(false,'FAIL: banner text');
+if(stage===1){d.getElementById('view-environments').click();stage=2;return;}
+if(d.getElementById('gallery-unavailable').hidden)return;const cards=d.querySelectorAll('#environment-cards .env-card');if(!cards.length||cards.length!==w.__dashboardEnvironments.length)return done(false,'FAIL: environment cards '+cards.length);
+cards[0].querySelector('button').click();if(d.getElementById('recordings-view').hidden||d.querySelector('#tag-filters button[data-category="Scene"][aria-pressed=true]')?.dataset.value!==w.__dashboardEnvironments[0].scene)return done(false,'FAIL: show runs of an environment');done(true,'PASS: static snapshot explains missing inspector and lists environments');'''
 
 
 ROBOT_FIRST_SCENE = '''<mujoco><compiler angle="radian" autolimits="true" meshdir="robot/assets"/>

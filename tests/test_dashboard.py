@@ -152,7 +152,10 @@ BROWSER_CHECK=r'''<!doctype html><meta charset="utf-8"><iframe id="app" src="ind
 function check(value,message){if(!value)throw Error(message);}
 function nearly(a,b){return Math.abs(a-b)<.025;}
 let tries=0;const timer=setInterval(()=>{try{const w=document.getElementById('app').contentWindow,d=w.document,test=w.__dashboardTest;if(!test||!test.getRun()){if(++tries>100)throw Error('dashboard did not load');return;}clearInterval(timer);
-const selected=d.getElementById('experiment'),preferred=w.__dashboardCatalog.find(item=>item.directory==='active'||item.directory==='finished');check(selected.value===preferred.id,'active or finished attempt selected by default');check([...selected.options].every(option=>option.textContent.includes(w.__dashboardCatalog.find(item=>item.id===option.value).directory)),'attempt ids visible in selector');
+const preferred=w.__dashboardCatalog.find(item=>item.directory==='active'||item.directory==='finished'),rows=()=>[...d.querySelectorAll('#run-list .run-row')];check(test.getRun().id===preferred.id,'active or finished attempt selected by default');check(rows().length===w.__dashboardCatalog.length&&rows().every(row=>row.textContent.includes(w.__dashboardCatalog.find(item=>item.id===row.dataset.id).directory)),'attempt ids visible in run list');check(d.querySelector('.run-row[aria-pressed=true]').dataset.id===preferred.id,'selected run highlighted');check(d.getElementById('run-title').textContent===preferred.name,'selected run title');
+const search=d.getElementById('run-search');search.value=preferred.directory;search.dispatchEvent(new w.Event('input'));check(rows().length===1&&rows()[0].dataset.id===preferred.id,'search narrows the list');search.value='';search.dispatchEvent(new w.Event('input'));
+d.querySelector('#tag-filters button[data-category="Status"][data-value="'+preferred.status+'"]').click();check(rows().length===w.__dashboardCatalog.filter(item=>item.status===preferred.status).length,'status tag filter');d.getElementById('clear-filters').click();check(rows().length===w.__dashboardCatalog.length,'filters cleared');
+const sort=d.getElementById('run-sort');sort.value='name-asc';sort.dispatchEvent(new w.Event('change'));const first=rows()[0].dataset.id;sort.value='name-desc';sort.dispatchEvent(new w.Event('change'));check(rows()[0].dataset.id!==first,'name sort direction');sort.value='date-desc';sort.dispatchEvent(new w.Event('change'));
 const main=d.getElementById('timeline');main.value='1.8';main.dispatchEvent(new w.Event('input',{bubbles:true}));check(nearly(test.getState().time,1.8),'main seek');check(d.getElementById('reference-timeline').value===main.value,'reference range linked');check(test.getState().referenceSeq!==test.getState().candidateSeq,'independent held frames');
 const candidate=d.getElementById('candidate-timeline');candidate.value='3.5';candidate.dispatchEvent(new w.Event('input',{bubbles:true}));check(nearly(test.getState().time,3.5),'recording seek');check(d.getElementById('timeline').value===candidate.value,'recording->main link');
 const graph=d.querySelector('#plots svg'),rect=graph.getBoundingClientRect();graph.dispatchEvent(new w.MouseEvent('click',{clientX:rect.left+rect.width*.5,clientY:rect.top+50,bubbles:true}));const seek=test.getState().time;check(seek>1&&seek<4,'plot seek');const cursor=d.querySelector('.cursor');check(Number(cursor.getAttribute('x1'))>100,'plotcursor follows');
@@ -346,3 +349,58 @@ def test_legacy_action_completion_preserves_actual_partial_ticks(tmp_path):
     assert action['outcome']=='error' and action['completed_wall_elapsed']==2
     assert 'serial world order' in action['correlation']
     assert any('Legacy actions' in warning for warning in data['warnings'])
+
+
+def metadata_run(root,name,factor,environment='damped_lever',simulation=None,physical=None,status='completed'):
+    run=root/'runs'/name;run.mkdir(parents=True)
+    (run/'experiment.json').write_text(json.dumps({'name':f'Wave 2 · {environment} · {factor}','environment':environment,'model':'m',
+        'execution_mode':'strict_oci','created_at':'2026-11-03T05:02:00+00:00','physical_parameters':{'factor':factor,**(physical or {})}}))
+    (run/'status.json').write_text(json.dumps({'status':status,'started_at':'2026-11-03T06:00:00+00:00'}))
+    (run/'config-private.json').write_text(json.dumps({'task':'Keep going; finishing early earns nothing.','simulation':simulation or {'rgb':True,'wrench':True}}))
+    return run
+
+
+def test_tags_and_ablation_comparisons_come_from_recorded_metadata(tmp_path):
+    from sim2sim.dashboard import _discover,_summary,_comparisons
+    hard={'perturbation.physics':'{}'}
+    metadata_run(tmp_path,'w2-lever-hard-base-20261103-001','hard variant baseline',physical=hard)
+    metadata_run(tmp_path,'w2-lever-hard-nowrench-20261103-001','hard variant, grasp wrench disabled (vs w2-lever-hard-base)',
+                 simulation={'rgb':True,'wrench':False},physical=hard)
+    for attempt in ('001','002'): metadata_run(tmp_path,f'w1-assembly-base-20261102-{attempt}','baseline','random_assembly')
+    metadata_run(tmp_path,'w1-assembly-depth-20261102-003','depth observations enabled','random_assembly',{'rgb':True,'depth':True,'wrench':True})
+    metadata_run(tmp_path,'w5-panda-noaction-20261103-001','observe-only reference world (vs w3-not-recorded)','panda_damped_lever',
+                 {'rgb':True,'reference_interaction':False},status='running')
+    summaries=[_summary(run,root,identifier) for root,run,identifier in _discover([tmp_path])]
+    pairs={pair['id']:pair for pair in _comparisons(summaries)}
+    # Explicit "(vs ...)" annotations, else the sibling -base condition; unrecorded baselines create no pair.
+    assert set(pairs)=={'w2-lever-hard-nowrench vs w2-lever-hard-base','w1-assembly-depth vs w1-assembly-base'}
+    assert pairs['w2-lever-hard-nowrench vs w2-lever-hard-base']['name']=='damped_lever · hard variant, grasp wrench disabled'
+    assert sorted(pairs['w1-assembly-depth vs w1-assembly-base']['runs'])==['w1-assembly-base-20261102-001','w1-assembly-base-20261102-002','w1-assembly-depth-20261102-003']
+    runs={item['directory']:item for item in summaries}
+    nowrench=runs['w2-lever-hard-nowrench-20261103-001']
+    assert nowrench['comparisons']==['w2-lever-hard-nowrench vs w2-lever-hard-base']
+    assert nowrench['tags']['Interaction']==['No wrench'] and nowrench['tags']['Variant']==['Hard physics']
+    assert nowrench['tags']['Series']==['Wave 2'] and nowrench['tags']['Prompt']==['Full-budget prompt'] and nowrench['tags']['Status']==['completed']
+    assert runs['w1-assembly-depth-20261102-003']['tags']['Observations']==['RGB','Depth']
+    panda=runs['w5-panda-noaction-20261103-001']
+    assert panda['environment']=='panda/damped_lever' and panda['tags']['Robot']==['Panda'] and panda['tags']['Scene']==['damped_lever']
+    assert 'Observe-only reference' in panda['tags']['Interaction'] and panda['comparisons']==[]
+
+
+def test_live_dashboard_lists_new_runs_and_reverifies_only_changed_records(tmp_path,monkeypatch):
+    import sim2sim.dashboard as dashboard
+    fixture_run(tmp_path,'run-a')
+    live=dashboard.LiveDashboard([tmp_path])
+    assert b'"run-a"' in live.catalog_script() and b'__dashboardEnvironments' in live.catalog_script()
+    calls=[];original=dashboard._run_snapshot
+    monkeypatch.setattr(dashboard,'_run_snapshot',lambda run,*rest:calls.append(run.name) or original(run,*rest))
+    identifier=hashlib.sha256(b'run-a').hexdigest()[:16]
+    first=live.run_script(identifier)
+    assert first.startswith(b'window.__dashboardRunData(') and live.run_script(identifier)==first and calls==['run-a']
+    (tmp_path/'runs/run-a/status.json').write_text(json.dumps({'status':'completed'}))
+    live.run_script(identifier);assert calls==['run-a','run-a']
+    fixture_run(tmp_path,'run-b');assert b'"run-b"' in live.catalog_script()
+    with pytest.raises(KeyError): live.run_script('0'*16)
+    # A static build records the same keys, so a later live server reuses its verified snapshot.
+    build_dashboard(tmp_path);calls.clear()
+    assert dashboard.LiveDashboard([tmp_path]).run_script(identifier).startswith(b'window.__dashboardRunData(') and calls==[]

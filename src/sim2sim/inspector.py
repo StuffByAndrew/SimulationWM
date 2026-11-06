@@ -10,6 +10,7 @@ import argparse
 import base64
 import hashlib
 import json
+import re
 import math
 import os
 from pathlib import Path
@@ -32,6 +33,7 @@ MAX_WORKER_LINE = 160 * 1024 * 1024
 MAX_REQUEST = 64 * 1024
 SCORE_FIELDS = (('reconstruction', 'chamfer_distance_m'), ('reconstruction', 'center_of_mass_error_m'), ('reset', 'rgb_mse'))
 PLANE, SPHERE, CAPSULE, ELLIPSOID, CYLINDER, BOX, MESH = 0, 2, 3, 4, 5, 6, 7
+WORLDS = ('reference', 'candidate')
 
 
 def _lathe(profile, segments=32):
@@ -253,90 +255,139 @@ def _rgb(rgba):
     return tuple(int(round(255 * min(max(float(x), 0.0), 1.0))) for x in rgba[:3])
 
 
+def _add_model(scene, model, root, *, opacity=None, keep=None, on_click=None):
+    """Add a worker model description under ``root``; returns ({body: frame}, nodes, unsupported geom count)."""
+    extent = float(model.get('extent') or 1.0)
+    meshes = {key: (_decode(value['vertices'], '<f4', 3), _decode(value['faces'], '<i4', 3))
+              for key, value in model['meshes'].items()}
+    frames, nodes, skipped = {}, [], 0
+    for index, geom in enumerate(model['geoms']):
+        body = int(geom['body'])
+        if not 0 <= body < len(model['bodies']):
+            raise ValueError('geom references an unknown body')
+        if keep is not None and not keep(geom):
+            continue
+        if body not in frames:
+            frames[body] = scene.add_frame(f'{root}/b{body}', show_axes=False)
+            nodes.append(frames[body])
+        if int(geom['type']) == MESH:
+            vertices, faces = meshes[str(geom['mesh'])]
+            if faces.size and (faces.min() < 0 or faces.max() >= len(vertices)):
+                raise ValueError('mesh face index out of range')
+            mesh = (vertices, faces)
+        else:
+            mesh = primitive_mesh(int(geom['type']), geom['size'], plane_extent=max(3 * extent, 5.0))
+        if mesh is None or not np.isfinite(mesh[0]).all():
+            skipped += 1
+            continue
+        alpha = float(geom['rgba'][3]) * (opacity or 1.0)
+        handle = scene.add_mesh_simple(
+            f'{root}/b{body}/g{index}', mesh[0].astype(np.float32), mesh[1].astype(np.uint32),
+            color=_rgb(geom['rgba']), opacity=None if alpha >= 1 else alpha,
+            flat_shading=int(geom['type']) in (BOX, PLANE, MESH),
+            side='double' if int(geom['type']) == PLANE else 'front',
+            position=tuple(geom['pos']), wxyz=tuple(geom['quat']))
+        nodes.append(handle)
+        if body and on_click is not None:
+            handle.on_click(on_click)
+    return frames, nodes, skipped
+
+
+def _pose(frames, model, state):
+    """Move body frames to a worker state; False when the state is malformed or non-finite."""
+    bodies = len(model['bodies'])
+    xpos, xquat = np.asarray(state['xpos'], dtype=float), np.asarray(state['xquat'], dtype=float)
+    if xpos.shape != (bodies, 3) or xquat.shape != (bodies, 4) or not (np.isfinite(xpos).all() and np.isfinite(xquat).all()):
+        return False
+    for body, frame in frames.items():
+        if body:
+            frame.position, frame.wxyz = xpos[body], xquat[body]
+    return xpos
+
+
+def _object_geom(model):
+    """Overlay filter: no floors, and no robot links (which are not graspable) in Panda scenes."""
+    graspable = [body['graspable'] for body in model['bodies']]
+    return lambda geom: int(geom['type']) != PLANE and (not model.get('robot') or int(geom['body']) == 0 or graspable[int(geom['body'])])
+
+
+def _server(port, label):
+    import viser
+    server = viser.ViserServer(host='127.0.0.1', port=port, label=label, verbose=False)
+    if port and server.get_port() != port:
+        server.stop()
+        raise OSError(f'viewer port {port} is in use')
+    server.scene.set_up_direction('+z')
+    server.gui.configure_theme(dark_mode=True, control_width='small', show_share_button=False)
+    return server
+
+
 class Viewer:
-    """One Viser server for one world; scene nodes follow worker state messages."""
-    def __init__(self, app, world, label, port):
-        import viser
-        self.app, self.world, self.label = app, world, label
+    """One Viser server showing one world, or both worlds overlaid with the reconstruction translucent.
+
+    Scene nodes follow worker state messages. The app owns grasp anchors and places this viewer's gizmo.
+    """
+    def __init__(self, app, name, label, port, worlds):
+        self.app, self.name, self.label, self.primary = app, name, label, worlds[0]
+        self.single = len(worlds) == 1
         self.lock = threading.RLock()
-        self.server = viser.ViserServer(host='127.0.0.1', port=port, label=label, verbose=False)
-        if port and self.server.get_port() != port:
-            self.server.stop()
-            raise OSError(f'viewer port {port} is in use')
+        self.server = _server(port, label)
         self.port = self.server.get_port()
-        self.server.scene.set_up_direction('+z')
-        self.server.gui.configure_theme(dark_mode=True, control_width='small', show_share_button=False)
         gui = self.server.gui
         self.status = gui.add_markdown(f'**{label}**  \nWaiting for a recorded version.')
+        target = self.primary if self.single else 'both'
         for text, op in (('Play', 'play'), ('Pause', 'pause'), ('Step 0.1 s', 'step'), ('Reset', 'reset'), ('Release grasp', 'release')):
-            gui.add_button(text).on_click(lambda _, op=op: self.app.control(op, self.world))
+            gui.add_button(text).on_click(lambda _, op=op: self.app.control(op, target))
         self.speed = gui.add_slider('Speed', min=0.05, max=2.0, step=0.05, initial_value=1.0)
-        self.speed.on_update(lambda _: self.app.control('speed', self.world, self.speed.value))
-        gui.add_markdown('Click a movable body to grasp that point; drag the gizmo to move the '
-                         'handle. Physics runs while playing; grasping starts playback.')
+        self.speed.on_update(lambda _: self.app.control('speed', target, self.speed.value))
+        gui.add_markdown('Click a movable body to grasp that point; drag the gizmo to move the handle. Physics runs '
+                         'while playing; grasping starts playback. With coupled grasping on, pick the part in each world '
+                         'and one drag moves both handles by the same displacement.' if self.single else
+                         'Reference opaque, reconstruction objects translucent. Click a part of either world to pick it '
+                         'for the coupled grasp; drag the gizmo to move both handles together.')
         self.server.on_client_connect(self._connected)
-        self.nodes, self.frames, self.gizmo, self.markers = [], {}, None, None
-        self.model = self.description = self.positions = None
+        self.layers = {world: dict(frames={}, nodes=[], markers=None, model=None, positions=None) for world in worlds}
+        self.gizmo = self.gizmo_origin = self.description = None
         self.summary = dict(status='waiting', message='Waiting for a recorded version.')
         self.last_status = 0.0
+
+    @property
+    def model(self):
+        return self.layers[self.primary]['model']
+
+    @property
+    def positions(self):
+        return self.layers[self.primary]['positions']
 
     def _connected(self, client):
         client.camera.on_update(lambda camera: self.app.camera_moved(self, camera))
 
-    def clear(self, status, message, description=None):
+    def clear(self, world, status, message, description=None):
         with self.lock:
+            layer = self.layers[world]
             with self.server.atomic():
-                for node in reversed(self.nodes):
+                for node in reversed(layer['nodes']):
                     node.remove()
-                if self.gizmo is not None:
-                    self.gizmo.remove()
-            self.nodes, self.frames, self.gizmo, self.markers = [], {}, None, None
-            self.model = self.positions = None
-            self.description = description
-            self.summary = dict(status=status, message=message)
-            self.status.content = f'**{self.label}**  \n' + (f'{description}  \n' if description else '') + message
+            layer.update(frames={}, nodes=[], markers=None, model=None, positions=None)
+            if self.single:
+                self.description = description
+                self.summary = dict(status=status, message=message)
+                self.status.content = f'**{self.label}**  \n' + (f'{description}  \n' if description else '') + message
 
-    def show(self, model):
-        scene = self.server.scene
+    def show(self, world, model):
+        scene, layer = self.server.scene, self.layers[world]
         extent = float(model.get('extent') or 1.0)
+        translucent = not self.single and world == 'candidate'
         with self.lock, self.server.atomic():
-            meshes = {key: (_decode(value['vertices'], '<f4', 3), _decode(value['faces'], '<i4', 3))
-                      for key, value in model['meshes'].items()}
-            bodies = len(model['bodies'])
-            skipped = 0
-            for index, geom in enumerate(model['geoms']):
-                body = int(geom['body'])
-                if not 0 <= body < bodies:
-                    raise ValueError('geom references an unknown body')
-                if body not in self.frames:
-                    self.frames[body] = scene.add_frame(f'/model/b{body}', show_axes=False)
-                    self.nodes.append(self.frames[body])
-                if int(geom['type']) == MESH:
-                    vertices, faces = meshes[str(geom['mesh'])]
-                    if faces.size and (faces.min() < 0 or faces.max() >= len(vertices)):
-                        raise ValueError('mesh face index out of range')
-                    mesh = (vertices, faces)
-                else:
-                    mesh = primitive_mesh(int(geom['type']), geom['size'], plane_extent=max(3 * extent, 5.0))
-                if mesh is None or not np.isfinite(mesh[0]).all():
-                    skipped += 1
-                    continue
-                alpha = float(geom['rgba'][3])
-                handle = scene.add_mesh_simple(
-                    f'/model/b{body}/g{index}', mesh[0].astype(np.float32), mesh[1].astype(np.uint32),
-                    color=_rgb(geom['rgba']), opacity=None if alpha >= 1 else alpha,
-                    flat_shading=int(geom['type']) in (BOX, PLANE, MESH),
-                    side='double' if int(geom['type']) == PLANE else 'front',
-                    position=tuple(geom['pos']), wxyz=tuple(geom['quat']))
-                self.nodes.append(handle)
-                if body:
-                    handle.on_click(self._clicked)
+            frames, nodes, skipped = _add_model(scene, model, f'/{world}', opacity=.4 if translucent else None,
+                                                keep=_object_geom(model) if translucent else None,
+                                                on_click=lambda event: self._clicked(world, event))
             radius = max(.006, .012 * extent)
-            self.markers = (scene.add_icosphere('/grasp/anchor', radius=radius, color=(105, 226, 255), visible=False),
-                            scene.add_icosphere('/grasp/handle', radius=radius * .8, color=(255, 212, 107), visible=False))
-            self.nodes.extend(self.markers)
-            self.model = model
-            self.summary = dict(status='ready', message='Loaded' + (f'; {skipped} unsupported geoms hidden' if skipped else ''))
+            markers = (scene.add_icosphere(f'/{world}/grasp/anchor', radius=radius, color=(105, 226, 255), visible=False),
+                       scene.add_icosphere(f'/{world}/grasp/handle', radius=radius * .8, color=(255, 212, 107), visible=False))
+            layer.update(frames=frames, nodes=nodes + list(markers), markers=markers, model=model)
+            if self.single:
+                self.summary = dict(status='ready', message='Loaded' + (f'; {skipped} unsupported geoms hidden' if skipped else ''))
 
     def set_camera(self, camera, center, extent, move_clients):
         if camera:
@@ -361,52 +412,53 @@ class Viewer:
                 client.camera.position, client.camera.look_at = camera.position, camera.look_at
                 client.camera.up_direction = camera.up_direction
 
-    def _clicked(self, event):
-        self.app.control('grasp', self.world, {'origin': list(event.ray_origin), 'direction': list(event.ray_direction)})
+    def _clicked(self, world, event):
+        self.app.control('grasp', world, {'origin': list(event.ray_origin), 'direction': list(event.ray_direction)})
 
-    def grasped(self, message):
+    def place_gizmo(self, origin):
+        """Show the handle gizmo at ``origin``; None removes it. An unchanged origin keeps a dragged gizmo."""
         with self.lock:
+            if origin is not None and self.gizmo is not None and np.allclose(origin, self.gizmo_origin):
+                return
             if self.gizmo is not None:
                 self.gizmo.remove()
-                self.gizmo = None
-            if not message.get('ok'):
-                self.notice(message.get('reason', 'No graspable body under the click.'))
+            self.gizmo = self.gizmo_origin = None
+            if origin is None:
                 return
             extent = float((self.model or {}).get('extent') or 1.0)
-            self.gizmo = self.server.scene.add_transform_controls(
-                '/grasp/target', scale=max(.08, .25 * extent), disable_rotations=True,
-                position=tuple(message['point']))
-            gizmo = self.gizmo
-            gizmo.on_update(lambda _: self.app.control('target', self.world, list(gizmo.position)))
-            self.summary['message'] = f"Grasping {message.get('body')}"
+            gizmo = self.server.scene.add_transform_controls('/grasp/target', scale=max(.08, .25 * extent),
+                                                             disable_rotations=True, position=tuple(origin))
+            gizmo.on_update(lambda _: self.app.drag(self, np.asarray(gizmo.position, dtype=float)))
+            self.gizmo, self.gizmo_origin = gizmo, np.asarray(origin, dtype=float)
+
+    def move_gizmo(self, offset):
+        with self.lock:
+            if self.gizmo is not None:
+                self.gizmo.position = tuple(self.gizmo_origin + offset)
 
     def notice(self, text):
         self.summary['notice'] = str(text)
         for client in self.server.get_clients().values():
             client.add_notification('Inspector', str(text), auto_close_seconds=4.0)
 
-    def update(self, state):
+    def update(self, world, state):
         with self.lock:
-            if self.model is None:
-                return
-            bodies = len(self.model['bodies'])
-            xpos, xquat = np.asarray(state['xpos'], dtype=float), np.asarray(state['xquat'], dtype=float)
-            if xpos.shape != (bodies, 3) or xquat.shape != (bodies, 4) or not (np.isfinite(xpos).all() and np.isfinite(xquat).all()):
-                self.summary['message'] = 'Worker state is non-finite or malformed; display held.'
+            layer = self.layers[world]
+            if layer['model'] is None:
                 return
             grasp = state.get('grasp')
-            self.positions = xpos
             with self.server.atomic():
-                for body, frame in self.frames.items():
-                    if body:
-                        frame.position, frame.wxyz = xpos[body], xquat[body]
-                anchor, handle = self.markers
+                xpos = _pose(layer['frames'], layer['model'], state)
+                if xpos is False:
+                    self.summary['message'] = 'Worker state is non-finite or malformed; display held.'
+                    return
+                anchor, handle = layer['markers']
                 anchor.visible = handle.visible = grasp is not None
                 if grasp is not None:
                     anchor.position, handle.position = tuple(grasp['anchor']), tuple(grasp['handle'])
-            if grasp is None and self.gizmo is not None:
-                self.gizmo.remove()
-                self.gizmo = None
+            layer['positions'] = xpos
+            if not self.single:
+                return
             self.summary.update(time=float(state['time']), playing=bool(state.get('playing')), speed=state.get('speed'),
                                 grasp=grasp['body'] if grasp else None, lagging=bool(state.get('lagging')),
                                 unstable=int(state.get('unstable') or 0))
@@ -422,18 +474,95 @@ class Viewer:
                 self.status.content = f'**{self.label}**  \n' + (f'{self.description}  \n' if self.description else '') + '  \n'.join(notes)
 
 
+class Gallery:
+    """Every authored environment scene at its initial state, side by side in one Viser server (rows by robot family)."""
+    def __init__(self, port, root, workspace, seconds):
+        from .dashboard import environment_scenes
+        self.server = _server(port, 'Environments')
+        self.port, self.root = self.server.get_port(), Path(root)
+        self.environments = [dict(path=path, status='loading') for path in environment_scenes(root)]
+        self.status = 'loading'
+        threading.Thread(target=self._load, args=(Path(workspace), seconds), daemon=True).start()
+
+    def _describe(self, path, workspace, seconds):
+        from .runtime import zip_directory
+        family = path.split('/')[0]
+        received, done = {}, threading.Event()
+
+        def collect(message):
+            received.setdefault(message.get('type'), message)
+            if message.get('type') in ('state', 'error'):
+                done.set()
+        setup = dict(kind='source', archive_b64=base64.b64encode(zip_directory(self.root / family)).decode(),
+                     entrypoint=path.split('/', 1)[1] + '/scene.xml' if '/' in path else 'scene.xml',
+                     simulation={'robot': 'panda'} if (self.root / family / 'robot').is_dir() else {})
+        worker = WorldProcess(workspace, setup, collect, seconds)
+        try:
+            if not done.wait(120):
+                raise RuntimeFailure('environment worker timed out')
+        finally:
+            worker.close()
+        if 'error' in received:
+            raise RuntimeFailure(received['error']['error'])
+        return received['model'], received['state']
+
+    def _load(self, workspace, seconds):
+        try:
+            self._layout(workspace, seconds)
+            self.status = 'ready'
+        except Exception as exc:
+            self.status = f'error: {type(exc).__name__}: {exc}'
+            raise
+
+    def _layout(self, workspace, seconds):
+        loaded = []
+        for entry in self.environments:
+            try:
+                loaded.append((entry, *self._describe(entry['path'], workspace, seconds)))
+                entry['status'] = 'ready'
+            except Exception as exc:
+                entry.update(status='error', error=f'{type(exc).__name__}: {exc}')
+        scene, row_y, previous_family, cursor, row_depth, span = self.server.scene, 0.0, None, 0.0, 0.0, 1.0
+        with self.server.atomic():
+            for index, (entry, model, state) in enumerate(loaded):
+                family = entry['path'].split('/')[0] if '/' in entry['path'] else ''
+                extent, center = float(model['extent']), np.asarray(model['center'])
+                if family != previous_family and previous_family is not None:
+                    row_y, cursor, row_depth = row_y - 1.5 * row_depth, 0.0, 0.0
+                previous_family, row_depth = family, max(row_depth, 2 * extent)
+                root = f'/env{index}'
+                scene.add_frame(root, show_axes=False, position=(cursor + extent - center[0], row_y - center[1], 0.0))
+                frames, _, _ = _add_model(scene, model, root, keep=lambda geom: int(geom['type']) != PLANE)
+                _pose(frames, model, state)
+                scene.add_label(f'{root}/label', entry['path'], position=tuple(center + [0, 0, .9 * extent]), anchor='bottom-center')
+                cursor += 2.2 * extent
+                span = max(span, cursor)
+            look, position = (span / 2, row_y / 2, 0.0), (span / 2, row_y / 2 - 1.2 * span, .8 * span)
+            initial = self.server.initial_camera
+            initial.look_at, initial.position = look, position
+        for client in self.server.get_clients().values():
+            with client.atomic():
+                client.camera.look_at, client.camera.position = look, position
+
+    def state(self):
+        return dict(port=self.port, status=self.status, environments=self.environments)
+
+
 class InspectorApp:
-    """Owns both viewers, the selected run/version and the two physics workers."""
-    def __init__(self, root, ports=(0, 0), session_seconds=2 * 3600, workspace=None):
+    """Owns the viewers, the selected run/version, the two physics workers and the coupled grasp."""
+    def __init__(self, root, ports=(0, 0, 0, 0), session_seconds=2 * 3600, workspace=None, environments=None):
         self.roots = [Path(r).resolve() for r in (root if isinstance(root, (list, tuple)) else [root])]
         self.workspace = Path(workspace or tempfile.mkdtemp(prefix='sim2sim-inspect-'))
         self.session_seconds = session_seconds
         self.expires_at = _job_end() or time.time() + session_seconds
         self.lock = threading.RLock()
-        self.viewers = {}
+        self.viewers, self.gallery = {}, None
         try:
-            self.viewers['reference'] = Viewer(self, 'reference', 'Reference · private source scene', ports[0])
-            self.viewers['candidate'] = Viewer(self, 'candidate', 'Reconstruction · recorded version', ports[1])
+            self.viewers['reference'] = Viewer(self, 'reference', 'Reference · private source scene', ports[0], ('reference',))
+            self.viewers['candidate'] = Viewer(self, 'candidate', 'Reconstruction · recorded version', ports[1], ('candidate',))
+            self.viewers['overlay'] = Viewer(self, 'overlay', 'Overlay · reference and reconstruction', ports[2], WORLDS)
+            if environments is not None:
+                self.gallery = Gallery(ports[3], environments, self.workspace / 'gallery', session_seconds)
         except Exception:
             for viewer in self.viewers.values():
                 viewer.server.stop()
@@ -442,6 +571,7 @@ class InspectorApp:
         self.run = self.recorded = self.selected = self.error = None
         self.loading, self.generation, self.sync, self.pending = False, 0, True, (None, None)
         self.source_camera, self.camera_owner = None, (None, 0.0)
+        self.coupled, self.anchors = False, {}
         self.verified = {}
 
     # Run and version selection ------------------------------------------------
@@ -473,8 +603,8 @@ class InspectorApp:
             self._stop(world)
         self.run, self.recorded, self.selected, self.error, self.loading = directory, None, None, None, True
         self.pending = (wall, index)
-        for viewer in self.viewers.values():
-            viewer.clear('loading', 'Verifying the recorded audit and recovering versions.')
+        for world in WORLDS:
+            self._clear(world, 'loading', 'Verifying the recorded audit and recovering versions.')
         threading.Thread(target=self._load_run, args=(self.generation, path), daemon=True).start()
 
     def _load_run(self, generation, path):
@@ -490,8 +620,8 @@ class InspectorApp:
             with self.lock:
                 if generation == self.generation:
                     self.loading, self.error = False, f'{type(exc).__name__}: {exc}'
-                    for viewer in self.viewers.values():
-                        viewer.clear('error', 'No interactive versions: ' + self.error)
+                    for world in WORLDS:
+                        self._clear(world, 'error', 'No interactive versions: ' + self.error)
             return
         with self.lock:
             if generation != self.generation:
@@ -516,15 +646,14 @@ class InspectorApp:
             return
         self.selected = index
         self._stop('candidate')
-        viewer = self.viewers['candidate']
         if index is None:
-            viewer.clear('empty', 'No reconstruction had been loaded by this wall time.')
+            self._clear('candidate', 'empty', 'No reconstruction had been loaded by this wall time.')
             return
         version = versions[index]
         description = (f"Version {index + 1} of {len(versions)} · {version['kind'].replace('_', ' ')} at "
                        f"{version['wall_elapsed']:.1f} s · `{str(version['version'])[:12]}`")
         if version['archive'] is None:
-            viewer.clear('error', 'Archive unavailable: ' + str(version['error']), description)
+            self._clear('candidate', 'error', 'Archive unavailable: ' + str(version['error']), description)
             return
         self._start('candidate', dict(kind='candidate', archive_b64=base64.b64encode(version['archive']).decode(),
                                       entrypoint=version['entrypoint'], simulation=self.recorded['candidate_simulation'],
@@ -533,12 +662,12 @@ class InspectorApp:
     def _start(self, world, setup, description):
         token = uuid.uuid4().hex
         self.tokens[world] = token
-        self.viewers[world].clear('loading', 'Compiling in a limited physics worker.', description)
+        self._clear(world, 'loading', 'Compiling in a limited physics worker.', description)
         try:
             self.workers[world] = WorldProcess(self.workspace, setup, lambda message: self._message(world, token, message),
                                                self.session_seconds)
         except Exception as exc:
-            self.viewers[world].clear('error', f'Physics worker failed to start: {exc}', description)
+            self._clear(world, 'error', f'Physics worker failed to start: {exc}', description)
 
     def _stop(self, world):
         self.tokens.pop(world, None)
@@ -546,64 +675,130 @@ class InspectorApp:
         if worker is not None:
             threading.Thread(target=worker.close, daemon=True).start()
 
+    def _showing(self, world):
+        return [viewer for viewer in self.viewers.values() if world in viewer.layers]
+
+    def _clear(self, world, status, message, description=None):
+        for viewer in self._showing(world):
+            viewer.clear(world, status, message, description)
+        with self.lock:
+            self.anchors.pop(world, None)
+            self._place_gizmos()
+
+    def _place_gizmos(self):
+        """Uncoupled: each world's own viewer drags its grasp. Coupled: once both parts are picked, every viewer drags both."""
+        ready = all(world in self.anchors for world in WORLDS)
+        for viewer in self.viewers.values():
+            if self.coupled:
+                viewer.place_gizmo(self.anchors[viewer.primary] if ready else None)
+            else:
+                viewer.place_gizmo(self.anchors.get(viewer.primary) if viewer.single else None)
+
     def _message(self, world, token, message):
         with self.lock:
             if self.tokens.get(world) != token:
                 return
-            viewer = self.viewers[world]
+            viewers = self._showing(world)
         kind = message.get('type')
         try:
             if kind == 'model':
-                viewer.show(message)
+                for viewer in viewers:
+                    viewer.show(world, message)
                 with self.lock:
                     if world == 'reference':
                         self.source_camera = (message.get('camera'), message['center'], float(message['extent']))
                     camera = self.source_camera
                 if camera:
-                    # Both viewers start at the recorded source camera pose; a
+                    # Every viewer starts at the recorded source camera pose; a
                     # new version keeps the researcher's current view.
-                    for name, other in self.viewers.items():
-                        if world == 'reference' or name == world:
+                    for other in self.viewers.values():
+                        if world == 'reference' or other.primary == world:
                             other.set_camera(*camera, move_clients=world == 'reference')
             elif kind == 'state':
-                viewer.update(message)
+                for viewer in viewers:
+                    viewer.update(world, message)
+                with self.lock:
+                    if message.get('grasp') is None and world in self.anchors:
+                        self.anchors.pop(world)
+                        self._place_gizmos()
             elif kind == 'grasp':
-                viewer.grasped(message)
+                self._grasped(world, message, viewers)
             elif kind == 'notice':
-                viewer.notice(message.get('text'))
+                for viewer in viewers:
+                    viewer.notice(message.get('text'))
             elif kind == 'error':
                 with self.lock:
                     if self.tokens.get(world) == token:
-                        self.tokens.pop(world, None)
-                        worker = self.workers.pop(world, None)
-                        if worker is not None:
-                            threading.Thread(target=worker.close, daemon=True).start()
-                viewer.clear('error', 'Model unavailable: ' + str(message.get('error')), viewer.description)
+                        self._stop(world)
+                self._clear(world, 'error', 'Model unavailable: ' + str(message.get('error')), self.viewers[world].description)
         except (KeyError, TypeError, ValueError) as exc:
-            viewer.clear('error', 'Invalid worker message: ' + str(exc), viewer.description)
+            self._clear(world, 'error', 'Invalid worker message: ' + str(exc), self.viewers[world].description)
+
+    def _grasped(self, world, message, viewers):
+        if not message.get('ok'):
+            for viewer in viewers:
+                viewer.notice(message.get('reason', 'No graspable body under the click.'))
+            return
+        self.viewers[world].summary['message'] = f"Grasping {message.get('body')}"
+        with self.lock:
+            self.anchors[world] = np.asarray(message['point'], dtype=float)
+            both = self.coupled and all(name in self.anchors for name in WORLDS)
+            workers = [self.workers.get(name) for name in WORLDS] if both else []
+            self._place_gizmos()
+        for worker in workers:  # coupled worlds start moving together once both parts are held
+            if worker is not None:
+                worker.send({'op': 'play'})
 
     # Interaction ---------------------------------------------------------------
     def control(self, op, world='both', value=None):
         if op == 'sync':
             self.sync = bool(value)
             return
+        if op == 'couple':
+            with self.lock:
+                self.coupled = bool(value)
+                self.anchors.clear()
+                self._place_gizmos()
+            return self.control('release', 'both')
         if op not in ('play', 'pause', 'reset', 'step', 'release', 'speed', 'grasp', 'target'):
             raise ValueError('unknown inspector control')
-        worlds = ('reference', 'candidate') if world == 'both' else (world,)
-        if any(name not in self.viewers for name in worlds):
+        if world not in (*WORLDS, 'both'):
             raise ValueError('world must be reference, candidate or both')
+        # Coupled worlds share every playback control; grasps and targets stay per world.
+        worlds = WORLDS if world == 'both' or (self.coupled and op not in ('grasp', 'target')) else (world,)
         command = {'op': op}
         if op == 'speed':
             command['value'] = float(value)
         elif op == 'grasp':
-            command.update(value)
+            command.update(value, play=not self.coupled)
         elif op == 'target':
             command['position'] = value
         with self.lock:
             workers = [self.workers.get(name) for name in worlds]
-        for worker in workers:
+            if op == 'grasp' and self.coupled:  # hold both worlds until the counterpart is picked
+                workers = [self.workers.get(name) for name in WORLDS]
+                commands = [{'op': 'pause'}] * len(workers)
+                commands[WORLDS.index(world)] = command
+            else:
+                commands = [command] * len(workers)
+        for worker, item in zip(workers, commands):
             if worker is not None:
-                worker.send(command)
+                worker.send(item)
+
+    def drag(self, viewer, position):
+        """Move the grasp handle(s) by the gizmo's displacement from its grasp point."""
+        with self.lock:
+            if viewer.gizmo_origin is None:
+                return
+            offset = position - viewer.gizmo_origin
+            worlds = WORLDS if self.coupled else (viewer.primary,)
+            commands = [(self.workers.get(name), (self.anchors[name] + offset).tolist()) for name in worlds if name in self.anchors]
+            others = [other for other in self.viewers.values() if other is not viewer] if self.coupled else []
+        for worker, target in commands:
+            if worker is not None:
+                worker.send({'op': 'target', 'position': target})
+        for other in others:
+            other.move_gizmo(offset)
 
     def camera_moved(self, viewer, camera):
         # The viewer being moved owns synchronization briefly, so echoes of
@@ -625,11 +820,13 @@ class InspectorApp:
                         | {'available': version['archive'] is not None, 'error': version['error']}
                         for version in recorded.get('versions', [])]
             return dict(run=self.run, loading=self.loading, error=self.error, selected=self.selected, sync=self.sync,
-                        node=socket.gethostname(), job=os.environ.get('SLURM_JOB_ID'),
+                        coupled=self.coupled, node=socket.gethostname(), job=os.environ.get('SLURM_JOB_ID'),
                         expires_at_unix=self.expires_at, server_time_unix=time.time(),
                         duration_wall=recorded.get('duration_wall', 0.0), versions=versions,
                         unavailable=recorded.get('unavailable', []),
-                        worlds={name: dict(viewer.summary, port=viewer.port) for name, viewer in self.viewers.items()})
+                        worlds={name: dict(self.viewers[name].summary, port=self.viewers[name].port) for name in WORLDS},
+                        overlay_port=self.viewers['overlay'].port,
+                        gallery=self.gallery.state() if self.gallery else None)
 
     def close(self):
         with self.lock:
@@ -640,10 +837,12 @@ class InspectorApp:
             worker.close()
         for viewer in self.viewers.values():
             viewer.server.stop()
+        if self.gallery:
+            self.gallery.server.stop()
         shutil.rmtree(self.workspace, ignore_errors=True)
 
 
-def _handler(app, directory):
+def _handler(app, directory, live=None):
     from .dashboard_view import HTML, SCRIPT
     # Current view code is served from memory so the physics tab needs no
     # snapshot regeneration; recorded data still comes from the snapshot.
@@ -666,6 +865,8 @@ def _handler(app, directory):
 
         def do_GET(self):
             route = self.path.split('?', 1)[0]
+            if route.startswith('/api/') and app is None:
+                return self._send(503, json.dumps({'error': 'this dashboard server runs no physics inspector'}).encode(), 'application/json')
             if route == '/api/inspector/state':
                 return self._send(200, json.dumps(app.state(), allow_nan=False).encode(), 'application/json')
             if route.startswith('/api/'):
@@ -673,10 +874,24 @@ def _handler(app, directory):
             if route in views:
                 kind = 'text/html; charset=utf-8' if route != '/dashboard.js' else 'text/javascript; charset=utf-8'
                 return self._send(200, views[route].encode(), kind)
+            if live is not None and route == '/catalog.js':
+                try:
+                    body = live.catalog_script()
+                except AuditFailure as exc:  # e.g. a run directory present in two roots: say so, keep the last list
+                    body = ('window.__dashboardCatalogError=' + json.dumps(str(exc)) + ';').encode()
+                return self._send(200, body, 'text/javascript; charset=utf-8')
+            match = re.fullmatch(r'/runs/([0-9a-f]{16})\.js', route)
+            if live is not None and match:
+                try:
+                    return self._send(200, live.run_script(match.group(1)), 'text/javascript; charset=utf-8')
+                except KeyError:
+                    return self.send_error(404)
             return super().do_GET()
 
         def do_POST(self):
             route = self.path.split('?', 1)[0]
+            if app is None:
+                return self._send(503, json.dumps({'error': 'this dashboard server runs no physics inspector'}).encode(), 'application/json')
             # JSON content type forces a CORS preflight that is never granted.
             if self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json':
                 return self.send_error(415)
@@ -699,19 +914,25 @@ def _handler(app, directory):
     return Handler
 
 
-def serve(root, dashboard, ports, session_seconds, ready_file=None):
-    if not os.environ.get('SLURM_JOB_ID') or os.environ.get('SLURM_JOB_PARTITION') != 'test':
+PORTS = ('HTTP', 'REFERENCE', 'CANDIDATE', 'OVERLAY', 'GALLERY')
+
+
+def serve(root, dashboard, ports, session_seconds, ready_file=None, physics=True):
+    """Live dashboard over every root; with ``physics`` also the inspector viewers (Slurm test node only)."""
+    from .dashboard import ENVIRONMENTS, LiveDashboard
+    if physics and (not os.environ.get('SLURM_JOB_ID') or os.environ.get('SLURM_JOB_PARTITION') != 'test'):
         raise RuntimeFailure('The interactive inspector runs physics; start it on a Slurm test allocation')
-    dashboard = Path(dashboard).resolve()
-    if not (dashboard / 'catalog.js').is_file():
-        raise RuntimeFailure(f'No dashboard snapshot at {dashboard}; run `sim2sim dashboard` first')
-    app = InspectorApp(root, ports[1:], session_seconds)
+    roots = root if isinstance(root, (list, tuple)) else [root]
+    live = LiveDashboard(roots, dashboard)
+    app = InspectorApp(roots, ports[1:], session_seconds, environments=ENVIRONMENTS) if physics else None
     try:
-        server = ThreadingHTTPServer(('127.0.0.1', ports[0]), _handler(app, dashboard))
+        server = ThreadingHTTPServer(('127.0.0.1', ports[0]), _handler(app, live.output, live))
     except OSError:
-        app.close()
+        if app:
+            app.close()
         raise
-    ready = dict(node=socket.gethostname(), ports=[server.server_address[1], *(v.port for v in app.viewers.values())],
+    viewers = [*app.viewers.values(), app.gallery] if app else []
+    ready = dict(node=socket.gethostname(), ports=[server.server_address[1], *(v.port for v in viewers)],
                  job=os.environ.get('SLURM_JOB_ID'))
     if ready_file:
         Path(ready_file).write_text(json.dumps(ready))
@@ -722,14 +943,15 @@ def serve(root, dashboard, ports, session_seconds, ready_file=None):
         pass
     finally:
         server.server_close()
-        app.close()
+        if app:
+            app.close()
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, action='append', help='experiment root; repeat for several (default experiments)')
     parser.add_argument('--dashboard', type=Path)
-    parser.add_argument('--ports', type=int, nargs=3, default=(8000, 8001, 8002), metavar=('HTTP', 'REFERENCE', 'CANDIDATE'))
+    parser.add_argument('--ports', type=int, nargs=5, default=(8000, 8001, 8002, 8003, 8004), metavar=PORTS)
     parser.add_argument('--session-seconds', type=float, default=2 * 3600)
     parser.add_argument('--ready-file', type=Path)
     args = parser.parse_args(argv)

@@ -29,10 +29,11 @@ def main(argv=None):
     dashboard_parser.add_argument("--root", type=Path, action="append", help="experiment root; repeat for several (default experiments)")
     dashboard_parser.add_argument("--output", type=Path)
     dashboard_parser.add_argument("--workers", type=int, default=1, help="parallel run snapshots (NFS-bound; e.g. 16)")
-    inspect_parser = sub.add_parser("inspect", help="serve the dashboard with interactive physics (Slurm test node only)")
+    inspect_parser = sub.add_parser("inspect", help="serve the live dashboard with interactive physics (physics on Slurm test nodes only)")
     inspect_parser.add_argument("--root", type=Path, action="append", help="experiment root; repeat for several (default experiments)")
     inspect_parser.add_argument("--dashboard", type=Path)
-    inspect_parser.add_argument("--ports", type=int, nargs=3, default=(8000, 8001, 8002), metavar=("HTTP", "REFERENCE", "CANDIDATE"))
+    inspect_parser.add_argument("--ports", type=int, nargs=5, default=(8000, 8001, 8002, 8003, 8004), metavar=("HTTP", "REFERENCE", "CANDIDATE", "OVERLAY", "GALLERY"))
+    inspect_parser.add_argument("--no-physics", action="store_true", help="live recordings only, without viewers (login node allowed); uses only the HTTP port")
     inspect_parser.add_argument("--session-seconds", type=float, default=2 * 3600)
     inspect_parser.add_argument("--ready-file", type=Path)
     cost_parser = sub.add_parser("cost", help="print host-only spend of a shared inference cost pool")
@@ -59,7 +60,7 @@ def main(argv=None):
         elif args.command == "inspect":
             from .inspector import serve
             roots = args.root or [Path("experiments")]
-            serve(roots, args.dashboard or roots[0] / "dashboard", args.ports, args.session_seconds, args.ready_file)
+            serve(roots, args.dashboard or roots[0] / "dashboard", args.ports, args.session_seconds, args.ready_file, physics=not args.no_physics)
         elif args.command == "cost":
             from .runtime import read_cost_pool
             if not (args.ledger / args.pool).is_dir():

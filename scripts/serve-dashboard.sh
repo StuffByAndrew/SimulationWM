@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# Serve the private dashboard plus interactive physics from a Slurm test CPU node.
+# Serve the live private dashboard plus interactive physics from a Slurm test CPU node.
 # Run this on a login node; the physics server itself never runs there.
 #
 # Usage: scripts/serve-dashboard.sh [--static] [SSH_DESTINATION]
 #   SSH_DESTINATION  client-side SSH target for this login node (default USER@HOST)
-#   --static         recordings only: serve the snapshot from this login node, no physics
-# Environment: SIM2SIM_PYTHON, SIM2SIM_EXPERIMENTS, SIM2SIM_DASHBOARD_DIR,
-#   SIM2SIM_INSPECT_TIME (02:00:00), SIM2SIM_INSPECT_CPUS (4), SIM2SIM_INSPECT_MEM (8G)
+#   --static         live recordings only, served from this login node, no physics
+# Environment: SIM2SIM_PYTHON, SIM2SIM_EXPERIMENTS (default: lab storage and the repository's experiments/),
+#   SIM2SIM_DASHBOARD_DIR, SIM2SIM_INSPECT_TIME (02:00:00), SIM2SIM_INSPECT_CPUS (4), SIM2SIM_INSPECT_MEM (8G)
 set -euo pipefail
 
 static=0
 if [[ "${1:-}" == --static ]]; then static=1; shift; fi
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 python_bin="${SIM2SIM_PYTHON:-$repo_root/.venv/bin/python}"
-root="${SIM2SIM_EXPERIMENTS:-$repo_root/experiments}"  # colon-separated for several roots; the first holds dashboard/
+# Colon-separated roots; every run in every root is listed, and the first root holds dashboard/ (verified asset cache).
+root="${SIM2SIM_EXPERIMENTS:-/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:$repo_root/experiments}"
 IFS=: read -r -a roots <<<"$root"
 root_args=(); for r in "${roots[@]}"; do root_args+=(--root "$r"); done
-dashboard="$(cd -- "${SIM2SIM_DASHBOARD_DIR:-${roots[0]}/dashboard}" && pwd)"
+dashboard="${SIM2SIM_DASHBOARD_DIR:-${roots[0]}/dashboard}"
 wall="${SIM2SIM_INSPECT_TIME:-02:00:00}"
 cpus="${SIM2SIM_INSPECT_CPUS:-4}"
 mem="${SIM2SIM_INSPECT_MEM:-8G}"
@@ -26,18 +27,13 @@ if [[ -n "${SLURM_JOB_ID:-}" ]]; then
     echo 'Run this from a login node; it requests its own Slurm test allocation.' >&2
     exit 2
 fi
-if [[ ! -f "$dashboard/catalog.js" ]]; then
-    echo "No dashboard snapshot in $dashboard. Generate it first: $python_bin -m sim2sim.cli dashboard ${root_args[*]}" >&2
-    exit 2
-fi
-
-# Three consecutive ports free on this login node: HTTP, reference viewer, reconstruction viewer.
-read -r http reference candidate < <("$python_bin" - <<'PY'
+# Five consecutive ports free on this login node: HTTP, reference, reconstruction, overlay and environment viewers.
+read -r http reference candidate overlay gallery < <("$python_bin" - <<'PY'
 import socket
-for base in range(8000, 8100, 3):
+for base in range(8000, 8100, 5):
     sockets = []
     try:
-        for port in range(base, base + 3):
+        for port in range(base, base + 5):
             sockets.append(socket.socket())
             sockets[-1].bind(('127.0.0.1', port))
     except OSError:
@@ -45,10 +41,10 @@ for base in range(8000, 8100, 3):
     finally:
         for sock in sockets:
             sock.close()
-    print(base, base + 1, base + 2)
+    print(*range(base, base + 5))
     break
 else:
-    raise SystemExit('No three consecutive free ports in 8000-8099')
+    raise SystemExit('No five consecutive free ports in 8000-8099')
 PY
 )
 
@@ -64,8 +60,9 @@ print_client() {
 
 if (( static )); then
     print_client "-L 127.0.0.1:$http:127.0.0.1:$http"
-    echo "Static mode: recordings only; the Interactive physics tab reports that no inspector is running."
-    exec "$python_bin" -m http.server "$http" --bind 127.0.0.1 --directory "$dashboard"
+    echo "Static mode: live recordings only; the physics and 3D environment views report that no inspector is running."
+    PYTHONPATH="$repo_root/src" exec "$python_bin" -m sim2sim.cli inspect --no-physics "${root_args[@]}" --dashboard "$dashboard" \
+        --ports "$http" "$reference" "$candidate" "$overlay" "$gallery"
 fi
 
 IFS=: read -r -a parts <<<"$wall"
@@ -106,7 +103,7 @@ srun --partition=test --nodes=1 --ntasks=1 --cpus-per-task="$cpus" --mem="$mem" 
     --job-name=sim2sim-dashboard --chdir="$repo_root" \
     --export="ALL,MUJOCO_GL=disable,PYTHONPATH=$repo_root/src" \
     "$python_bin" -u -m sim2sim.cli inspect "${root_args[@]}" --dashboard "$dashboard" \
-    --ports "$http" "$reference" "$candidate" --session-seconds "$seconds" --ready-file "$ready" </dev/null &
+    --ports "$http" "$reference" "$candidate" "$overlay" "$gallery" --session-seconds "$seconds" --ready-file "$ready" </dev/null &
 srun_pid=$!
 
 until [[ -s "$ready" ]]; do
@@ -142,7 +139,7 @@ echo
 
 # The node listens only on its loopback; forward the same ports from this login node.
 forwards=()
-for port in "$http" "$reference" "$candidate"; do forwards+=(-L "127.0.0.1:$port:127.0.0.1:$port"); done
+for port in "$http" "$reference" "$candidate" "$overlay" "$gallery"; do forwards+=(-L "127.0.0.1:$port:127.0.0.1:$port"); done
 ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new "${forwards[@]}" "$node" &
 tunnel_pid=$!
 sleep 3

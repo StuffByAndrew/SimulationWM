@@ -6,11 +6,16 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
+import threading
 import time
 from .audit import AuditFailure,read_audit,_atomic,_json,_digest,_safe_file
 from .replay import _observations,_declared_hashes
 from .dashboard_view import HTML,SCRIPT
+
+ENVIRONMENTS=Path(__file__).resolve().parents[2]/'environments'
+_VS=re.compile(r'\s*\(vs\.?\s+([^)]*)\)')
 
 
 def _metadata(path):
@@ -311,6 +316,143 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
     return data
 
 
+def environment_scenes(root=ENVIRONMENTS):
+    """Environment scene paths, e.g. ``blocks`` or ``panda/damped_lever``, point-grasp scenes first."""
+    root=Path(root)
+    return [scene.parent.relative_to(root).as_posix() for pattern in ('*/scene.xml','*/*/scene.xml') for scene in sorted(root.glob(pattern))]
+
+
+def _environment(value):
+    """Recorded environment name -> (robot label, scene, environment path)."""
+    for prefix,robot in (('panda_small_','Panda (small)'),('panda_','Panda')):
+        if value.startswith(prefix):
+            return robot,value[len(prefix):],prefix[:-1]+'/'+value[len(prefix):]
+    return 'Point grasp',value,value
+
+
+def _condition(directory):
+    """Run directory without its date/attempt suffix: the condition that attempts repeat."""
+    return re.sub(r'-\d{8}-\d{3}$','',directory)
+
+
+def _tags(metadata,status,config,robot,scene,series,factor,root):
+    """Filterable tag categories from recorded metadata and the private resolved config."""
+    simulation=config.get('simulation') or {};physical=metadata.get('physical_parameters') or {}
+    task=str(config.get('task') or '');inference=config.get('inference') or {}
+    model=metadata.get('model') or inference.get('model');effort=metadata.get('reasoning_effort') or inference.get('reasoning_effort')
+    tags={'Scene':[scene],'Robot':[robot],'Series':[series],'Status':[status],'Mode':[_execution_mode(metadata)['label']],
+        'Observations':[label for flag,label in ((simulation.get('rgb'),'RGB'),(simulation.get('depth'),'Depth'),
+            (simulation.get('wrist_camera'),'Wrist camera'),(simulation and not simulation.get('rgb'),'Proprioception only')) if flag],
+        'Interaction':[label for flag,label in ((simulation.get('wrench'),'Wrench sensing'),(simulation and not simulation.get('wrench'),'No wrench'),
+            (simulation.get('reference_interaction') is False,'Observe-only reference')) if flag],
+        'Variant':[label for key,label in (('perturbation.physics','Hard physics'),('perturbation.colors','Recolored')) if key in physical] or ['Authored'],
+        'Tools':sorted(name for name,enabled in (config.get('tools') or {}).items() if enabled) or (['None'] if config else []),
+        'Prompt':[label for flag,label in (('finishing early earns nothing' in task,'Full-budget prompt'),('Call finish when you believe' in task,'Converge prompt'),
+            (re.search(r'\btask\b',factor),'Task hint')) if flag],
+        'Model':[str(model)+(' · '+str(effort) if effort else '')] if model else [],
+        'Storage':[root.name]}
+    return {key:[str(value) for value in values] for key,values in tags.items() if values}
+
+
+def _summary(run,root,identifier):
+    """Catalog entry from small metadata files only; the audit is read when the run is opened."""
+    metadata=_metadata(run/'experiment.json');status_meta=_metadata(run/'status.json');config=_metadata(run/'config-private.json')
+    experiment=metadata.get('experiment') if isinstance(metadata.get('experiment'),dict) else {}
+    name=str(metadata.get('name') or experiment.get('name') or run.name)
+    robot,scene,path=_environment(str(metadata.get('environment') or 'unrecorded'))
+    factor=str((metadata.get('physical_parameters') or {}).get('factor') or name.split(' · ')[-1])
+    status=str(status_meta.get('status',status_meta.get('state','unknown')))
+    return dict(id=identifier,name=name,directory=run.name,condition=_condition(run.name),status=status,
+        started_at=status_meta.get('started_at') or metadata.get('started_at'),created_at=metadata.get('created_at'),
+        execution_mode=_execution_mode(metadata),environment=path,scene=scene,robot=robot,factor=factor,root=str(root),
+        tags=_tags(metadata,status,config,robot,scene,name.split(' · ')[0],factor,root),comparisons=[],data_path=f'runs/{identifier}.js')
+
+
+def _comparisons(summaries):
+    """Ablation pairs: an explicit ``(vs A, B)`` factor annotation, else the sibling ``<prefix>-base`` condition."""
+    conditions={}
+    for item in summaries: conditions.setdefault(item['condition'],[]).append(item)
+    pairs={}
+    for condition,items in conditions.items():
+        factor=items[0]['factor'];match=_VS.search(factor)
+        baselines=[ref.strip() for ref in match.group(1).split(',')] if match else [re.sub(r'-[^-]+$','-base',condition)]
+        for baseline in baselines:
+            if baseline in conditions and baseline!=condition:
+                key=f'{condition} vs {baseline}';members=items+conditions[baseline]
+                pairs[key]=dict(id=key,name=items[0]['scene']+' · '+_VS.sub('',factor).strip(),ablation=condition,baseline=baseline,
+                    runs=[item['directory'] for item in members])
+                for item in members: item['comparisons'].append(key)
+    return sorted(pairs.values(),key=lambda pair:pair['name'])
+
+
+def _discover(roots):
+    runs=sorted(((root,run) for root in roots if (root/'runs').is_dir() for run in (root/'runs').iterdir()
+                 if run.is_dir() and not run.is_symlink()),key=lambda item:item[1].name)
+    names=[run.name for _,run in runs]
+    duplicates=sorted({name for name in names if names.count(name)>1})
+    if duplicates: raise AuditFailure('duplicate run directory names across experiment roots: '+', '.join(duplicates))
+    return [(root,run,hashlib.sha256(run.name.encode()).hexdigest()[:16]) for root,run in runs]
+
+
+def _encode(value):
+    return json.dumps(value,ensure_ascii=True,allow_nan=False).replace('<','\\u003c')
+
+
+def _catalog_script(runs,comparisons):
+    environments=[dict(path=path,robot=_environment(path.replace('/','_'))[0],scene=path.split('/')[-1]) for path in environment_scenes()]
+    return (f'window.__dashboardCatalog={_encode(runs)};window.__dashboardComparisons={_encode(comparisons)};'
+            f'window.__dashboardEnvironments={_encode(environments)};').encode()
+
+
+def _record_key(run):
+    """Every audit append rewrites the manifest, so unchanged stats mean an unchanged verified snapshot."""
+    return [[item.stat().st_mtime_ns,item.stat().st_size] if item.is_file() else None for item in
+            (run/'audit/manifest.json',run/'status.json',run/'experiment.json',run/'candidate-change-history.json')]
+
+
+def _write_run(output,identifier,data,key):
+    (output/'runs').mkdir(exist_ok=True)
+    if (output/'runs').is_symlink(): raise AuditFailure('dashboard runs symlink forbidden')
+    _atomic(output/'runs'/f'{identifier}.js',('window.__dashboardRunData('+_encode(data)+');').encode())
+    _atomic(output/'runs'/f'{identifier}.key.json',json.dumps(key).encode())
+
+
+def _prepare_output(roots,output):
+    output=Path(output).resolve() if output is not None else roots[0]/'dashboard'
+    if any(output.is_relative_to(r/'runs') for r in roots): raise AuditFailure('dashboard output must not overwrite experiment runs')
+    if output.is_symlink(): raise AuditFailure('dashboard destination symlink forbidden')
+    output.mkdir(parents=True,exist_ok=True);(output/'assets').mkdir(exist_ok=True)
+    if (output/'assets').is_symlink(): raise AuditFailure('dashboard assets symlink forbidden')
+    _atomic(output/'dashboard.js',SCRIPT.encode());_atomic(output/'index.html',HTML.encode())
+    return output
+
+
+class LiveDashboard:
+    """Current catalog of every root on each request; a run's verified snapshot is rebuilt when its records change.
+
+    Assets this server has verified stay trusted for its lifetime; ``sim2sim dashboard`` re-verifies everything.
+    """
+    def __init__(self,roots,output=None):
+        self.roots=[Path(r).resolve() for r in roots]
+        self.output=_prepare_output(self.roots,output)
+        self.verified,self.guard,self.locks={},threading.Lock(),{}
+
+    def catalog_script(self):
+        summaries=[_summary(run,root,identifier) for root,run,identifier in _discover(self.roots)]
+        return _catalog_script(summaries,_comparisons(summaries))
+
+    def run_script(self,identifier):
+        runs=[run for _,run,key in _discover(self.roots) if key==identifier]
+        if not runs: raise KeyError('unknown run snapshot '+identifier)
+        path,key_path=(self.output/'runs'/f'{identifier}{suffix}' for suffix in ('.js','.key.json'))
+        with self.guard: lock=self.locks.setdefault(identifier,threading.Lock())
+        with lock:
+            key=_record_key(runs[0])
+            if not (path.is_file() and key_path.is_file() and json.loads(key_path.read_text())==key):
+                _write_run(self.output,identifier,_run_snapshot(runs[0],self.output,identifier,self.verified),key)
+            return path.read_bytes()
+
+
 class _Serial:
     def __enter__(self): return self
     def __exit__(self,*args): return False
@@ -325,30 +467,20 @@ def _snapshot_job(job):
 def build_dashboard(root='experiments',output=None,workers=1):
     """Discover compatible run directories; read-only snapshot, no native execution."""
     roots=[Path(r).resolve() for r in (root if isinstance(root,(list,tuple)) else [root])]  # several roots, e.g. home + lab storage
-    output=Path(output).resolve() if output is not None else roots[0]/'dashboard'
-    if any(output.is_relative_to(r/'runs') for r in roots): raise AuditFailure('dashboard output must not overwrite experiment runs')
-    run_dirs=sorted((run for r in roots if (r/'runs').is_dir() for run in (r/'runs').iterdir()),key=lambda run:run.name)
-    if len({run.name for run in run_dirs})!=len(run_dirs): raise AuditFailure('duplicate run directory names across experiment roots')
-    if output.is_symlink(): raise AuditFailure('dashboard destination symlink forbidden')
-    output.mkdir(parents=True,exist_ok=True);(output/'assets').mkdir(exist_ok=True)
-    if (output/'assets').is_symlink(): raise AuditFailure('dashboard assets symlink forbidden')
-    catalog=[];verified_assets={}
-    jobs=[(run,output,hashlib.sha256(run.name.encode()).hexdigest()[:16]) for run in run_dirs if run.is_dir() and not run.is_symlink()]
+    runs=_discover(roots);output=_prepare_output(roots,output)
+    summaries=[_summary(run,r,identifier) for r,run,identifier in runs];comparisons=_comparisons(summaries)
+    jobs=[(run,output,identifier) for _,run,identifier in runs];verified_assets={}
+    keys=[_record_key(run) for run,_,_ in jobs]  # before reading, so a later append marks the snapshot stale
     from concurrent.futures import ProcessPoolExecutor  # audit reads are NFS-latency bound; runs are independent
     with ProcessPoolExecutor(workers) if workers>1 else _Serial() as pool:
         snapshots=list(pool.map(_snapshot_job,jobs))
-    for (run,_,identifier),(data,assets) in zip(jobs,snapshots):
+    for (run,_,identifier),key,summary,(data,assets) in zip(jobs,keys,summaries,snapshots):
         verified_assets.update(assets)
-        relative=f'runs/{identifier}.js';(output/'runs').mkdir(exist_ok=True)
-        if (output/'runs').is_symlink(): raise AuditFailure('dashboard runs symlink forbidden')
-        encoded=json.dumps(data,ensure_ascii=True,allow_nan=False).replace('<','\\u003c')
-        _atomic(output/relative,('window.__dashboardRunData('+encoded+');').encode())
-        catalog.append(dict(id=identifier,name=data['name'],directory=data['directory'],status=data['status'],
-            started_at=data['started_at'],execution_mode=data['execution_mode'],data_path=relative,duration_wall=data['duration_wall']))
-    encoded=json.dumps(catalog,ensure_ascii=True,allow_nan=False).replace('<','\\u003c')
-    _atomic(output/'catalog.js',('window.__dashboardCatalog='+encoded+';').encode())
-    _atomic(output/'dashboard.js',SCRIPT.encode());_atomic(output/'index.html',HTML.encode())
-    manifest=dict(schema_version=1,runs=catalog,generated_at_unix=time.time(),
+        _write_run(output,identifier,data,key)
+        summary.update(status=data['status'],execution_mode=data['execution_mode'],duration_wall=data['duration_wall'])
+        summary['tags']['Status']=[str(data['status'])]  # the verified audit's termination status, as listed
+    _atomic(output/'catalog.js',_catalog_script(summaries,comparisons))
+    manifest=dict(schema_version=2,runs=summaries,comparisons=comparisons,generated_at_unix=time.time(),
                   verified_assets=dict(count=len(verified_assets),logical_bytes=sum(verified_assets.values())))
     _atomic(output/'dashboard.json',_json(manifest))
     return manifest

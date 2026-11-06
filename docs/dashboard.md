@@ -1,8 +1,51 @@
-# Offline experiment dashboard
+# Experiment dashboard
 
 Experiment viewing uses the dashboard directly. The separate viewing skill has
-been removed. Generation includes all runs under the experiment root; choosing
-which experiments to display will be handled by future dashboard filters.
+been removed.
+
+## Live server, run browser and experiments
+
+`scripts/serve-dashboard.sh` serves a **live** dashboard over every run in both
+experiment roots by default (lab storage, then the repository's `experiments/`;
+override with a colon-separated `SIM2SIM_EXPERIMENTS`). No prior `sim2sim dashboard`
+generation is needed. Each `catalog.js` request rescans the roots and reads only
+`experiment.json`, `status.json` and `config-private.json`. Opening a run returns its
+verified snapshot (`runs/<id>.js`). The snapshot is rebuilt with the full audit
+verification whenever the run's audit manifest, status, metadata or candidate-history
+sidecar changed since it was built (keys in `runs/<id>.key.json`, also written by
+`sim2sim dashboard`). Otherwise the stored snapshot is reused. Assets the live server
+verified stay trusted for its lifetime; `sim2sim dashboard` still re-verifies
+everything. With **Live** checked, the page polls the catalog every 30 s and reloads
+the open run while it is running (or when its status changes). Refreshes keep the
+playback time, metric checklist and line choices. **Refresh** forces both. A run
+directory present in two roots is a catalog error shown in the browser bar, and the
+previous list stays. `--static` serves the same live catalog from the login node
+without physics (`sim2sim inspect --no-physics`).
+
+The **Runs** browser replaces the single selector. It offers free-text search over
+name, run ID and factor; sorting by date (start time, else creation time) or name; and
+tag chips. Chips are OR within a category and AND across categories, and their counts
+are faceted on the other filters. The categories are derived, not hand-maintained:
+Scene, Robot (point grasp / Panda / Panda small), Series (name prefix, e.g. `Wave 3b`),
+Status, Observations (RGB, depth, wrist camera, proprioception only), Interaction
+(wrench sensing / no wrench / observe-only reference), Variant (hard physics,
+recolored, authored), Tools, Prompt (full-budget, converge, task hint), Mode, Model
+and Storage root. The URL hash `#run=<directory>` links to a run.
+
+An **experiment** is an ablation pair of conditions. A condition is the run directory
+without its `-YYYYMMDD-NNN` suffix, so all attempts of a condition belong to it.
+Pairs come from the factor's `(vs A, B)` annotation (one pair per named baseline that
+has recorded runs), else from the sibling `<prefix>-base` condition (for example
+`w1-assembly-depth` vs `w1-assembly-base`). Each pair is named after its scene and the
+ablated factor. The **Experiment** filter shows only a pair's runs. Below the header,
+the open run lists its experiments with one-click switching to every attempt of
+both conditions.
+
+The **Environments** tab shows every authored scene under `environments/` at its
+initial state in one 3D Viser view (rows: point grasp, Panda, small Panda; floors
+hidden). It also shows a card per environment with run counts by status; **Show runs**
+filters the browser to that scene and robot. Per-run perturbations are not shown
+there; they appear in each run's Interactive physics source.
 
 Run `sim2sim dashboard --root experiments` after recording experiments. `--root` may be repeated (e.g. lab storage plus home): runs from every root share one catalog, run directory names must be unique across roots, and the default output is the first root's `dashboard/`. `scripts/serve-dashboard.sh` takes several roots as a colon-separated `SIM2SIM_EXPERIMENTS`. Current strict waves: `.venv/bin/python -m sim2sim.cli dashboard --root /n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments --root experiments` (login node is fine), then `SIM2SIM_EXPERIMENTS=/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:$PWD/experiments scripts/serve-dashboard.sh`. The default output is `experiments/dashboard/index.html`; open it directly in Chromium or another modern browser. `--output` selects another artifact directory. Compatible runs live in `experiments/runs/<id>` and may include `experiment.json` and `status.json`. The dashboard never executes source scenes, candidate XML, models, inference or evaluation.
 
@@ -184,8 +227,17 @@ playback. Each viewer's side panel has Play, Pause, Step 0.1 s, Reset, Release
 and speed controls. Below the viewers, **Reset both**, **Play both**,
 **Pause both** and **Step both** act on both worlds together. Cameras start at
 the source scene's recorded `fixed` camera and are synchronized by default.
-Each world simulates independently; there is no body correspondence between
-them. Panda scenes hold the arm at the benchmark home pose. Their object bodies
+Each world simulates independently; no body correspondence is inferred.
+
+**Coupled grasp** lets the researcher pick corresponding parts in the two worlds
+and drive them together. Click the part in each world, either in its own viewer or
+in the overlay. Both worlds stay paused until both parts are held, then play together.
+Every viewer then shows a gizmo, and dragging any of them moves both handles by the
+same displacement from their own grasp points. Play, pause, step, reset, release and
+speed act on both worlds. Toggling the mode releases both grasps. In coupled mode an
+**overlay** viewer (a third Viser server) shows the reference opaque and the
+reconstruction translucent in one pane. It hides the reconstruction's floor planes and,
+in Panda scenes, its robot links, so the object can be compared directly. Panda scenes hold the arm at the benchmark home pose. Their object bodies
 (not robot links) accept the point grasp, an inspector-only opt-in that agent
 actions never receive. Object bodies are found in every `<worldbody>` section,
 including when a model includes the robot before its own worldbody. Clicks are
@@ -198,18 +250,18 @@ Starting the server:
 ./experiments/dashboard/serve.sh [USER@LOGIN_HOST]   # or scripts/serve-dashboard.sh
 ```
 
-Run this on a login node. It picks three consecutive free ports (HTTP and one
-per viewer, from 8000), then requests a CPU-only `test` allocation with `srun`
+Run this on a login node. It picks five consecutive free ports (HTTP, reference,
+reconstruction, overlay and environment viewers, from 8000), then requests a CPU-only `test` allocation with `srun`
 (defaults: 4 CPUs, 8G, 02:00:00; override with `SIM2SIM_INSPECT_CPUS`,
 `SIM2SIM_INSPECT_MEM` and `SIM2SIM_INSPECT_TIME`). It waits for the server's
 ready file, forwards the same ports from the login node to the compute node's
 loopback over SSH, and prints the client tunnel command and URL. Ctrl-C stops
 the tunnel and the job. If login-to-node forwarding fails, it prints a two-hop
-`-J` command instead. `--static` keeps the previous recordings-only server on
-the login node; its physics tab then reports that no inspector is running. The
-server needs an existing snapshot (`sim2sim dashboard`). It serves the current
-`index.html`/`dashboard.js` from the installed package, so adding this tab
-needs no snapshot regeneration. All servers bind only to `127.0.0.1`. The
+`-J` command instead. `--static` serves the live recordings view from the login
+node with no physics; its physics and 3D environment views then report that no
+inspector is running. Neither mode needs a prior snapshot: the catalog and run
+snapshots are built on demand (see the top of this page), and the current
+`index.html`/`dashboard.js` come from the installed package. All servers bind only to `127.0.0.1`. The
 dashboard header shows the time left before the server's Slurm job ends, read from
 the job's end time (falling back to the session length) and counted down locally.
 
