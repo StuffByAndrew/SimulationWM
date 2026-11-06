@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sim2sim Run</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body><main>
+<!-- Per-run page for build-results-report.py: run.html?run=RUN_ID renders window.R (data.js) and runs/RUN_ID/chat.js. -->
+<nav><a href="index.html#runs">← all runs</a><a href="index.html">results</a></nav>
+<h1 id="title"></h1>
+<p class="muted" id="subtitle"></p>
+<div class="atglance" id="facts"></div>
+<h2>Scores at each submission</h2>
+<p class="note">Private evaluator scores; the agent never saw them. "÷ true" = the agent's estimate divided by the true value (×1 = exact).</p>
+<div class="card scroll" id="scores"></div>
+<h2>Conversation</h2>
+<p class="note">Everything the model received and returned, in order. Each model call shows only the messages that entered its context at
+that call (the system prompt and task at the first call; afterwards the results of its previous tool calls, with the camera images it was
+given), followed by its reply. The agent's harness later drops old images and replaces old turns with a model-written summary; those
+summaries appear here as replies to the summary request. Wall-clock minutes are from the start of the run.</p>
+<div class="vctl" id="chatctl"></div>
+<div id="chat"><p class="muted">Loading the conversation…</p></div>
+</main>
+<script src="data.js"></script>
+<script src="text.js"></script>
+<script src="common.js"></script>
+<script src="run.js"></script>
+</body></html>

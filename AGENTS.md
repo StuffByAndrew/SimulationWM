@@ -270,3 +270,12 @@ scan; do not add another recursive disk-usage pass merely to produce those
 same figures. Dashboard asset bytes cover the verified catalog asset set, not
 stale cache files or whole run-directory usage. The original failed damped-lever
 attempt and earlier optional-storage-scan timeout remain recorded.
+
+## Excluded runs (user decision, 2026-11-05)
+
+Results, reports and analyses use **only strict runs**: `execution_mode = "strict_oci"` (isolated OCI
+container under Slurm step limits, model called through the API). The earlier non-API
+`development_shared_filesystem` runs (`astra-development-*`, `astra-medium-*`, 2026-10-28 to 2026-11-02) and the
+offline `trusted-native-dual-world-fixture` are excluded and must not be cited, compared or shown, including
+in the sections above that describe them. The list is `experiments/validation/excluded-runs.json`;
+`build-results-report.py` asserts that every reported run is strict and unlisted.

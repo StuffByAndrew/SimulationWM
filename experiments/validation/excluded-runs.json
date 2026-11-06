@@ -1,0 +1,24 @@
+{
+ "purpose": "Run directories that must never appear in results, reports, comparisons or analyses. Results use only strict_oci runs (isolated OCI container under Slurm step limits, model called through the API). Decided by the user on 2026-11-05.",
+ "rule": "Include a run only if its experiment.json execution_mode is \"strict_oci\" and it is not listed here. build-results-report.py asserts both.",
+ "runs": {
+  "astra-development-20261028-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation (failed preflight)",
+  "astra-development-20261028-002": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-blocks-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-damped_lever-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation (expired without an agent)",
+  "astra-medium-damped_lever-20261101-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-blocks-blind-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-blocks-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-damped-lever-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-fixed-cube-blind-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-primitive-boat-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-random-assembly-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-spring-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-panda-tetrahedral-vision-20261102-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-primitive_boat-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-random_assembly-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-spring-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "astra-medium-tetrahedral_cluster-20261029-001": "development_shared_filesystem: non-API spawned agent sharing the workspace filesystem; no OS isolation",
+  "trusted-native-dual-world-fixture": "offline replay test fixture, not an agent run"
+ }
+}
