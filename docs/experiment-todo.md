@@ -23,7 +23,7 @@ Keep this list current: strike items when a log entry covers them.
   `SIM2SIM_EXPERIMENTS_ROOT` set to netscratch. Option offered: a no-statement control on the same scene.
 - [x] ~~Replicates~~ Approved 2026-11-05, n≤3 for the key findings. Done: results table in log 2026-11-06 21:30. 20 runs were queued (log 2026-11-05 03:15) for the
   force-sensing contrast on lever, spring and blocks, the stated mass on the spring, and the lever hint, mass + hint and
-  observe-only chain. Still without replicates: assembly contrasts (baseline COM error varies 7× over 3 old-prompt runs),
+  no-interaction chain. Still without replicates: assembly contrasts (baseline COM error varies 7× over 3 old-prompt runs),
   old- vs new-prompt lever friction, the force-sensing effect on other seeds (`pose = "jitter"` or new nonround seeds), and
   wave 10. When they finish, analyze them with the originals as n=3 per condition (mean and spread), and add replicate
   pairs to `compare.py`.
@@ -140,13 +140,13 @@ Keep this list current: strike items when a log entry covers them.
   (2026-11-03 incident: a bulk copy filled the shared quota and killed 16 runs). The quota is not visible from the cluster
   (`df` shows the 2 PB filesystem; no `lfs`); ask the user for headroom before copying.
 
-## Scale identifiability (2026-11-04, from the observe-only results)
+## Scale identifiability (2026-11-04, from the no-interaction results)
 - [x] ~~Does one stated mass fix the scale?~~ Wave 6: yes for the spring (exact); blocks only anchor the named block.
-  Wave 7: also exact for the observe-only spring; the lever's mass/inertia/damping follow it, but friction loss stays 0.
+  Wave 7: also exact for the no-interaction spring; the lever's mass/inertia/damping follow it, but friction loss stays 0.
 - [x] ~~Lever friction loss 0 under the new prompt without force~~ Wave 8: with force it is exact; without force the hinge
   hint recovers it (×0.257 near the ×0.30 common factor). Friction is identifiable but overlooked without a hint (n=1).
 - [x] ~~Lever with stated mass AND hinge hint~~ Wave 9: near-full identification without force (friction ×0.93) and
-  observe-only (friction ×1.18).
+  no-interaction (friction ×1.18).
 - [ ] Scale anchor via a second object: the stated red-block mass did not propagate to blue through collisions (×1.41).
   A "non-verbal" anchor is not possible without force sensing. Any anchor must be a stated mass, so the open question is
   propagation across bodies.
@@ -154,7 +154,7 @@ Keep this list current: strike items when a log entry covers them.
   claiming a prompt effect (n=1); it may just be noise.
 - [ ] Agents default to round masses (0.1 kg, 0.2 kg) when the scale is unidentifiable. Report it as a behavior. Also
   check that their uncertainty is visible (do they say the scale is unknown?).
-- [ ] The observe-only and no-force ablations under the new convergence prompt, if the prompt changes behavior.
+- [ ] The no-interaction and no-force ablations under the new convergence prompt, if the prompt changes behavior.
 - [ ] Time to finish is an outcome under `TASK_CONVERGE`. Spring base finished at 56 min; lever base was exact at 40 min
   but kept testing to 235 of 240 min (n=1 each). Report it, and check what the agent was testing after it was exact.
 

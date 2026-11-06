@@ -18,7 +18,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   | lever, no force | 0.32, 0.34, 0.27 | 0.35, 0.39, 0.30 | friction 0, 0.09, 0 | one common scale factor; friction overlooked (3/3) |
   | lever, no force + hinge hint | 0.30, 0.24, 0.18 | 0.30, 0.25, 0.19 | friction 0.26, 0.24, 0.17 | hint recovers friction up to the same unknown scale (3/3) |
   | lever, no force + stated mass + hint | 1.00 ×3 | 1.01, 1.01, 1.00 | friction 0.93, 0.96, 1.00 | near-complete identification (3/3) |
-  | lever, observe-only + stated mass + hint | 1.00 ×3 | 0.98, 1.00, 0.98 | friction 1.18, 0.99, 1.19 | near-complete; friction ±19% (3/3) |
+  | lever, no-interaction + stated mass + hint | 1.00 ×3 | 0.98, 1.00, 0.98 | friction 1.18, 0.99, 1.19 | near-complete; friction ±19% (3/3) |
   | spring, force | 1.00 ×3 | 1.00 ×3 | stiffness 1.00 ×3 | exact every time |
   | spring, no force | 1.97, 1.20, 1.24 | same factor | stiffness same factor | scale never right; factor varies 1.2–2.0 |
   | spring, no force + stated mass | 1.00 ×3 | 1.00, 1.00, 1.07 | stiffness 1.00, 1.00, 1.06 | stated mass fixes the scale (3/3) |
@@ -129,7 +129,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   |---|---|
   | force sensing (wrench) fixes the scale | lever hard base vs nowrench; spring hard base vs nowrench; blocks hard base vs nowrench |
   | stated mass fixes the scale (spring) | `w6-spring-hard-nowrench-mass` |
-  | hinge hint finds friction; mass + hint near-complete identification without force, even observe-only | `w8-lever-hard-nowrench-hint`, `w9-lever-hard-nowrench-mass-hint`, `w9-lever-hard-noaction-mass-hint` |
+  | hinge hint finds friction; mass + hint near-complete identification without force, even no-interaction | `w8-lever-hard-nowrench-hint`, `w9-lever-hard-nowrench-mass-hint`, `w9-lever-hard-noaction-mass-hint` |
 
   - **Schedule:** r2 of lever base, lever nowrench and spring base started now on the 11-04 pool (worst case $132, which
     brings 11-04 to ≤$672 of $700; jobs `57914325`, `57914331`). The 7 other r2 runs start 11-05 00:05 ET beside wave 10
@@ -188,11 +188,11 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   |---|---|---|---|---|
   | no force, stated mass (`w7-…-nowrench-mass`) | 1.00 | 1.12 | 1.04 | **0** |
   | no force, stated mass + hint (`w9-…-nowrench-mass-hint`) | 1.00 | 1.00 | 1.01 | 0.93 |
-  | observe-only, stated mass + hint (`w9-…-noaction-mass-hint`) | 1.00 | 0.99 | 0.98 | 1.18 |
+  | no-interaction, stated mass + hint (`w9-…-noaction-mass-hint`) | 1.00 | 0.99 | 0.98 | 1.18 |
 
   - **Stated mass plus hint gives near-full identification without force sensing.** Friction converges over submissions
     (×0.71 → 0.77 → 0.82 → 0.93). It was not exact at the cap (prediction "fully exact": close, not met).
-  - **Video alone is nearly as good.** The observe-only run was within 2.5% on damping and 20% on friction from submission 3
+  - **Video alone is nearly as good.** The no-interaction run was within 2.5% on damping and 20% on friction from submission 3
     (106 min). Friction ended at ×1.18; its first submission was ×1.10 at 38 min.
 - **Pool:** `sim2sim-20261104` closed at $539.90 of $700.
 - **Infrastructure merge:** the `infra-tools` worktree work (tactile mode, planning tools v2, contact-friction, expert-video
@@ -210,12 +210,12 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Wave 9 change:** the 16:40 queue (job `57754657`, pool `sim2sim-20261105`) was cancelled before start and its prepared
   directory removed. It now runs on today's pool (at $458.69 before this wave):
   - `w9-lever-hard-nowrench-mass-hint`: no force sensing, task states the lever mass and names damping and friction loss.
-  - `w9-lever-hard-noaction-mass-hint`: same task, observe-only. Is video alone enough on a friction hinge? (The spring was
-    exact observe-only with a stated mass.)
+  - `w9-lever-hard-noaction-mass-hint`: same task, no-interaction. Is video alone enough on a friction hinge? (The spring was
+    exact no-interaction with a stated mass.)
 - **Setup:** job `57800657`, sapphire, home root, image `44064383e99f`, 4 h, $44 cap. Both sources are byte-identical to the
   wave-7 lever (srun `57800575`). Configs differ from `w7-lever-hard-nowrench-mass` only by the hint sentence, the pool
-  ceiling and (observe-only) the interaction flag.
-- **Predictions:** the no-force run is fully exact. The observe-only run gets exact mass and close damping and friction, if
+  ceiling and (no-interaction) the interaction flag.
+- **Predictions:** the no-force run is fully exact. The no-interaction run gets exact mass and close damping and friction, if
   free decay alone separates viscous from Coulomb damping.
 - **Results report:** extended with waves 7–8 in place (`experiments/reports/results-report-20261104.zip`, 51 runs, spec `report-spec-20261104b.py`; previous zip kept as `report-work-20261104/results-report-20261104-v1.zip`).
 
@@ -259,7 +259,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     ×0.288 next to its ×0.245 common factor. The new runs had reached 13.0M and 16.8M tokens at their last submission.
   - The no-force blocks failure (`w6-blocks-hard-nowrench`, red pinned at a round 0.1 kg) has a new-prompt baseline now.
     With force sensing, the new prompt recovers both blocks exactly.
-- **Observe-only spring:** one stated mass is enough for full identification from video alone (exact at 114 min, 6.3M tokens).
+- **No-interaction spring:** one stated mass is enough for full identification from video alone (exact at 114 min, 6.3M tokens).
 - **Footnote:** the `w6-spring-hard-nowrench-mass` total-mass ratio ×19.5 comes from a fixed 6.9 kg `support_body` the agent
   added. The lever body itself is ×1.00.
 - **Both lever runs ended `budget_suspended`** (about $40 each), not by `finish`.
@@ -276,14 +276,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Report:** `experiments/reports/results-report-20261104.zip` (2.07 MB, 44 runs). The builder `experiments/validation/build-results-report.py`
   is now the reusable template, driven by a spec file (`report-spec-20261104.py`). Sections are organized by question, with
   matched final / 120 min / equal-token tables, convergence plots, 3D overlays and the taxonomy. New runs have no stills or videos.
-- **Count correction:** 22 new runs finished on 11-04 (10 batch A + spring observe-only + 6 batch B + 5 wave 6), not 26.
+- **Count correction:** 22 new runs finished on 11-04 (10 batch A + spring no-interaction + 6 batch B + 5 wave 6), not 26.
 - **Corrections to the 05:20 entry:**
-  - Observe-only is an exact common factor only for the spring (×1.812) and the Panda lever (×0.183). The hard lever is
+  - No-interaction is an exact common factor only for the spring (×1.812) and the Panda lever (×0.183). The hard lever is
     ×0.226 / 0.242 / 0.249 (mass / inertia / damping) with friction dropped.
-  - "Geometry not hurt" was too strong. Tetra observe-only shape is exact, but its COM is 98 mm off (vs 0.3 mm), because the
+  - "Geometry not hurt" was too strong. Tetra no-interaction shape is exact, but its COM is 98 mm off (vs 0.3 mm), because the
     spheres got round masses 0.2/0.3/0.4/0.6 kg. Boat Chamfer is +38%, with no noise band available.
 - **Cause of the spring ×1.97 (resolved):** both no-force runs set the ball to a round 0.1 kg (rod 0.638 kg fitted to the
-  ratios). The observe-only ×1.81 rod is 0.587 kg, MuJoCo's default density 1000 kg/m³ for the fitted capsule. Unidentifiable
+  ratios). The no-interaction ×1.81 rod is 0.587 kg, MuJoCo's default density 1000 kg/m³ for the fitted capsule. Unidentifiable
   scale is filled by round masses or default density (both verified in models.json).
 - **Tool uptake (bash calls touching the tool):** segmentation 0 of 170 (offered) and 0 of 125 (task says when it helps);
   planning 18 of 143 (first use at minute 3). The segmentation-directed result is therefore not a tool effect.
@@ -292,7 +292,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Questions:**
   1. Does the blocks ratio failure come from the new prompt? Adds the missing new-prompt blocks baseline with force sensing.
   2. Does a stated mass fix the scale on a second hinge scene with friction (hard lever)?
-  3. Is a video plus one stated mass enough for full identification (observe-only spring, with and without the mass)?
+  3. Is a video plus one stated mass enough for full identification (no-interaction spring, with and without the mass)?
 - **Runs** (4 h, $44 cap, pool `sim2sim-20261104` at $257.45 of $500; sapphire, home root; image `44064383e99f`; jobs in
   `experiments/validation/wave7-20261104-jobs.txt`):
   - `w7-blocks-hard-base`
@@ -303,7 +303,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Predictions:**
   - blocks base exact
   - lever with mass exact (damping and friction), without mass a common factor
-  - observe-only spring with mass exact, without mass a common factor
+  - no-interaction spring with mass exact, without mass a common factor
 
 ## 2026-11-04 09:10 UTC — Batch B reruns and wave 6 complete
 - All 15 runs completed (`agent_finish`, except `w4-assembly-seg-directed` which hit its $44 cap at 151 min with 4 submissions).
@@ -315,7 +315,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   (COM 26 mm). **A stated mass anchors only the body it names; the mass ratio between separate blocks was not recovered
   in either new-prompt run.** (The old-prompt run without force sensing did recover the ratio: common ×0.525, COM exact.)
 - **Round-number default masses when the scale is unidentifiable:** red block = 0.1000 kg (new-prompt no-force run), 0.1/0.1 kg
-  (observe-only), 0.2000 kg (old-prompt no-force run). This explains the "common factors" on blocks.
+  (no-interaction), 0.2000 kg (old-prompt no-force run). This explains the "common factors" on blocks.
 - **New-prompt finish times:** spring base 56 min, spring stated mass 112 min, spring no force sensing 150 min. Both blocks runs
   used about 233 min.
 - **Hinge hint without force sensing (hard lever):** the scale stays wrong: ×0.49 on mass, inertia and damping (vs ×0.24
@@ -355,15 +355,15 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Prediction:** with a stated mass, spring and blocks reach the exact scale. Without it, they repeat the common factor
   (spring ×1.97, blocks ×0.525 under the old prompt).
 
-## 2026-11-04 05:20 UTC — Batch A rerun results: observe-only, no force sensing (assembly, tetra), Panda lever
+## 2026-11-04 05:20 UTC — Batch A rerun results: no-interaction, no force sensing (assembly, tetra), Panda lever
 - All 10 batch-A runs completed (9 `agent_finish`; `w3-boat-base-…-002` hit its $58 per-run cap at 224 of 240 min,
   9 submissions). Old prompt and images, n=1 each. Spend at 05:20 UTC: 11-03 pool $876.20.
 - Analysis: `experiments/validation/rerun-analysis/` (`analyze.sh` job `57653373`: `checkpoints.json`, `models.json`;
   `compare.py` → `compare-A.json`, the final checkpoint, the 120 min mark and equal tokens). Scores also in
   `results-rerunA-w5.json`, `results-rerunA-w3.json`, `results-w5-spring-001.json`. Ratios below are predicted ÷ true.
-- **Observe-only (reference world can only be watched and reset): absolute scale is lost; ratios survive on hinges.**
+- **No-interaction (reference world can only be watched and reset): absolute scale is lost; ratios survive on hinges.**
 
-  | scene | baseline (grasp + force) | observe-only |
+  | scene | baseline (grasp + force) | no-interaction |
   | --- | --- | --- |
   | hard spring | exact | mass, inertia, damping, stiffness all ×1.81 |
   | hard lever | exact | mass ×0.23, inertia ×0.24, damping ×0.25, friction lost (0) |
@@ -373,12 +373,12 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   | tetra | total mass ×1.00, Chamfer 12.2 mm | total mass ×0.10, Chamfer 0.0 mm |
   | boat | total mass ×1.00, COM 0.0 mm, Chamfer 10.1 mm | total mass ×0.05, COM 5.5 mm, Chamfer 13.9 mm |
 
-  The same conclusions hold at 120 min and at equal tokens; observe-only runs used fewer tokens (5–16M vs 9–24M).
+  The same conclusions hold at 120 min and at equal tokens; no-interaction runs used fewer tokens (5–16M vs 9–24M).
   The hinge results are an exact common factor, so watching passive motion pins only ratios to inertia: gravity torque
   scales with mass too, so it cannot fix the scale. That matches the earlier runs without force sensing (spring ×1.97,
   lever ×0.23–0.29, blocks ×0.525): **grasping without force sensing adds no absolute scale either.** It does add
   mass *ratios* on blocks: COM was exact without force sensing but 48 mm off when only watching.
-  Geometry is not hurt by observe-only (tetra exact, boat and assembly within the assembly noise band). Total mass is
+  Geometry is not hurt by no-interaction (tetra exact, boat and assembly within the assembly noise band). Total mass is
   the one quantity that only force sensing provides.
 - **No force sensing, assembly and tetra:** assembly total mass ×1.36, COM 40.6 mm (baseline band over three runs
   4.1–27.7 mm); tetra total mass ×0.067, Chamfer 9.4 mm vs 12.2 mm.
@@ -392,10 +392,10 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   copied to lab storage later.
 - **Configs:** `experiments/configs/rerun-20261103/` are the original configs with only the pool lines changed (pool
   `sim2sim-20261103`, ceiling $2000; diff-verified), so no run is suspended by the 11-04 $500 pool. IDs are `<name>-002`.
-- **Batch A, running on sapphire** (`experiments/validation/rerun-20261103-jobs.txt`): observe-only lever-hard, blocks-hard,
+- **Batch A, running on sapphire** (`experiments/validation/rerun-20261103-jobs.txt`): no-interaction lever-hard, blocks-hard,
   assembly, tetra, boat and Panda lever-hard, plus baselines/ablations boat-base, Panda lever-hard, assembly-nowrench and
   tetra-nowrench. `w5-spring-hard-noaction-20261103-001` (lab root) survived the incident and continues.
-- **First observe-only result (survived the incident):** `w5-spring-hard-noaction-20261103-001` completed (`agent_finish`,
+- **First no-interaction result (survived the incident):** `w5-spring-hard-noaction-20261103-001` completed (`agent_finish`,
   6 submissions, sealed audit, no write errors). Final damping 0.3313 vs true 0.1828 (+81%), against exact with
   grasp and force sensing. That factor of 1.81 is close to the 1.97 common scale factor of spring-hard without force
   sensing, which fits the scale ambiguity: watching motion pins only ratios to inertia. Stiffness and masses are not
@@ -453,9 +453,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `SIM2SIM_EXPERIMENTS`. The combined snapshot is at `.../sim2sim-experiments/dashboard`
   (see [dashboard.md](dashboard.md)).
 
-## 2026-11-03 22:25 UTC — Wave 5: no-action ablation (observe-only reference world), on sapphire
+## 2026-11-03 22:25 UTC — Wave 5: no-action ablation (no-interaction reference world), on sapphire
 - **Question (user, 2026-11-03):** how informative are the agent's interactions with the "real" world? The reference
-  world is observe-only (`[simulation] reference_interaction = false`). grasp/move/release/arm_target are rejected there
+  world is no-interaction (`[simulation] reference_interaction = false`). grasp/move/release/arm_target are rejected there
   with an explicit error, while observe and reset still work. Gravity acts as usual, and the reconstruction world keeps every action.
   The public task says so in `worlds.reference` and marks those actions "reconstruction only". Runtime test
   `test_observe_only_reference_rejects_interaction`; runtime/harness tests passed (job `57582939`).
@@ -464,7 +464,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   assembly (vs the three RGB assembly baselines), tetra (vs w1-tetra-base), boat (vs w3-boat-base), and Panda lever-hard
   (vs w3-panda-lever-hard). `w5-*-noaction-20261103-001`, lab root, jobs in
   `experiments/validation/wave5-20261103-jobs.txt`. $58 cap each; pool `sim2sim-20261103` with its ceiling raised to $2000.
-- **Interpretation note:** passive observation is not static. The observe-only lever agent saw its arm fall and swing
+- **Interpretation note:** passive observation is not static. The no-interaction lever agent saw its arm fall and swing
   from the initial pose under gravity. Wave 5 therefore measures what actions add *beyond* passive gravity-driven motion
   (and settling), not what dynamics information is worth overall. Scenes that start at rest (blocks, assembly) bound
   the purely visual case.

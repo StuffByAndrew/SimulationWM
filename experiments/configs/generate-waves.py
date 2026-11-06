@@ -103,7 +103,7 @@ RUNS6 = {
                                      {**HARD, "vision": True, "tools": ("planning",), "task": TASK + PLAN_HINT, "cost": 58.0}),
 }
 # Wave 5 (2026-11-03, daily cap lifted by the user): how informative are the agent's interactions with the real world?
-# The reference world is observe-only (no grasp/move/release/arm_target); gravity still acts and the reconstruction world
+# The reference world is no-interaction (no grasp/move/release/arm_target); gravity still acts and the reconstruction world
 # keeps every action. Each run copies its baseline's config except this one factor.
 NOACT = {"noaction": True, "cost": 58.0, "pool_usd": 2000.0}  # pool ceiling raised: user lifted the $500 cap for 2026-11-03
 RUNS7 = {
@@ -134,7 +134,7 @@ RUNS8 = {
 }
 # Wave 7 (pool 2026-11-04 remainder, convergence prompt, image 44064383e99f): wave 6 follow-ups. The blocks baseline with
 # force sensing under the new prompt; the stated-mass effect on a second hinge scene (lever: damping + friction loss);
-# and observe-only with and without a stated mass (is a video plus one mass enough for full identification?).
+# and no-interaction with and without a stated mass (is a video plus one mass enough for full identification?).
 MASS_LEVER = " The hinged lever (orange arm and red ball, one rigid body) has a total mass of 1.3290 kg."
 RUNS9 = {
     "w7-blocks-hard-base": ("blocks", "converge prompt, hard variant baseline (vs w6-blocks-hard-nowrench)", {**HARD, "task": TASK_CONVERGE}),
@@ -158,7 +158,7 @@ RUNS10 = {
 
 # Wave 9 (pool 2026-11-04, ceiling raised to $700 by the user at ~17 UTC): wave 7 stated mass fixed the lever scale but
 # friction stayed 0; wave 8's hinge hint recovered friction near the common factor. Together they should give full
-# identification without force sensing, and the observe-only variant asks whether video alone is enough on a friction hinge.
+# identification without force sensing, and the no-interaction variant asks whether video alone is enough on a friction hinge.
 DAY700 = {"pool_usd": 700.0}
 RUNS11 = {
     "w9-lever-hard-nowrench-mass-hint": ("damped_lever", "converge prompt, wrench disabled, task states the lever mass and names "
