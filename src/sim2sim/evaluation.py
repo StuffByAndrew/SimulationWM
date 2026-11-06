@@ -121,10 +121,40 @@ def _visual(a, b):
     ma, mb = a['_mask'], b['_mask']
     union = np.logical_or(ma, mb).sum()
     silhouette = float(np.logical_xor(ma, mb).sum() / max(1, union))
-    return {'rgb_error': rgb, 'depth_error': depth, 'silhouette_error': silhouette}
+    return {'rgb_error': rgb, 'rgb_mse': _rgb_mse(_pixels(a, 'rgb'), _pixels(b, 'rgb')), 'depth_error': depth, 'silhouette_error': silhouette}
 
 
-def _parameters(source, candidate, correspondence):
+def _rgb_mse(source_rgb, candidate_rgb):
+    """Full-image mean squared error in normalized RGB, without masking."""
+    import numpy as np
+    delta = (np.asarray(source_rgb, dtype=float) - np.asarray(candidate_rgb, dtype=float)) / 255.0
+    return float(np.mean(delta * delta))
+
+
+def _reset_visual_scores(source, candidate, selection, artifacts):
+    if not selection & {'appearance', 'image_mse'}:
+        return {}
+    source.action({'op': 'reset'}, render=False)
+    candidate.action({'op': 'reset'}, render=False)
+    _trusted_camera(source, candidate)
+    if 'appearance' in selection:
+        a, b = _capture(source), _capture(candidate)
+        _save_frames(artifacts / 'reset' / 'source', [a])
+        _save_frames(artifacts / 'reset' / 'candidate', [b])
+        return {'reset': _visual(a, b)}
+    import mujoco
+    frames = []
+    for sim in (source, candidate):
+        if sim._renderer is None:
+            sim._renderer = mujoco.Renderer(sim._model, height=sim.height, width=sim.width)
+        sim._renderer.disable_depth_rendering()
+        sim._renderer.disable_segmentation_rendering()
+        sim._renderer.update_scene(sim._data, camera=sim.camera)
+        frames.append(sim._renderer.render().copy())
+    return {'reset': {'rgb_mse': _rgb_mse(*frames)}}
+
+
+def _parameters(source, candidate, correspondence, hinge_correspondence=None):
     import mujoco
     import numpy as np
     errors = {}
@@ -145,11 +175,63 @@ def _parameters(source, candidate, correspondence):
         errors[sname]['sliding_mu_absolute_error'] = float(np.mean(np.abs(sf-cf))) if sf.shape == cf.shape and sf.size else 1.0
         sj = np.flatnonzero((sm.jnt_bodyid == si) & (sm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE))
         cj = np.flatnonzero((cm.jnt_bodyid == ci) & (cm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE))
+        if hinge_correspondence is not None:
+            pairs=[]
+            for s_joint,c_joint in hinge_correspondence.items():
+                s_id=mujoco.mj_name2id(sm,mujoco.mjtObj.mjOBJ_JOINT,s_joint)
+                c_id=mujoco.mj_name2id(cm,mujoco.mjtObj.mjOBJ_JOINT,c_joint)
+                if s_id<0 or c_id<0 or sm.jnt_type[s_id]!=mujoco.mjtJoint.mjJNT_HINGE or cm.jnt_type[c_id]!=mujoco.mjtJoint.mjJNT_HINGE:
+                    raise ValueError('missing or invalid corresponding named hinge')
+                if sm.jnt_bodyid[s_id]==si:
+                    pairs.append((s_id,c_id))
+            sj=np.asarray([pair[0] for pair in pairs],dtype=int)
+            cj=np.asarray([pair[1] for pair in pairs],dtype=int)
         for name, sa, ca in [('hinge_stiffness', sm.jnt_stiffness[sj], cm.jnt_stiffness[cj]),
                              ('hinge_damping', sm.dof_damping[sm.jnt_dofadr[sj]], cm.dof_damping[cm.jnt_dofadr[cj]]),
+                             ('hinge_frictionloss', sm.dof_frictionloss[sm.jnt_dofadr[sj]], cm.dof_frictionloss[cm.jnt_dofadr[cj]]),
                              ('hinge_range', sm.jnt_range[sj], cm.jnt_range[cj])]:
             errors[sname][name] = relative(sa, ca)
     return errors
+
+
+def _hinges(source, candidate, correspondence, matching=None, *, object_only=False):
+    import mujoco
+    import numpy as np
+    sm,cm=source._model,candidate._model
+    if correspondence is None and matching=='single':
+        source_ids=np.flatnonzero(sm.jnt_type==mujoco.mjtJoint.mjJNT_HINGE)
+        candidate_ids=np.flatnonzero(cm.jnt_type==mujoco.mjtJoint.mjJNT_HINGE)
+        if object_only:
+            from .primitive_metrics import _robot_bodies
+            source_robot=_robot_bodies(source);candidate_robot=_robot_bodies(candidate)
+            source_ids=np.asarray([i for i in source_ids if int(sm.jnt_bodyid[i]) not in source_robot])
+            candidate_ids=np.asarray([i for i in candidate_ids if int(cm.jnt_bodyid[i]) not in candidate_robot])
+        if len(source_ids)!=1 or len(candidate_ids)!=1:
+            key=sm.joint(int(source_ids[0])).name if len(source_ids)==1 else 'single_hinge'
+            return {key or 'single_hinge':{'status':'unavailable','matching':'single',
+                'source_hinge_count':len(source_ids),'candidate_hinge_count':len(candidate_ids),
+                'error':'single-hinge matching requires exactly one hinge in each model'}}
+        si,ci=int(source_ids[0]),int(candidate_ids[0])
+        pairs=[(sm.joint(si).name or f'joint_{si}',cm.joint(ci).name or f'joint_{ci}',si,ci)]
+    else:
+        pairs=[(sname,cname,mujoco.mj_name2id(sm,mujoco.mjtObj.mjOBJ_JOINT,sname),
+            mujoco.mj_name2id(cm,mujoco.mjtObj.mjOBJ_JOINT,cname)) for sname,cname in (correspondence or {}).items()]
+    result={}
+    for sname,cname,si,ci in pairs:
+        record={'status':'unavailable','source_joint':sname,'candidate_joint':cname,
+            'matching':'declared' if correspondence is not None else matching}
+        result[sname]=record
+        if si<0 or ci<0 or sm.jnt_type[si]!=mujoco.mjtJoint.mjJNT_HINGE or cm.jnt_type[ci]!=mujoco.mjtJoint.mjJNT_HINGE:
+            record['error']='missing or non-hinge named joint'
+            continue
+        for parameter,a,b in [('damping',sm.dof_damping[sm.jnt_dofadr[si]],cm.dof_damping[cm.jnt_dofadr[ci]]),
+                ('frictionloss',sm.dof_frictionloss[sm.jnt_dofadr[si]],cm.dof_frictionloss[cm.jnt_dofadr[ci]]),
+                ('stiffness',sm.jnt_stiffness[si],cm.jnt_stiffness[ci])]:
+            a,b=float(a),float(b)
+            record.update({f'source_{parameter}':a,f'predicted_{parameter}':b,
+                f'{parameter}_absolute_error':abs(b-a),f'{parameter}_relative_error':abs(b-a)/abs(a) if a else None})
+        record['status']='ok'
+    return result
 
 
 def _probe(sim, actions):
@@ -167,32 +249,153 @@ def _probe(sim, actions):
             grasp_success = sim._grasp is not None
         frame = _capture(sim)
         frames.append(frame)
-        ys, xs = np.nonzero(frame['_mask'])
-        depth = _pixels(frame, 'depth')
-        trajectory.append([float(xs.mean()) / sim.width, float(ys.mean()) / sim.height,
-                           float(depth[ys, xs].mean()) / 1000] if len(xs) else [0., 0., 65.535])
+        trajectory.append(_centroid(sim, frame))
     return frames, np.asarray(trajectory), grasp_success
 
 
-def _probe_actions(source, probe):
+def _centroid(sim, frame):
+    """Normalized mask centroid and mean masked depth (m), or the far background when nothing is visible."""
+    import numpy as np
+    ys, xs = np.nonzero(frame['_mask'])
+    depth = _pixels(frame, 'depth')
+    return [float(xs.mean()) / sim.width, float(ys.mean()) / sim.height, float(depth[ys, xs].mean()) / 1000] if len(xs) else [0., 0., 65.535]
+
+
+def _probe_pixel(source, probe):
+    """A probe's grasp pixel, or its source body and local point projected through the source camera at the current state."""
     import mujoco
     import numpy as np
-    source.action({'op': 'reset'})
     if 'pixel' in probe:
-        pixel = probe['pixel']
-    else:
-        bid = mujoco.mj_name2id(source._model, mujoco.mjtObj.mjOBJ_BODY, probe['body'])
-        if bid < 0:
-            raise ValueError('unknown private probe body')
-        local = np.asarray(probe.get('local_point', [0, 0, 0]), dtype=float)
-        world = source._data.xpos[bid] + source._data.xmat[bid].reshape(3, 3) @ local
-        camera = source._camera_id
-        point = source._data.cam_xmat[camera].reshape(3, 3).T @ (world-source._data.cam_xpos[camera])
-        if point[2] >= 0:
-            raise ValueError('probe behind camera')
-        scale = np.tan(np.deg2rad(source._model.cam_fovy[camera]) / 2)
-        pixel = [(point[0]/(-point[2]*scale)*source.height/source.width+1)*source.width/2-.5,
-                 (1-point[1]/(-point[2]*scale))*source.height/2-.5]
+        return probe['pixel']
+    bid = mujoco.mj_name2id(source._model, mujoco.mjtObj.mjOBJ_BODY, probe['body'])
+    if bid < 0:
+        raise ValueError('unknown private probe body')
+    local = np.asarray(probe.get('local_point', [0, 0, 0]), dtype=float)
+    world = source._data.xpos[bid] + source._data.xmat[bid].reshape(3, 3) @ local
+    camera = source._camera_id
+    point = source._data.cam_xmat[camera].reshape(3, 3).T @ (world-source._data.cam_xpos[camera])
+    if point[2] >= 0:
+        raise ValueError('probe behind camera')
+    scale = np.tan(np.deg2rad(source._model.cam_fovy[camera]) / 2)
+    return [(point[0]/(-point[2]*scale)*source.height/source.width+1)*source.width/2-.5,
+            (1-point[1]/(-point[2]*scale))*source.height/2-.5]
+
+
+def _film(sim, actions, every):
+    """Run actions from reset, capturing a frame at reset and every `every` ticks; missed-grasp moves advance as waits.
+    Body grasps resolve to the pixel of that body point at that moment; the resolved actions are returned for replay."""
+    import numpy as np
+    sim.action({'op': 'reset'}, render=False)
+    frames, grasped, resolved, old = [_capture(sim)], [], [], sim._callback
+    sim._callback = lambda current: frames.append(_capture(current)) if current.ticks % every == 0 else None
+    try:
+        for action in actions:
+            action = {'op': 'grasp', 'pixel': _probe_pixel(sim, action)} if action['op'] == 'grasp' else dict(action)
+            resolved.append(action)
+            if action['op'] == 'move' and sim._grasp is None:
+                sim.action({'op': 'wait', 'ticks': action['ticks']}, render=False)
+            else:
+                sim.action(action, render=False)
+            if action['op'] == 'grasp':
+                grasped.append(sim._grasp is not None)
+            if not np.isfinite(sim._data.qpos).all() or not np.isfinite(sim._data.qvel).all():
+                raise ValueError('nonfinite simulation state')
+    finally:
+        sim._callback = old
+    return frames, all(grasped) if grasped else None, resolved
+
+
+def _expert(source, candidate, trajectories, artifacts):
+    """Scripted expert manipulations replayed from reset in both worlds, compared frame by frame; side-by-side video."""
+    import imageio.v2 as imageio
+    import numpy as np
+    if not isinstance(trajectories, list) or not trajectories:
+        raise ValueError('expert metric requires private expert_trajectories')
+    results = []
+    for index, trajectory in enumerate(trajectories):
+        every = int(trajectory.get('frame_ticks', 10))
+        if not 1 <= every <= 1000 or not trajectory.get('actions'):
+            raise ValueError('expert trajectory needs actions and frame_ticks within 1..1000')
+        af, source_grasp, actions = _film(source, trajectory['actions'], every)
+        bf, candidate_grasp, _ = _film(candidate, actions, every)
+        if source_grasp is False:
+            raise ValueError(f'invalid expert trajectory: source grasp missed in {trajectory.get("name", index)}')
+        if len(af) != len(bf):
+            raise ValueError('expert trajectory frame count mismatch')
+        visuals = [_visual(a, b) for a, b in zip(af, bf)]
+        at, bt = np.asarray([_centroid(source, f) for f in af]), np.asarray([_centroid(candidate, f) for f in bf])
+        path = artifacts / f'expert_{index:03d}'
+        path.mkdir(parents=True, exist_ok=True)
+        imageio.mimwrite(path / 'side_by_side.mp4', [np.hstack([_pixels(a, 'rgb'), _pixels(b, 'rgb')]).astype(np.uint8) for a, b in zip(af, bf)],
+                         fps=max(1, round(1 / (every * float(source._model.opt.timestep)))), macro_block_size=1)
+        (path / 'trajectory.json').write_text(json.dumps({'actions': actions, 'frame_ticks': every, 'source': at.tolist(), 'candidate': bt.tolist()}))
+        results.append({'name': trajectory.get('name', f'expert_{index}'), 'frames': len(af), 'frame_ticks': every,
+                        'source_grasp_success': source_grasp, 'candidate_grasp_success': candidate_grasp,
+                        'image_trajectory_error': float(np.mean(np.linalg.norm(at - bt, axis=1))),
+                        'max_rgb_mse': max(v['rgb_mse'] for v in visuals),
+                        **{key: float(np.mean([v[key] for v in visuals])) for key in visuals[0]}})
+    return results
+
+
+def _transfer_outcome(sim, pixel, displacement, task):
+    """Grasp, fling by displacement over move_ticks, release and settle; the object's compiled COM afterwards."""
+    import numpy as np
+    from .primitive_metrics import _com
+    sim.action({'op': 'reset'}, render=False)
+    sim.action({'op': 'grasp', 'pixel': pixel}, render=False)
+    move = {'op': 'move', 'displacement': list(displacement)} if sim._grasp is not None else {'op': 'wait'}
+    sim.action({**move, 'ticks': int(task.get('move_ticks', 40))}, render=False)
+    sim.action({'op': 'release', 'ticks': int(task.get('settle_ticks', 400))}, render=False)
+    if not np.isfinite(sim._data.qpos).all():
+        raise ValueError('nonfinite simulation state')
+    return _com(sim)[0]
+
+
+def _cem(sim, pixel, task, goal, seed):
+    """Cross-entropy search over the fling displacement in one world: best (cost, displacement), from the naive goal offset."""
+    import numpy as np
+    rng, bound = np.random.default_rng(seed), float(task.get('max_displacement_m', .3))
+    mean, std, best = np.clip(np.asarray(task['goal_offset_m'], float), -bound, bound), np.full(3, bound / 2), (np.inf, None)
+    for iteration in range(int(task.get('iterations', 6))):
+        samples = np.clip(rng.normal(mean, std, (16, 3)), -bound, bound)
+        if iteration == 0:
+            samples[0] = mean
+        costs = np.array([np.linalg.norm(_transfer_outcome(sim, pixel, s, task) - goal) for s in samples])
+        order = np.argsort(costs)
+        if costs[order[0]] < best[0]:
+            best = (float(costs[order[0]]), samples[order[0]].copy())
+        mean, std = samples[order[:4]].mean(axis=0), samples[order[:4]].std(axis=0) + 1e-3
+    return best
+
+
+def _policy_transfer(source, candidate, tasks):
+    """Train an open-loop fling policy in the candidate and execute it in the source, against a source-trained oracle."""
+    import numpy as np
+    from .primitive_metrics import _com
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError('policy_transfer metric requires private transfer_tasks')
+    results = []
+    for index, task in enumerate(tasks):
+        source.action({'op': 'reset'}, render=False)
+        pixel, start = _probe_pixel(source, task), _com(source)[0]
+        goal = start + np.asarray(task['goal_offset_m'], float)
+        naive = np.linalg.norm(_transfer_outcome(source, pixel, task['goal_offset_m'], task) - goal)
+        predicted, policy = _cem(candidate, pixel, task, goal, index)
+        oracle, oracle_policy = _cem(source, pixel, task, goal, index)
+        transfer = float(np.linalg.norm(_transfer_outcome(source, pixel, policy, task) - goal))
+        candidate.action({'op': 'reset'}, render=False)
+        candidate.action({'op': 'grasp', 'pixel': pixel}, render=False)
+        results.append({'name': task.get('name', f'transfer_{index}'), 'goal_m': goal.tolist(), 'candidate_grasp_success': candidate._grasp is not None,
+                        'candidate_policy_displacement_m': policy.tolist(), 'oracle_policy_displacement_m': oracle_policy.tolist(),
+                        'candidate_predicted_error_m': predicted, 'transfer_error_m': transfer, 'oracle_error_m': oracle,
+                        'naive_error_m': float(naive), 'transfer_regret_m': transfer - oracle})
+    return results
+
+
+def _probe_actions(source, probe):
+    import numpy as np
+    source.action({'op': 'reset'})
+    pixel = _probe_pixel(source, probe)
     ticks = int(probe.get('ticks', 120))
     if not 4 <= ticks <= 100000:
         raise ValueError('probe ticks outside limits')
@@ -223,20 +426,193 @@ def _save_frames(path, frames):
         Image.fromarray(frame['_mask'].astype('uint8')*255).save(path / f'{i:03d}_mask.png')
 
 
+def _verify_panda_fixture(source_root, candidate_root):
+    """The public robot is a fixed experimental instrument, not a target."""
+    expected=Path(source_root)/'robot'
+    supplied=Path(candidate_root)/'robot'
+    if not expected.is_dir() or not supplied.is_dir():
+        raise ValueError('Panda submission requires the supplied public robot fixture')
+    # Physics files must match; attribution docs are excluded because the public IMPORT.md is sanitized.
+    docs={'IMPORT.md','LICENSE'}
+    source_files={p.relative_to(expected).as_posix():hashlib.sha256(p.read_bytes()).digest()
+                  for p in expected.rglob('*') if p.is_file() and p.relative_to(expected).as_posix() not in docs}
+    candidate_files={p.relative_to(supplied).as_posix():hashlib.sha256(p.read_bytes()).digest()
+                     for p in supplied.rglob('*') if p.is_file() and p.relative_to(supplied).as_posix() not in docs}
+    if not source_files or source_files!=candidate_files:
+        raise ValueError('Panda robot fixture must be copied unchanged')
+    root=ET.parse(Path(candidate_root)/'scene.xml').getroot()
+    includes=[node.get('file') for node in root.iter('include')]
+    if includes.count('robot/panda.xml')!=1:
+        raise ValueError('Panda candidate scene must include robot/panda.xml exactly once')
+
+
+def _panda_contact_ticks(sim, target_bodies):
+    from .primitive_metrics import _robot_bodies
+    robot=_robot_bodies(sim)
+    model,data=sim._model,sim._data
+    target=set(target_bodies)
+    for i in range(data.ncon):
+        contact=data.contact[i]
+        a=int(model.geom_bodyid[contact.geom1]);b=int(model.geom_bodyid[contact.geom2])
+        if (a in robot and b in target) or (b in robot and a in target):
+            return 1
+    return 0
+
+
+def _panda_probe(sim, probe, target_bodies, with_rgb):
+    import numpy as np
+    sim.action({'op':'reset'},render=False)
+    observations=[];contacts=[0]
+    old_callback=sim._callback
+    sim._callback=lambda current: contacts.__setitem__(0,contacts[0]+_panda_contact_ticks(current,target_bodies))
+    try:
+        for step in probe['steps']:
+            sim.action({'op':'arm_target','joint_targets':step['joint_targets'],
+                        'gripper_width_m':step['gripper_width_m'],'ticks':step['ticks']},render=False)
+            if not np.isfinite(sim._data.qpos).all() or not np.isfinite(sim._data.qvel).all():
+                raise ValueError('nonfinite Panda probe state')
+            observations.append(sim.observe() if with_rgb else sim.observe())
+    finally:
+        sim._callback=old_callback
+    return observations,contacts[0]
+
+
+def _panda_dynamics(source,candidate,config,artifacts):
+    import mujoco
+    import numpy as np
+    probes=config.get('arm_probes')
+    if not isinstance(probes,list) or not probes:
+        raise ValueError('Panda dynamics requires private arm_probes')
+    names=config.get('object_bodies')
+    if not isinstance(names,list) or not names:
+        raise ValueError('Panda dynamics requires target object bodies')
+    source_ids=[]
+    for name in names:
+        body=mujoco.mj_name2id(source._model,mujoco.mjtObj.mjOBJ_BODY,name)
+        if body<0: raise ValueError('unknown Panda target body')
+        source_ids.append(body)
+    from .primitive_metrics import _robot_bodies
+    candidate_robot=_robot_bodies(candidate)
+    candidate_ids=[i for i in range(1,candidate._model.nbody) if i not in candidate_robot]
+    results=[]
+    with_rgb=bool(config.get('source_config',{}).get('rgb',True))
+    for index,probe in enumerate(probes):
+        named_target=probe.get('target_body')
+        if named_target is None:
+            probe_source_ids=source_ids
+        else:
+            body=mujoco.mj_name2id(source._model,mujoco.mjtObj.mjOBJ_BODY,named_target)
+            if body not in source_ids:
+                raise ValueError('Panda arm probe target must be a declared object body')
+            probe_source_ids=[body]
+        a,source_contacts=_panda_probe(source,probe,probe_source_ids,with_rgb)
+        b,candidate_contacts=_panda_probe(candidate,probe,candidate_ids,with_rgb)
+        if len(a)!=len(b): raise ValueError('Panda probe trajectory length mismatch')
+        keys={'joint_positions_rad':'joint_position_mae_rad',
+              'joint_velocities_rad_s':'joint_velocity_mae_rad_s',
+              'actuator_effort_nm':'actuator_effort_mae_nm',
+              'finger_positions_m':'finger_position_mae_m',
+              'finger_velocities_m_s':'finger_velocity_mae_m_s',
+              'gripper_width_m':'gripper_width_mae_m'}
+        record={'name':probe.get('name',f'arm_probe_{index}'),'status':'ok',
+                'source_target_contact_ticks':source_contacts,
+                'candidate_target_contact_ticks':candidate_contacts,
+                'target_contact_tick_difference':abs(source_contacts-candidate_contacts)}
+        for field,label in keys.items():
+            record[label]=float(np.mean([np.mean(np.abs(np.asarray(x['proprioception'][field])-np.asarray(y['proprioception'][field])))
+                                         for x,y in zip(a,b)]))
+        if with_rgb:
+            record['rgb_error']=float(np.mean([np.mean(np.abs(_pixels(x,'rgb')-_pixels(y,'rgb')))/255 for x,y in zip(a,b)]))
+        path=artifacts/f'arm_probe_{index:03d}'
+        path.mkdir(parents=True,exist_ok=True)
+        (path/'trajectory.json').write_text(json.dumps({'steps':probe['steps'],
+            'source_proprioception':[x['proprioception'] for x in a],
+            'candidate_proprioception':[x['proprioception'] for x in b],
+            'source_target_contact_ticks':source_contacts,
+            'candidate_target_contact_ticks':candidate_contacts},allow_nan=False))
+        results.append(record)
+    return results
+
+
+def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path):
+    """Researcher-only object and arm metrics for a shared public robot."""
+    scores = _reset_visual_scores(source, candidate, selection, artifacts)
+    if 'dynamics' in selection:
+        scores['arm_probes']=_panda_dynamics(source,candidate,config,artifacts)
+    if 'expert' in selection:
+        scores['expert']=_expert(source,candidate,config.get('expert_trajectories'),artifacts)
+    if 'policy_transfer' in selection:
+        raise ValueError('policy_transfer supports point-grasp scenes only')
+    if 'parameters' in selection:
+        correspondence=config.get('correspondence')
+        if correspondence:
+            try:
+                scores['parameters']={'status':'ok','bodies':_parameters(source,candidate,correspondence,config.get('hinge_correspondence'))}
+            except ValueError as exc:
+                scores['parameters']={'status':'failed','error':str(exc)}
+        else:
+            scores['parameters']={'status':'unavailable','reason':'no declared correspondence'}
+    if 'hinges' in selection:
+        scores['hinges']=_hinges(source,candidate,config.get('hinge_correspondence'),
+                                 config.get('hinge_matching'),object_only=True)
+    components=selection & {'chamfer','center_of_mass','density','friction'}
+    if 'reconstruction' in selection or components:
+        from .primitive_metrics import reconstruction_metrics
+        reconstruction=dict(config.get('reconstruction') or {})
+        reconstruction.update(panda_objects=True,
+            source_object_geoms=config.get('object_geoms'),
+            source_object_bodies=config.get('object_bodies'))
+        if 'reconstruction' not in selection:
+            reconstruction['components']=sorted(components)
+        try:
+            scores['reconstruction']=reconstruction_metrics(source,candidate,source_path,candidate_path,reconstruction)
+        except Exception as exc:
+            scores['reconstruction']={'status':'unavailable','error':f'{type(exc).__name__}: {exc}',
+                'chamfer_distance_m':None,'center_of_mass_error_m':None,
+                'density':{'status':'unavailable','per_primitive':[]}}
+    hook=config.get('metrics_hook')
+    if hook:
+        import importlib
+        module,name=hook.split(':',1)
+        function=getattr(importlib.import_module(module),name)
+        scores['custom']=function(source,candidate,{'scores':scores,'artifact_dir':str(artifacts),'config':config})
+    return scores
+
+
+SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
+                              'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
+                               'expert', 'policy_transfer'})
+
+
+def selected_metrics(config):
+    value = config.get('metrics')
+    if value is None:
+        return {'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges'}
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError('evaluation.metrics must be an array of supported metric names')
+    unknown = set(value) - SUPPORTED_METRICS
+    if unknown:
+        raise ValueError('unsupported evaluation metrics: ' + ', '.join(sorted(unknown)))
+    return set(value)
+
+
 def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
     """Archive an immutable version and return private metrics or explicit failure."""
     version = hashlib.sha256(zip_bytes).hexdigest()
     report = {'status': 'failed', 'version': version, 'scores': None}
     source = candidate = None
     try:
+        config = dict(config)
+        selection = selected_metrics(config)
+        explicit_selection = 'metrics' in config
         import numpy as np
         from .simulation import Simulation
-        config = dict(config)
         manifest = Path(config['source_dir']) / config.get('manifest', 'manifest.toml')
         if manifest.is_file():
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
-            for key in ('probes', 'correspondence', 'camera', 'graspable_bodies'):
+            for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
+                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -264,19 +640,26 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
         candidate = Simulation(target / 'project' / config.get('entrypoint', 'scene.xml'), candidate_config)
         _trusted_camera(source, candidate)
         correspondence = config.get('correspondence')
-        source_reset, candidate_reset = _capture(source), _capture(candidate)
-        reset = _visual(source_reset, candidate_reset)
         artifacts = output / 'artifacts' / version
-        _save_frames(artifacts / 'reset' / 'source', [source_reset])
-        _save_frames(artifacts / 'reset' / 'candidate', [candidate_reset])
-        if correspondence:
-            try:
-                params = {'status': 'ok', 'bodies': _parameters(source, candidate, correspondence)}
-            except ValueError as exc:
-                params = {'status': 'failed', 'error': str(exc)}
-        else:
-            params = {'status': 'unavailable', 'reason': 'no declared correspondence'}
-        probes = config.get('probes') or [{'body': name} for name in source._body_names]
+        if simconfig.get('robot')=='panda':
+            _verify_panda_fixture(config['source_dir'],target/'project')
+            scores=_evaluate_panda(source,candidate,config,selection,artifacts,
+                Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint','scene.xml')),
+                target / 'project' / config.get('entrypoint','scene.xml'))
+            json.dumps(scores,allow_nan=False)
+            report.update(status='ok',scores=scores)
+            return report
+        scores = _reset_visual_scores(source, candidate, selection, artifacts)
+        if 'parameters' in selection:
+            if correspondence:
+                try:
+                    params = {'status': 'ok', 'bodies': _parameters(source, candidate, correspondence, config.get('hinge_correspondence'))}
+                except ValueError as exc:
+                    params = {'status': 'failed', 'error': str(exc)}
+            else:
+                params = {'status': 'unavailable', 'reason': 'no declared correspondence'}
+            scores['parameters'] = params
+        probes = (config.get('probes') or [{'body': name} for name in source._body_names]) if 'dynamics' in selection else []
         results = []
         for probe in probes:
             body = probe.get('body', 'pixel')
@@ -295,8 +678,31 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             results.append({'name': probe.get('name', body), 'source_grasp_success': source_grasp,
                             'candidate_grasp_success': candidate_grasp, 'status': 'ok' if candidate_grasp else 'missed_grasp', 'image_trajectory_error': float(np.mean(np.linalg.norm(at-bt, axis=1))),
                             **{key: float(np.mean([v[key] for v in visuals])) for key in visuals[0]}})
-        scores = {'reset': reset, 'probes': results, 'parameters': params,
-                  'probe_grasp_failure_rate': sum(not p['candidate_grasp_success'] for p in results) / max(1, len(results))}
+        if 'dynamics' in selection:
+            scores.update(probes=results, probe_grasp_failure_rate=sum(not p['candidate_grasp_success'] for p in results) / max(1, len(results)))
+        if 'hinges' in selection:
+            scores['hinges'] = _hinges(source, candidate, config.get('hinge_correspondence'), config.get('hinge_matching'))
+        if 'expert' in selection:
+            scores['expert'] = _expert(source, candidate, config.get('expert_trajectories'), artifacts)
+        if 'policy_transfer' in selection:
+            scores['policy_transfer'] = _policy_transfer(source, candidate, config.get('transfer_tasks'))
+        reconstruction = config.get('reconstruction')
+        components = selection & {'chamfer', 'center_of_mass', 'density', 'friction'}
+        if explicit_selection and ('reconstruction' in selection or components):
+            reconstruction = {**(reconstruction if isinstance(reconstruction, dict) else {}), 'enabled': True}
+            if 'reconstruction' not in selection:
+                reconstruction['components'] = sorted(components)
+        if ('reconstruction' in selection or components) and reconstruction and (not isinstance(reconstruction, dict) or reconstruction.get('enabled', True)):
+            from .primitive_metrics import reconstruction_metrics
+            try:
+                scores['reconstruction'] = reconstruction_metrics(source, candidate,
+                    Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')),
+                    target / 'project' / config.get('entrypoint', 'scene.xml'),
+                    reconstruction if isinstance(reconstruction, dict) else {})
+            except Exception as exc:
+                scores['reconstruction'] = {'status': 'unavailable', 'error': f'{type(exc).__name__}: {exc}',
+                    'chamfer_distance_m': None, 'center_of_mass_error_m': None,
+                    'density': {'status': 'unavailable', 'per_primitive': []}}
         hook = config.get('metrics_hook')
         if hook:
             import importlib
