@@ -250,7 +250,7 @@ META = dict(title="Can an LLM agent recover a scene's geometry and physics by ex
                 "<tr><td>Small Panda + small assembly</td><td>The random assembly scaled to 12% of its size, placed within the arm's reach</td><td>shape, COM, mass</td></tr>"
                 "</table><p class='note'><b>Randomized</b> scenes (lever, spring, blocks, Panda + lever) have every size scaled by a seeded random factor in 0.8–1.25 "
                 "and every mass, density, damping, friction and stiffness by a factor in 0.6–1.6, so true values are non-round (damping 0.1157 rather than 0.12). "
-                "On the original round-valued scenes agents often land on the exact value (Appendix A3), which hides any difference between conditions.</p></div>"
+                "On the original round-valued scenes agents often land on the exact value (Appendix A2), which hides any difference between conditions.</p></div>"
                 "<h3>Conditions</h3><div class='card scroll'><table class='intro'>"
                 "<tr><th>condition</th><th>what changes from the baseline</th></tr>"
                 "<tr><td>baseline</td><td>Camera + point grasp + force reading (Panda scenes: camera + arm)</td></tr>"
@@ -317,7 +317,14 @@ def sections(ctx):
     in the appendix sections, whose titles start with "A"."""
     R, x0, f = ctx.runs, ctx.x, ctx.final
     blk = lambda **kw: kw
-    conv = lambda series, keys, **kw: blk(type="convergence", series=[dict(run=s[0], label=s[1], **(s[2] if len(s) > 2 else {})) for s in series], keys=keys, **kw)
+    conv = lambda series, keys, **kw: blk(type="convergence", keys=keys, **kw,  # a list of runs in place of a run is drawn as their mean + range
+                                          series=[dict(**({"runs": s[0]} if isinstance(s[0], list) else {"run": s[0]}), label=s[1], **(s[2] if len(s) > 2 else {})) for s in series])
+    grp = lambda o: [o] + REPS[o] if o in REPS else o  # a condition's runs (original + repeats)
+    reach = lambda r, keys, tol=0.05: next((u["t"] for u in R[r]["subs"] if all(u["m"].get(k) is not None and abs(u["m"][k] - 1) <= tol for k in keys)), None)
+    first_le = lambda r, k, v: next((u["t"] for u in R[r]["subs"] if u["m"].get(k) is not None and u["m"][k] <= v), None)
+    first_nz = lambda r, k: next((u["t"] for u in R[r]["subs"] if u["m"].get(k)), None)
+    minute = lambda t: "never" if t is None else f"min {t:.0f}"
+    minutes = lambda rs, g: ", ".join(minute(g(r)) for r in rs)
     cmps = lambda *ids: blk(type="compare", ids=list(ids))
     common = lambda run, keys: [f(run, k) for k in keys]
     spread = lambda vals: f"×{min(vals):.2f}–{max(vals):.2f}" if max(vals) / min(vals) > 1.01 else f"×{vals[0]:.3g}"
@@ -355,6 +362,15 @@ def sections(ctx):
              pp10="w10-panda-blocks-proprio-20261105-001", pt10="w10-panda-blocks-tactile-20261105-001",
              a10="w10-assembly-base-20261105-001", t10="w10-tetra-base-20261105-001", b10="w10-boat-base-20261105-001")
     sec = []
+    assert all(reach(r, k) is None for r, k in ((S["lv_nf"], LEVER), (S["lv_oo"], LEVER), (S["sp_nf"], SPRING), (S["sp_oo"], SPRING), (S["bl_nf"], BLOCKS),
+                                              (S["bl_oo"], BLOCKS), (S["pl"], LEVER), (S["pl1"], LEVER), (S["pl_b2"], LEVER)))  # sections 1 and 6 time courses
+    free_force, free_none = RGB3 + [S["tt"], S["bt"]], [S["as_nf"], S["as_oo"], S["tt_nf"], S["tt_oo"], S["bt_oo"]]
+    assert all(reach(r, ["r:mass"]) is not None and reach(r, ["r:mass"]) <= R[r]["subs"][1]["t"] for r in free_force)  # section 1, free-object time course
+    assert all(reach(r, ["r:mass"]) is None for r in free_none)
+    lucky = [r for o, k in ((S["sp6_nf"], SPRING), (S["lv7_nf"], LEVER), (S["lv8_h"], LEVER), (S["bl6"], BLOCKS), (S["sp7_oo"], SPRING))  # no force, no stated mass
+             for r in [o] + REPS.get(o, []) if reach(r, k) is not None]
+    assert len(lucky) == 1 and reach(lucky[0], SPRING) == R[lucky[0]]["subs"][0]["t"] and worst(lucky[0]) > 0.05  # section 2 time course
+    assert R[S["as_d"]]["subs"][1]["m"]["chamfer_mm"] < min(f(r, "chamfer_mm") for r in RGB3) and f(S["bt"], "chamfer_mm") < f(S["bt_d"], "chamfer_mm")  # section 4
 
     # ---------------- 1 · scale ----------------
     scale_lost = [S["lv_oo"], S["lv_nf"], S["lv_h"], S["lv7_nf"], S["lv8_h"], S["pl_oo"], S["sp_oo"], S["sp_nf"], S["sp6_nf"], S["sp7_oo"],
@@ -454,7 +470,27 @@ def sections(ctx):
             blk(type="html", html="<p class='note'>Ratios are read from each compiled submission: the hinge body's mass and inertia about the axis, joint "
                                   "parameters, and for free bodies the mass of the candidate body nearest each true body's COM. Parameters that are zero in the true "
                                   "scene (spring friction, lever stiffness) are omitted. The same comparisons at 120 minutes and at equal token use are in Appendix A1; "
-                                  "per-submission curves are in Appendix A2.</p>")]))
+                                  "per-submission curves follow below.</p>"),
+            cap("Figure", L("<b>Time course: with a force reading the scale is right within the first hour; without one it never arrives.</b> Every submission "
+                            "of the full-time-prompt runs (log scale; dashed = true value). The force-reading baselines had every parameter within 5% at "
+                            f"{minute(reach(S['lv_b'], LEVER))} (lever), {minute(reach(S['sp_b'], SPRING))} (spring) and {minute(reach(S['bl_b'], BLOCKS))} (blocks). "
+                            "Without the force reading or without interaction, later submissions changed the estimates, but none of these runs ever had all "
+                            "parameters within 5%: more time does not supply the missing scale.")),
+            conv([[S["lv_b"], "baseline"], [S["lv_nf"], "no force reading"], [S["lv_oo"], "no-interaction", {"color": "--third"}]], LEVER, title="Randomized lever"),
+            conv([[S["sp_b"], "baseline"], [S["sp_nf"], "no force reading"], [S["sp_oo"], "no-interaction", {"color": "--third"}]], SPRING, title="Randomized spring"),
+            conv([[S["bl_b"], "baseline"], [S["bl_nf"], "no force reading"], [S["bl_oo"], "no-interaction", {"color": "--third"}]], BLOCKS + ["com_mm"], title="Randomized blocks"),
+            cap("Figure", L("<b>Time course for free objects: mass is ×1 within two submissions with a force reading and never without one; the "
+                            "no-interaction runs kept refining shape for hours.</b> Every submission; the three random-assembly baseline runs are drawn as "
+                            "their mean (line) and range (shading); the faded line is a +2 h extension. Chamfer, first → final submission, without "
+                            "interaction: " + ", ".join(f"{t} {mm(R[r]['subs'][0]['m']['chamfer_mm'])} → {mm(f(r, 'chamfer_mm'))}"
+                                                         for t, r in (("assembly", S["as_oo"]), ("tetrahedral", S["tt_oo"]), ("boat", S["bt_oo"]))) +
+                            "; the runs that could push the objects had most of their final shape from the first submissions.")),
+            conv([[RGB3, "baseline", {"color": "--base"}], [S["as_nf"], "no force reading", {"color": "--abl"}], [S["as_oo"], "no-interaction", {"color": "--third"}],
+                  ["c1-assembly-base-20261103-002", "baseline A +2 h", {"color": "--base", "faded": True}]], ["chamfer_mm", "com_mm", "r:mass"],
+                 title="Random assembly (faded: +2 h extension)", xmax=360),
+            conv([[S["tt"], "tetrahedral baseline"], [S["tt_nf"], "tetrahedral no force"], [S["tt_oo"], "tetrahedral no-interaction", {"color": "--third"}],
+                  [S["bt"], "boat baseline", {"color": "--fourth"}], [S["bt_oo"], "boat no-interaction", {"color": "--s5"}]], ["chamfer_mm", "com_mm", "r:mass"],
+                 title="Tetrahedral cluster and boat")]))
 
     # ---------------- 2 · stated mass ----------------
     sec.append(dict(id="stated", nav="Known mass", tag="one run per condition (two for spring and lever) · stop-when-done prompt",
@@ -476,7 +512,23 @@ def sections(ctx):
                     dict(title="Randomized lever", keys=LEVER, rows=[[S["lv7_nf"], "no force reading"], [S["lv7_m"], "no force + stated lever mass"],
                                                                    [S["lv9_mh"], "no force + stated mass + names hinge parameters"],
                                                                    [S["lv9_oo"], "no-interaction + stated mass + names hinge parameters"]]),
-                    dict(title="Randomized blocks (red, blue, red ÷ blue)", keys=BLOCKS, rows=[[S["bl6"], "no force reading"], [S["bl6_m"], "no force + stated red-block mass"]])])]))
+                    dict(title="Randomized blocks (red, blue, red ÷ blue)", keys=BLOCKS, rows=[[S["bl6"], "no force reading"], [S["bl6_m"], "no force + stated red-block mass"]])]),
+                cap("Figure", L("<b>Time course: a stated mass gives the right answer, but a force reading gets there sooner.</b> Every submission, stop-when-done "
+                                "prompt; conditions with three runs are drawn as mean (line) and range (shading). First submission with every parameter within 5%, "
+                                f"per run. Spring: force reading {minutes(grp(S['sp6']), lambda r: reach(r, SPRING))}; stated mass "
+                                f"{minutes(grp(S['sp6_m']), lambda r: reach(r, SPRING))}. Lever: force reading {minutes(grp(S['lv8']), lambda r: reach(r, LEVER))}; "
+                                f"stated mass + named hinge parameters {minutes(grp(S['lv9_mh']), lambda r: reach(r, LEVER))}, so even when the stated mass "
+                                "fixes the scale, the agent needs much longer to pin the remaining parameters down from motion alone. Blocks: force reading "
+                                f"{minutes(grp(S['bl7']), lambda r: reach(r, BLOCKS))}; the stated red mass was within 5% at {minute(reach(S['bl6_m'], BLOCKS[:1]))}. "
+                                f"Without either, only {lnk(lucky[0], 'one run')} was ever within 5%, at its first submission ({minute(R[lucky[0]]['subs'][0]['t'])}); "
+                                f"it then drifted to a worst error of {100 * worst(lucky[0]):.0f}%, so that early hit was a lucky default, not a measurement.")),
+                conv([[grp(S["sp6"]), "baseline"], [grp(S["sp6_nf"]), "no force reading"], [grp(S["sp6_m"]), "no force + stated mass", {"color": "--third"}],
+                      [S["sp7_oo"], "no-interaction", {"color": "--fourth"}], [S["sp7_m"], "no-interaction + stated mass", {"color": "--s5"}]], SPRING, title="Randomized spring"),
+                conv([[grp(S["lv8"]), "baseline"], [grp(S["lv7_nf"]), "no force reading"], [S["lv7_m"], "no force + stated mass", {"color": "--third"}],
+                      [grp(S["lv9_mh"]), "+ names parameters", {"color": "--fourth"}], [grp(S["lv9_oo"]), "no-interaction + mass + names", {"color": "--s5"}]], LEVER,
+                     title="Randomized lever"),
+                conv([[grp(S["bl7"]), "baseline"], [grp(S["bl6"]), "no force reading"], [S["bl6_m"], "no force + stated red mass", {"color": "--third"}]], BLOCKS + ["com_mm"],
+                     title="Randomized blocks")]))
 
     # ---------------- 3 · task wording ----------------
     lever_conditions = [("full-time", "force reading", "—", S["lv_b"]), ("full-time", "force reading", "hinge parameters", S["lv_hb"]),
@@ -521,7 +573,13 @@ def sections(ctx):
                 blk(type="table", title=None, head=["scene", "full-time prompt", "stop-when-done prompt"], rows=pair_rows),
                 blk(type="html", html=L(f"<p class='note'>Asking the agent to match the appearance from every viewing angle (one random-assembly run) left Chamfer "
                                         f"{mm(f(S['as_ang'], 'chamfer_mm'))} and COM {mm(f(S['as_ang'], 'com_mm'))}, inside or just past the range of the three "
-                                        f"baseline repeats (Appendix A1): no clear effect from one run.</p>"))]))
+                                        f"baseline repeats (Appendix A1): no clear effect from one run.</p>")),
+                cap("Figure", L("<b>Time course of the lever without a force reading: naming the hinge parameters brings dry friction in early.</b> Every "
+                                "submission; three-run conditions as mean and range. First submission with a nonzero friction estimate, per run: unnamed "
+                                f"{minutes([S['lv_nf']] + grp(S['lv7_nf']), lambda r: first_nz(r, 'r:frictionloss'))}; named "
+                                f"{minutes([S['lv_h']] + grp(S['lv8_h']), lambda r: first_nz(r, 'r:frictionloss'))}. The scale stays wrong either way (no force reading).")),
+                conv([[S["lv_nf"], "full-time, no force"], [S["lv_h"], "full-time, no force + names"], [grp(S["lv7_nf"]), "stop-when-done, no force", {"color": "--third"}],
+                      [grp(S["lv8_h"]), "stop-when-done, no force + names", {"color": "--fourth"}]], LEVER, title="Randomized lever without force reading")]))
 
     # ---------------- 4 · camera variants ----------------
     cam = lambda label, rs, rv, extra=None: [label, " · ".join(lnk(r, "ABC"[i] if len(rs) > 1 else "baseline") for i, r in enumerate(rs)) + f" → {lnk(rv, 'variant')}",
@@ -541,7 +599,21 @@ def sections(ctx):
                           cam("Small Panda assembly + wrist camera", [S["ps"]], S["ps_w"]), cam("Tetrahedral cluster, all spheres gray", [S["tt"]], S["tt_g"], "sphere_err")]),
                 cap("Figure", "<b>The camera variants in 3D.</b> True geometry (solid) against each reconstruction (wireframe)."),
                 blk(type="viewer", group="boat", title="Boat"), blk(type="viewer", group="ps", title="Small Panda assembly"),
-                blk(type="viewer", group="tetra", title="Tetrahedral cluster")]))
+                blk(type="viewer", group="tetra", title="Tetrahedral cluster"),
+                cap("Figure", L("<b>Time course of the camera variants: depth gets the occluded assembly right sooner and better.</b> Every submission; the three "
+                                "RGB-only assembly runs as mean and range. First submission with COM error under 2 mm: assembly with depth "
+                                f"{minute(first_le(S['as_d'], 'com_mm', 2))}, RGB-only runs {minutes(RGB3, lambda r: first_le(r, 'com_mm', 2))}; its Chamfer was "
+                                f"{mm(R[S['as_d']]['subs'][1]['m']['chamfer_mm'])} by its second submission, below every RGB-only run's final value. "
+                                f"Boat with depth started closer (first COM error {mm(R[S['bt_d']]['subs'][0]['m']['com_mm'])} against "
+                                f"{mm(R[S['bt']]['subs'][0]['m']['com_mm'])}), but the baseline caught up and ended with lower Chamfer. The wrist camera gave "
+                                f"a better small-assembly shape from its second submission (Chamfer {mm(R[S['ps_w']]['subs'][1]['m']['chamfer_mm'])} at "
+                                f"{minute(R[S['ps_w']]['subs'][1]['t'])}; the fixed-camera run first submitted at {minute(R[S['ps']]['subs'][0]['t'])}), while its mass "
+                                "estimate drifted between submissions. Error plots: filled points on the floor labeled \"exact\" are below 0.01 mm, not missing values.")),
+                conv([[RGB3, "assembly, camera", {"color": "--base"}], [S["as_d"], "assembly + depth", {"color": "--abl"}],
+                      ["c1-assembly-depth-20261103-002", "assembly + depth, +2 h", {"color": "--abl", "faded": True}],
+                      [S["bt"], "boat, camera", {"color": "--third"}], [S["bt_d"], "boat + depth", {"color": "--fourth"}]], ["chamfer_mm", "com_mm", "r:mass"],
+                     title="Depth", xmax=360),
+                conv([[S["ps"], "small assembly, fixed camera"], [S["ps_w"], "small assembly, + wrist camera"]], ["chamfer_mm", "com_mm", "r:mass"], title="Wrist camera")]))
 
     # ---------------- 5 · Panda ----------------
     panda_lever = [[lnk(S["lv_b"], "point grasp + force reading"), *(x(f(S["lv_b"], k)) for k in LEVER)]] + \
@@ -567,7 +639,20 @@ def sections(ctx):
                                f"{mm(f(S['pt10'], 'com_mm'))} against {mm(f(S['pp10'], 'com_mm'))}). The runs' pages show every arm and touch reading the model received.")),
                 blk(type="table", title=None, head=["prompt", "condition", "Chamfer", "COM error", "red mass ÷ true", "blue mass ÷ true"], rows=blocks_rows),
                 cap("Figure", "<b>The camera-less reconstructions in 3D.</b> Pick a run and drag the slider to watch it search for the blocks; no video exists for these runs."),
-                blk(type="viewer", group="panda", title="Panda + blocks, every condition")]))
+                blk(type="viewer", group="panda", title="Panda + blocks, every condition"),
+                cap("Figure", L("<b>Time course on the Panda: the arm's torques give the scale only slowly; without a camera the blocks are found late or "
+                                "not at all.</b> Every submission. Lever, mass ÷ true at the first and last submission: run 1 "
+                                f"{x(R[S['pl']]['subs'][0]['m']['r:mass'], 2)} → {x(f(S['pl'], 'r:mass'), 2)}, run 2 {x(R[S['pl_b2']]['subs'][0]['m']['r:mass'], 2)} → "
+                                f"{x(f(S['pl_b2'], 'r:mass'), 2)}, no-interaction {x(R[S['pl_oo']]['subs'][0]['m']['r:mass'], 2)} → {x(f(S['pl_oo'], 'r:mass'), 2)}. "
+                                f"Blocks, first submission with COM error below 0.01 mm: camera {minute(first_le(S['pv10'], 'com_mm', 0.01))}; first camera-less run "
+                                f"{minute(first_le(S['pbl'], 'com_mm', 0.01))}; the later camera-less runs {minute(first_le(S['pp10'], 'com_mm', 0.01))} and "
+                                f"{minute(first_le(S['pt10'], 'com_mm', 0.01))} (touch), with a red-block mass first estimated at "
+                                f"{minute(next(u['t'] for u in R[S['pp10']]['subs'] if u['m'].get('r:mass:block_red') is not None))} and "
+                                f"{minute(next(u['t'] for u in R[S['pt10']]['subs'] if u['m'].get('r:mass:block_red') is not None))}.")),
+                conv([[S["pl"], "joint torques (run 1)"], [S["pl_b2"], "joint torques (run 2)"], [S["pl_oo"], "no-interaction", {"color": "--third"}]], LEVER,
+                     title="Panda + randomized lever"),
+                conv([[S["pv10"], "camera"], [S["pp10"], "no camera, arm feedback"], [S["pt10"], "no camera, + touch", {"color": "--third"}],
+                      [S["pbl"], "no camera (first run)", {"color": "--fourth"}]], ["chamfer_mm", "com_mm", "r:mass:block_red", "r:mass:block_blue"], title="Panda + blocks")]))
 
     # ---------------- 6 · tools ----------------
     up = lambda r, t: R[r]["tools"][t]
@@ -589,7 +674,12 @@ def sections(ctx):
                                "Planning v1 was used but the lever came out worse than without it. Planning v2 (revised tool and instructions) gave an exact lever, "
                                "every parameter including friction. One run each, and the v2-era run without the tool was itself worse than the earlier one, so part "
                                "of the gap may be run-to-run variation.")),
-                blk(type="table", title=None, head=["tool", "task recommends it", "run", "bash calls using it", "first use", "result (without the tool)"], rows=tool_rows)]))
+                blk(type="table", title=None, head=["tool", "task recommends it", "run", "bash calls using it", "first use", "result (without the tool)"], rows=tool_rows),
+                cap("Figure", L("<b>Time course with the planning tools.</b> Every submission, Panda + randomized lever. With planning v2 every parameter was within "
+                                f"5% at {minute(reach(S['pl2'], LEVER))} and exact at {minute(reach(S['pl2'], LEVER, 1e-3))}; the other three runs never had every "
+                                "parameter within 5%.")),
+                conv([[S["pl"], "Panda (run 1)"], [S["pl1"], "+ planning v1"], [S["pl_b2"], "Panda (run 2)", {"color": "--third"}], [S["pl2"], "+ planning v2", {"color": "--fourth"}]],
+                     LEVER, title="Panda + randomized lever: planning tools")]))
 
     # ---------------- 7 · repeats ----------------
     pair = lambda o, lab: [[o, lab]] + [[r, f"  repeat {REPEAT_N(r)}"] for r in REPS[o]]
@@ -667,46 +757,16 @@ def sections(ctx):
                 cmps("hint-lever", "hint-hardlever", "hint-nf", "np-hint-nf", "prompt-lever", "prompt-assembly", "prompt-tetra", "prompt-boat", "angles"),
                 blk(type="html", html="<h3>Sections 4–6: camera variants, Panda arm, tools</h3>"),
                 cmps("depth-assembly", "depth-boat", "wrist", "gray", "arm-lever", "touch", "blind-proprio", "blind-tactile", "seg", "planning", "planning2")]))
-    sec.append(dict(id="appx-curves", nav="A2", appendix=True, tag=None, title="A2 · Estimates at every submission",
-        q=None, answer=None,
-        blocks=[lead("How each run's estimates evolved. One point per submission at its submission time, log scale; the dashed line is the true value on ratio "
-                     "plots. These show whether a wrong value was there from the start or appeared late, and whether a run was still improving when it ended."),
-                conv([[S["lv_b"], "baseline"], [S["lv_nf"], "no force reading"], [S["lv_oo"], "no-interaction", {"color": "--third"}]], LEVER, title="Randomized lever, full-time prompt"),
-                conv([[S["sp_b"], "baseline"], [S["sp_nf"], "no force reading"], [S["sp_oo"], "no-interaction", {"color": "--third"}]], SPRING, title="Randomized spring, full-time prompt"),
-                conv([[S["pl"], "baseline"], [S["pl_oo"], "no-interaction"]], LEVER, title="Panda + randomized lever"),
-                conv([[S["bl_b"], "baseline"], [S["bl_nf"], "no force reading"], [S["bl_oo"], "no-interaction", {"color": "--fourth"}]], BLOCKS + ["com_mm"], title="Randomized blocks, full-time prompt"),
-                conv([[r, NAMES[r][1], {"color": "--base", "dash": d}] for r, d in zip(RGB3, ("", "6 3", "2 3"))] +
-                     [[S["as_nf"], "no force reading", {"color": "--abl"}], [S["as_oo"], "no-interaction", {"color": "--third"}], [S["as_d"], "camera + depth", {"color": "--fourth"}],
-                      ["c1-assembly-base-20261103-002", "baseline A +2 h", {"color": "--base", "faded": True}], ["c1-assembly-depth-20261103-002", "depth +2 h", {"color": "--fourth", "faded": True}]],
-                     ["chamfer_mm", "com_mm", "r:mass"], title="Random assembly (faded: +2 h extensions)", xmax=360),
-                conv([[S["tt"], "tetrahedral baseline"], [S["tt_nf"], "tetrahedral no force"], [S["tt_oo"], "tetrahedral no-interaction", {"color": "--third"}],
-                      [S["bt"], "boat baseline", {"color": "--fourth"}], [S["bt_oo"], "boat no-interaction", {"color": "--s5"}]], ["chamfer_mm", "com_mm", "r:mass"],
-                     title="Tetrahedral cluster and boat"),
-                conv([[S["sp6"], "baseline"], [S["sp6_nf"], "no force reading"], [S["sp6_m"], "no force + stated mass", {"color": "--third"}],
-                      [S["sp7_oo"], "no-interaction", {"color": "--fourth"}], [S["sp7_m"], "no-interaction + stated mass", {"color": "--s5"}]], SPRING, title="Randomized spring, stop-when-done prompt"),
-                conv([[S["lv8"], "baseline"], [S["lv7_nf"], "no force reading"], [S["lv7_m"], "no force + stated mass", {"color": "--third"}],
-                      [S["lv9_mh"], "+ names parameters", {"color": "--fourth"}], [S["lv9_oo"], "no-interaction + mass + names", {"color": "--s5"}]], LEVER,
-                     title="Randomized lever, stop-when-done prompt"),
-                conv([[S["lv_nf"], "full-time, no force"], [S["lv_h"], "full-time, no force + names"], [S["lv7_nf"], "stop-when-done, no force", {"color": "--third"}],
-                      [S["lv8_h"], "stop-when-done, no force + names", {"color": "--fourth"}]], LEVER, title="Randomized lever without force reading: naming the hinge parameters"),
-                conv([[S["bl7"], "baseline"], [S["bl6"], "no force reading"], [S["bl6_m"], "no force + stated red mass", {"color": "--third"}]], BLOCKS + ["com_mm"],
-                     title="Randomized blocks, stop-when-done prompt"),
-                conv([[S["pv10"], "camera"], [S["pp10"], "no camera, arm feedback"], [S["pt10"], "no camera, + touch", {"color": "--third"}],
-                      [S["pbl"], "no camera (first run)", {"color": "--fourth"}]], ["chamfer_mm", "com_mm", "r:mass:block_red", "r:mass:block_blue"], title="Panda + blocks"),
-                conv([[S["pl"], "Panda (run 1)"], [S["pl1"], "+ planning v1"], [S["pl_b2"], "Panda (run 2)", {"color": "--third"}], [S["pl2"], "+ planning v2", {"color": "--fourth"}]],
-                     LEVER, title="Panda + randomized lever: planning tools"),
-                conv([[S["bt"], "boat baseline"], [S["bt_d"], "boat + depth"], [S["ps"], "small assembly, fixed camera", {"color": "--third"}],
-                      [S["ps_w"], "small assembly, + wrist camera", {"color": "--fourth"}]], ["chamfer_mm", "com_mm", "r:mass"], title="Camera variants")]))
     easy = ["w1-blocks-base-20261102-003", "w1-spring-base-20261102-003", "w1-lever-base-20261102-003", "w1-lever-hint-20261102-003", S["bl_b"], S["pbl"], S["pv"], S["sp6"]]
     fmt_err = lambda v: "exact" if v < 1e-3 else f"{100 * v:.1f}%"
-    sec.append(dict(id="saturate", nav="A3", appendix=True, tag=None, title="A3 · Round-valued scenes are recovered exactly, which is why the randomized variants exist",
+    sec.append(dict(id="saturate", nav="A2", appendix=True, tag=None, title="A2 · Round-valued scenes are recovered exactly, which is why the randomized variants exist",
         q=None, answer=None,
         blocks=[cap("Table", L("<b>Ceiling check.</b> The original scenes use round values (for example 0.25 kg or damping 0.12), and these runs recovered "
                                "them exactly, as did the force-reading baselines of the randomized scenes. A condition that changes nothing on these scenes may "
                                "simply be at the ceiling, so the main comparisons use the randomized scenes."), appendix=True),
                 blk(type="table", title=None, head=["scene · condition", "Chamfer", "COM error", "worst parameter error", "submissions"],
                     rows=[[f"{R[r]['scene']} · {lnk(r)}", mm(f(r, "chamfer_mm")), mm(f(r, "com_mm")), fmt_err(worst(r)), str(R[r]["submissions"])] for r in easy])]))
-    sec.append(dict(id="appx-videos", nav="A4", appendix=True, tag=None, title="A4 · Other recorded videos",
+    sec.append(dict(id="appx-videos", nav="A3", appendix=True, tag=None, title="A3 · Other recorded videos",
         q=None, answer=None,
         blocks=[cap("Figure", "<b>Recorded camera frames of the remaining runs with video</b> (runs from 2026-11-03). Left: hidden scene; right: the agent's "
                               "reconstruction under the same actions.", appendix=True),
@@ -714,7 +774,7 @@ def sections(ctx):
     new = [r for r in ORDER if r.startswith(("w6", "w7", "w8", "w9", "w10"))]
     main_runs = [r for r in ORDER if r not in CONTINUATIONS]
     capped_ids = [r for r in main_runs if R[r]["budget_stop"] or R[r]["reason"] == "budget_suspended"]
-    sec.append(dict(id="effort", nav="A5", appendix=True, tag=None, title="A5 · Time, cost and when agents stop",
+    sec.append(dict(id="effort", nav="A4", appendix=True, tag=None, title="A4 · Time, cost and when agents stop",
         q=None, answer=None,
         blocks=[cap("Figure", L("<b>When do agents decide they are done?</b> Wall clock used under the stop-when-done prompt (of 240 min; orange = stopped by "
                                 "the API cost limit). Exact runs did not reliably stop early: the force-reading lever baseline was exact from submission "
@@ -730,7 +790,7 @@ def sections(ctx):
                     rows=[dict(run=r, label=f"{R[r]['scene']} · {R[r]['condition']}", v=100 * R[r]["budget_used"], color="--abl" if r in capped_ids else "--base") for r in main_runs]),
                 blk(type="bars", title="Model tokens used (millions)", unit="M", rows=[dict(run=r, label=f"{R[r]['scene']} · {R[r]['condition']}", v=R[r]["final_mtok"], color="--faint") for r in main_runs]),
                 blk(type="bars", title="API cost (USD, gateway estimate)", unit="$", rows=[dict(run=r, label=f"{R[r]['scene']} · {R[r]['condition']}", v=R[r]["cost_usd"], color="--faint") for r in ORDER])]))
-    sec.append(dict(id="runs", nav="A6", appendix=True, tag=None, title="A6 · All finished runs", q=None, answer=None,
+    sec.append(dict(id="runs", nav="A5", appendix=True, tag=None, title="A5 · All finished runs", q=None, answer=None,
                     blocks=[blk(type="html", html="<p>Every run in this report; click a name for its page with the full conversation and the images the model received.</p>"),
                             blk(type="runs")]))
     return sec

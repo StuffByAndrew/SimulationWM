@@ -8,11 +8,13 @@ function ticks(lo, hi, log) {
   const span = hi - lo, step0 = span / 5, mag = 10 ** Math.floor(Math.log10(step0)), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step0);
   const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-12; v += step) out.push(+v.toPrecision(10)); return out;
 }
-function lineChart(host, o) {  // series [{name, color, dash, faded, pts:[[x,y]]}]; log charts draw y<=0 as hollow markers on the floor
+function lineChart(host, o) {  // series [{name, color, dash, faded, pts:[[x,y]], spread?:[[x,lo,hi]]}]; on log charts y<=floor sits on the floor:
+  // hollow = parameter left out (ratio plots), filled = exact (error plots, floor labeled "exact")
   const W = 420, H = o.height || 230, L = 50, Rm = 10, T = o.title ? 24 : 10, Bm = 34, floor = o.floor || 0;
   const pts = o.series.flatMap(s => s.pts.filter(p => p[1] != null));
   if (!pts.length) return;
-  const pos = pts.map(p => p[1]).filter(v => !o.log || v > floor).concat(o.truth != null ? [o.truth] : [], o.band ? o.band.slice(0, 2) : []);
+  const spread = o.series.flatMap(s => (s.spread || []).flatMap(q => [q[1], q[2]]));
+  const pos = pts.map(p => p[1]).concat(spread).filter(v => !o.log || v > floor).concat(o.truth != null ? [o.truth] : [], o.band ? o.band.slice(0, 2) : []);
   let y0 = Math.min(...pos), y1 = Math.max(...pos);
   if (o.log) { y0 = Math.max(Math.min(y0, y1 / 4) / 1.6, floor || 1e-4); y1 *= 1.6; } else { const pad = (y1 - y0 || Math.abs(y1) || 1) * 0.12; y0 = Math.max(0, y0 - pad); y1 += pad; }
   const x0 = 0, x1 = o.xmax || Math.max(240, ...pts.map(p => p[0]));
@@ -27,13 +29,17 @@ function lineChart(host, o) {  // series [{name, color, dash, faded, pts:[[x,y]]
   if (o.band) title(el("rect", { x: L, width: W - L - Rm, y: sy(o.band[1]), height: Math.max(1, sy(o.band[0]) - sy(o.band[1])), fill: css("--base"), opacity: 0.13 }, svg), o.band[2]);
   if (o.truth != null) title(el("line", { x1: L, x2: W - Rm, y1: sy(o.truth), y2: sy(o.truth), class: "truth" }, svg), "true value");
   if (o.at120) el("line", { x1: sx(120), x2: sx(120), y1: T, y2: H - Bm, class: "gr", "stroke-dasharray": "2 3" }, svg);
+  if (o.log && floor && !o.ratio && pts.some(p => p[1] <= floor)) el("text", { x: L - 6, y: sy(y0) + 4, "text-anchor": "end", style: "fill:var(--good)" }, svg).textContent = "exact";
   for (const s of o.series) {
     const p = s.pts.filter(q => q[1] != null), color = css(s.color);
+    if (s.spread && s.spread.length > 1)  // shaded range across the condition's runs
+      el("path", { d: s.spread.map((q, i) => (i ? "L" : "M") + sx(q[0]).toFixed(1) + "," + sy(q[2]).toFixed(1)).join("") +
+        s.spread.slice().reverse().map(q => "L" + sx(q[0]).toFixed(1) + "," + sy(q[1]).toFixed(1)).join("") + "Z", fill: color, opacity: 0.16, stroke: "none" }, svg);
     if (p.length > 1) el("path", { d: p.map((q, i) => (i ? "L" : "M") + sx(q[0]).toFixed(1) + "," + sy(q[1]).toFixed(1)).join(""), fill: "none", stroke: color, "stroke-width": 2, "stroke-dasharray": s.dash || "", opacity: s.faded ? 0.45 : 1 }, svg);
     for (const q of p) {
-      const zero = o.log && q[1] <= floor;
-      title(el("circle", { cx: sx(q[0]), cy: sy(q[1]), r: 4, fill: zero ? css("--card") : color, stroke: zero ? color : css("--card"), "stroke-width": zero ? 2 : 1.5, opacity: s.faded ? 0.55 : 1 }, svg),
-        `${s.name}: submission at ${q[0].toFixed(0)} min = ${o.fmtv(q[1])}`);
+      const dropped = o.log && o.ratio && q[1] <= floor;  // exact zeros on error plots are filled, on the "exact" floor
+      title(el("circle", { cx: sx(q[0]), cy: sy(q[1]), r: s.spread ? 2.5 : 4, fill: dropped ? css("--card") : color, stroke: dropped ? color : css("--card"), "stroke-width": dropped ? 2 : 1.5, opacity: s.faded ? 0.55 : 1 }, svg),
+        `${s.name}: ${s.spread ? "mean at" : "submission at"} ${q[0].toFixed(0)} min = ${o.fmtv(q[1])}`);
     }
   }
   host.appendChild(svg);
@@ -137,20 +143,31 @@ function ratios(host, b) {
 }
 
 // ---------- per-submission convergence small multiples ----------
+function groupCurve(runs, k) {
+  // Several runs of one condition: at each submission time (once every run has submitted), the mean and range of each run's latest value.
+  const subs = runs.map(r => RUNS[r].subs.filter(x => x.m[k] != null));
+  if (subs.some(a => !a.length)) return { pts: [], spread: [] };
+  const start = Math.max(...subs.map(a => a[0].t));
+  const times = [...new Set(subs.flatMap(a => a.map(x => x.t)).filter(t => t >= start))].sort((a, b) => a - b);
+  const latest = (a, t) => a.filter(x => x.t <= t).pop().m[k];
+  const rows = times.map(t => [t, subs.map(a => latest(a, t))]);
+  return { pts: rows.map(([t, v]) => [t, v.reduce((x, y) => x + y, 0) / v.length]), spread: rows.map(([t, v]) => [t, Math.min(...v), Math.max(...v)]) };
+}
 function convergence(host, b) {
   const card = div(host, "card");
   if (b.title) card.appendChild(html(`<h3 style="margin-top:0">${b.title}</h3>`));
-  const series = b.series.map((s, i) => ({ ...s, color: s.color || PALETTE[i] }));
+  const series = b.series.map((s, i) => ({ ...s, color: s.color || PALETTE[i], label: s.runs ? `${s.label} (mean of ${s.runs.length} runs)` : s.label }));
   legend(div(card, "legend"), series.filter(s => !s.faded).map(s => [s.label, s.color]).concat(series.some(s => s.faded) ? [["faded: extended +2 h", null]] : [], [["true value (ratio plots)", null, "dash"]]));
   const grid = div(card, "minis");
   for (const k of b.keys) {
-    const ss = series.map(s => ({ name: s.label, color: s.color, dash: s.dash, faded: s.faded, pts: RUNS[s.run].subs.map(x => [x.t, x.m[k]]) }));
+    const ss = series.map(s => ({ name: s.label, color: s.color, dash: s.dash, faded: s.faded,
+      ...(s.runs ? groupCurve(s.runs, k) : { pts: RUNS[s.run].subs.map(x => [x.t, x.m[k]]) }) }));
     if (!ss.some(s => s.pts.some(p => p[1] != null))) continue;
     const ratio = kind(k) === "ratio";
     lineChart(div(grid), { title: label(k) + (ratio ? " ÷ true" : ""), series: ss, log: true, ratio, truth: ratio ? 1 : null, xmax: b.xmax, at120: true,
       floor: ratio ? 0.01 : k.endsWith("_mm") ? 0.01 : 0, fmtv: v => fmtKey(k, v) });
   }
-  card.appendChild(html(`<p class="note">One point per submission at its submission time; log scale. Hollow points on the floor: 0 (parameter dropped) on ratio plots, below 0.01 mm (exact) on error plots. The dotted vertical line is the 120-minute mark.</p>`));
+  card.appendChild(html(`<p class="note">One point per submission at its submission time; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 mm. The dotted vertical line is the 120-minute mark.</p>`));
 }
 
 // ---------- strategy taxonomy (all runs in R.order) ----------
