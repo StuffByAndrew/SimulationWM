@@ -91,23 +91,27 @@ def volume(g):
 def mass_parts(source, m):
     """Where a model's object mass sits: the bodies estimates() reads (hinge body, or each source body's nearest candidate body)
     and their visible geoms with own mass (None under an explicit body inertial) and density."""
-    names = ({b["name"] for b in m["bodies"] if b["name"] == m["joints"][0]["body"]} if source["joints"] else
+    names = ({j["body"] for j in m["joints"][:1]} if source["joints"] else  # a model without a joint has no hinge body
              {m["bodies"][j]["name"] for j in match(source["bodies"], m["bodies"], "xipos").values()})
     return dict(bodies={b["name"]: b["mass"] for b in m["bodies"] if b["name"] in names},
                 geoms=[dict(name=g["name"] or g["type"], body=g["body"], mass=g["mass"], density=g["mass"] / volume(g) if g["mass"] is not None and volume(g) else None)
                        for g in m["geoms"] if g["rgba"][3] > 0 and g["body"] in names])
 
 
-def submission(source, model, hist, truth):
+def submission(source, model, hist, truth, est_fn=estimates):
+    if hist["status"] == "failed":  # rejected by the evaluator (e.g. a modified robot fixture): a scored gap, with the evaluator's reason
+        return dict(m={}, est={}, rejected=hist["unavailable_reason"])
     assert hist["status"] == "ok", hist["status"]
     rec, hinge = hist.get("reconstruction") or {}, next(iter((hist.get("hinges") or {}).values()), None) or {}
-    est = estimates(source, model)
+    est = est_fn(source, model)
     m = dict(chamfer_mm=None if rec.get("chamfer_distance_m") is None else 1000 * rec["chamfer_distance_m"],
              rgb_mse=(hist.get("reset") or {}).get("rgb_mse"), damping_rel=hinge.get("damping_relative_error"),
              frictionloss_rel=hinge.get("frictionloss_relative_error"), com_mm=None)
-    if not source["joints"] and model["com"] is None:  # no object body (an arm-only draft): a gap, as the evaluator reports it
+    if source["joints"]:  # jointed scenes: the evaluator's object COM error where it reports one
+        m["com_mm"] = None if rec.get("center_of_mass_error_m") is None else 1000 * rec["center_of_mass_error_m"]
+    elif model["com"] is None:  # no object body (an arm-only draft): a gap, as the evaluator reports it
         assert not model["bodies"] and rec.get("center_of_mass_status") == "unavailable", hist["version"]
-    elif not source["joints"]:  # compiled COM of the object bodies; must equal the evaluator's wherever it reports one
+    else:  # compiled COM of the object bodies; must equal the evaluator's wherever it reports one
         m["com_mm"] = 1000 * math.dist(model["com"], source["com"])
         assert rec.get("center_of_mass_error_m") is None or abs(rec["center_of_mass_error_m"] * 1000 - m["com_mm"]) < 0.01
     m.update({f"r:{k}": None if v is None else v / truth[k] for k, v in est.items()})
@@ -219,7 +223,10 @@ def data(spec_path, work, out):
     S = load_spec(spec_path)
     work, out = Path(work), Path(out)
     assert not out.exists(), out
-    rows = {r["run"]: r for f in S.SUMMARIES for r in json.loads((VAL / f).read_text()) if r["status"] == "completed" and r["run"] not in S.INVALID}
+    # a SUMMARIES entry is a file (every completed run in it is reported) or (file, runs): only those runs, e.g. baselines from an earlier report
+    entries = [(f, None) if isinstance(f, (str, Path)) else f for f in S.SUMMARIES]
+    rows = {r["run"]: r for f, only in entries for r in json.loads((VAL / f).read_text())
+            if r["status"] == "completed" and r["run"] not in S.INVALID and (only is None or r["run"] in only)}
     assert set(rows) == set(S.NAMES), set(rows) ^ set(S.NAMES)
     excluded = json.loads((VAL / "excluded-runs.json").read_text())["runs"]
     for run in S.NAMES:  # results use only strict (sandboxed, API) runs; development-mode runs are excluded by user decision
@@ -238,8 +245,11 @@ def data(spec_path, work, out):
         assert len(hist) == len(cp) == len(model["submissions"]) == rows[run]["submissions"], run
         assert [c["submission"] for c in cp] == [h["submission"] for h in hist], run
         offset = rows[S.CONTINUATIONS[run]]["wall_min"] if run in S.CONTINUATIONS else 0.0
-        truth = estimates(model["source"], model["source"])
-        subs = [dict(t=c["wall_min"] + offset, mtok=c["tokens"] / 1e6, **submission(model["source"], s, h, truth)) for c, s, h in zip(cp, model["submissions"], hist)]
+        est_fn = (lambda src, m: S.estimates(run, src, m, estimates)) if hasattr(S, "estimates") else estimates  # optional spec hook: scene-specific estimates
+        truth = est_fn(model["source"], model["source"])
+        subs = [dict(t=c["wall_min"] + offset, mtok=c["tokens"] / 1e6, **submission(model["source"], s, h, truth, est_fn)) for c, s, h in zip(cp, model["submissions"], hist)]
+        for i, sub in enumerate(subs):  # optional spec hook: extra per-submission metrics (keys declared in S.METRICS)
+            sub["m"].update(S.extra_metrics(run, i, hist[i]) if hasattr(S, "extra_metrics") else {})
         tax, note_labels, script_kinds = taxonomy(notes, stats["scripts"])
         labels_out[run] = dict(notes=[dict(t=n["t"], utc=n["utc"], labels=l) for n, l in zip(notes, note_labels)],
                                scripts=[dict(t=s["t"], kind=k) for s, k in zip(stats["scripts"], script_kinds)])
@@ -271,22 +281,30 @@ def data(spec_path, work, out):
         for run in members:
             chain = [run] + [c for c, parent in S.CONTINUATIONS.items() if parent == run]
             viewer[run] = dict(group=group, source=dict(geoms=geoms(models[run]["source"]), com=models[run]["source"]["com"]),
-                               subs=[dict(label=("+2 h · " if r != run else "") + f"submission {i + 1}", geoms=geoms(s), com=s["com"], t=runs[r]["subs"][i]["t"],
-                                          chamfer=runs[r]["subs"][i]["m"]["chamfer_mm"], com_err=runs[r]["subs"][i]["m"]["com_mm"])
+                               subs=[dict(label=("+2 h · " if r != run else "") + f"submission {i + 1}" + (" (rejected)" if "rejected" in runs[r]["subs"][i] else ""),
+                                          geoms=geoms(s), com=s["com"], t=runs[r]["subs"][i]["t"],
+                                          chamfer=runs[r]["subs"][i]["m"].get("chamfer_mm"), com_err=runs[r]["subs"][i]["m"].get("com_mm"))
                                      for r in chain for i, s in enumerate(models[r]["submissions"])])
     validation = json.loads((VAL / "report-taxonomy-validation.json").read_text())
-    videos = json.loads((Path(S.VIDEOS) / "data.json").read_text())["videos"]
-    R = dict(metrics=METRICS, runs=runs, order=S.ORDER, continuations=S.CONTINUATIONS, comparisons=comparisons,
+    videos = json.loads((Path(S.VIDEOS) / "data.json").read_text())["videos"] if hasattr(S, "VIDEOS") else []
+    R = dict(metrics={**METRICS, **getattr(S, "METRICS", {})}, runs=runs, order=S.ORDER, continuations=S.CONTINUATIONS, comparisons=comparisons,
              viewer=viewer, examples=S.EXAMPLES, taxonomy_validation=validation, videos=[v for v in videos if v["run"] in runs])
     (out / "vendor").mkdir(parents=True)
-    shutil.copytree(Path(S.VIDEOS) / "videos", out / "videos")
+    (out / "videos").mkdir()
+    if hasattr(S, "VIDEOS"):
+        shutil.copytree(Path(S.VIDEOS) / "videos", out / "videos", dirs_exist_ok=True)
     for name, src in getattr(S, "EXTRA_VIDEOS", {}).items():  # optional spec field: {published name: recorded mp4}
         shutil.copy(src, out / "videos" / name)
+    if hasattr(S, "FIGURES"):  # optional spec field: {published name: researcher PNG}, served as figs/<name>
+        (out / "figs").mkdir()
+        for name, src in S.FIGURES.items():
+            shutil.copy(src, out / "figs" / name)
     for f in ("three.min.js", "OrbitControls.js"):
         shutil.copy(Path(S.VENDOR) / f, out / "vendor" / f)
+    chats = (S.CHAT,) if isinstance(S.CHAT, (str, Path)) else S.CHAT  # one directory or several
     for run in S.NAMES:  # per-run pages: the full conversation and the images the model received (report-chat-extract.py)
-        assert (Path(S.CHAT) / run / "chat.js").is_file(), run
-        shutil.copytree(Path(S.CHAT) / run, out / "runs" / run, copy_function=os.link)  # hard links: same bytes, no 450 MB copy
+        src = next(Path(d) / run for d in chats if (Path(d) / run / "chat.js").is_file())
+        shutil.copytree(src, out / "runs" / run, copy_function=os.link)  # hard links: same bytes, no 450 MB copy
     (out / "data.js").write_text("window.R=" + json.dumps(R, separators=(",", ":")) + ";")
     (out / "taxonomy-labels.json").write_text(json.dumps(dict(rules=dict(notes=TAX.NOTE_RULES, appearance=TAX.APPEARANCE, scripts=TAX.SCRIPT_RULES),
                                                              validation=validation, labels=labels_out), indent=1))

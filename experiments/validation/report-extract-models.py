@@ -37,10 +37,12 @@ def geom_masses(path, objects, m):
         assert len(spec.bodies[b].geoms) == len(ids)
         for k, g in enumerate(ids):
             s = mujoco.MjSpec.from_file(str(path))
+            s.compiler.boundmass, s.compiler.boundinertia = 1e-9, 1e-12  # a massless geom alone must still compile
             for i, sg in enumerate(s.bodies[b].geoms):
                 if i != k:
                     sg.mass = 0
-            out[int(g)] = float(s.compile().body_mass[b])
+            mass = float(s.compile().body_mass[b])
+            out[int(g)] = 0.0 if mass <= 1e-9 else mass
     return out
 
 
@@ -70,17 +72,21 @@ def extract(path, root):
         geoms.append(geom)
     bodies = [dict(name=m.body(b).name, mass=float(m.body_mass[b]), xipos=d.xipos[b].tolist(), root=int(m.body_rootid[b]) == b,
                    subtree_mass=float(m.body_subtreemass[b]), subtree_com=d.subtree_com[b].tolist()) for b in objects]
-    def axis_inertia(j):  # inertia of the joint's own body about the joint axis (lever scenes have one body per hinge)
-        b = m.jnt_bodyid[j]
-        assert not any(m.body_parentid[c] == b for c in range(1, m.nbody) if c != b)
-        R = d.ximat[b].reshape(3, 3)
-        r, a = d.xipos[b] - d.xanchor[j], d.xaxis[j]
-        I = R @ np.diag(m.body_inertia[b]) @ R.T + m.body_mass[b] * (r @ r * np.eye(3) - np.outer(r, r))
-        return float(a @ I @ a)
+    def axis_inertia(j):  # inertia about the hinge axis of everything the hinge carries: its body and all bodies below it
+        a, total = d.xaxis[j], 0.0
+        for b in range(1, m.nbody):
+            c = b
+            while c not in (0, m.jnt_bodyid[j]):
+                c = m.body_parentid[c]
+            if c == 0:
+                continue
+            R, r = d.ximat[b].reshape(3, 3), d.xipos[b] - d.xanchor[j]
+            total += a @ (R @ np.diag(m.body_inertia[b]) @ R.T + m.body_mass[b] * (r @ r * np.eye(3) - np.outer(r, r))) @ a
+        return float(total)
     joints = [dict(name=m.joint(j).name, type=int(m.jnt_type[j]), body=m.body(m.jnt_bodyid[j]).name,
                    stiffness=float(m.jnt_stiffness[j]), damping=float(m.dof_damping[m.jnt_dofadr[j]]),
                    frictionloss=float(m.dof_frictionloss[m.jnt_dofadr[j]]), armature=float(m.dof_armature[m.jnt_dofadr[j]]),
-                   axis_inertia=axis_inertia(j), anchor=d.xanchor[j].tolist(), axis=d.xaxis[j].tolist())
+                   axis_inertia=axis_inertia(j) if m.jnt_type[j] == 3 else None, anchor=d.xanchor[j].tolist(), axis=d.xaxis[j].tolist())
               for j in range(m.njnt) if int(m.jnt_bodyid[j]) in objects and m.jnt_type[j] in (2, 3)]
     total = sum(m.body_mass[b] for b in objects)
     com = sum(m.body_mass[b] * d.xipos[b] for b in objects) / total if total > 0 else None
