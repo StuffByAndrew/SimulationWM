@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
 import sys
 import zipfile
 from unittest.mock import patch
@@ -145,9 +146,10 @@ class Controller(Client):
         if op == "inference":
             InferenceBroker(CONFIG).payload(self.requests[-1])  # The harness wire shape passes strict broker validation.
             if not self.replies:
-                return {"ok": True, "inference": {"budget_stop": True, "reason": "host stop"}}
+                return {"ok": True, "inference": {"budget_stop": True, "reason": "host stop", "deadline_unix": self.task["deadline_unix"]}}
             calls = [{"id": "call_%d_%d" % (len(self.requests), i), "name": name, "arguments": json.dumps(args)} for i, (name, args) in enumerate(self.replies.pop(0))]
-            return {"ok": True, "inference": {"content": "Testing the next hypothesis.", "tool_calls": calls, "usage": None}}
+            return {"ok": True, "inference": {"content": "Testing the next hypothesis.", "tool_calls": calls, "usage": None,
+                                              "deadline_unix": self.task["deadline_unix"]}}
         if op == "progress":
             self.notes.append((kwargs["origin"], kwargs["text"]))
             return {"ok": True}

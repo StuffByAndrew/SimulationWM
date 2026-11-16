@@ -49,11 +49,29 @@ class WallClock:
         self.processes = {}
         self.callbacks = []
         self.finished_at = None
+        self.held, self.hold_started = 0., None
         if seconds is not None:
             threading.Thread(target=self._watch, daemon=True).start()
 
     def remaining(self):
-        return max(0., self.deadline - (self.finished_at if self.finished_at is not None else time.monotonic()))
+        now = self.finished_at if self.finished_at is not None else self.hold_started or time.monotonic()
+        return max(0., self.deadline - now)
+
+    def held_seconds(self):
+        return self.held + (time.monotonic() - self.hold_started if self.hold_started is not None else 0.)
+
+    @contextmanager
+    def hold(self):
+        """An orchestrator hold is outside the run: its duration extends the deadline and is excluded from elapsed time."""
+        assert self.hold_started is None, "holds do not nest"
+        self.hold_started = time.monotonic()
+        try:
+            yield
+        finally:
+            duration = time.monotonic() - self.hold_started
+            self.deadline += duration
+            self.held += duration
+            self.hold_started = None
 
     def check(self):
         if self.expired.is_set() or self.remaining() <= 0:
@@ -103,9 +121,11 @@ class WallClock:
                 pass
 
     def _watch(self):
-        if not self.closed.wait(self.remaining()):
-            self.expired.set()
-            self._stop_all()
+        while not self.closed.wait(min(max(self.remaining(), .01), 60.)):
+            if self.hold_started is None and self.remaining() <= 0:
+                self.expired.set()
+                self._stop_all()
+                return
 
     def close(self):
         if self.finished_at is None:
@@ -703,7 +723,9 @@ def decode_submission(value, max_bytes):
 TOOL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}\Z")
 INFERENCE_SETTINGS = {"endpoint", "model", "provider", "metadata", "reasoning_effort", "reasoning_summary", "api_key_env", "max_calls",
                       "max_total_tokens", "max_cost_usd", "max_output_tokens", "max_request_bytes", "max_response_bytes", "timeout_seconds",
-                      "cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd"}
+                      "cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd", "budget_hold_seconds"}
+# Spend-cap reasons a budget hold may resume from; other stops (call/token caps, missing accounting) always suspend.
+HOLDABLE = ("Run inference cost budget exhausted", "Shared inference cost pool exhausted")
 INFERENCE_ACCOUNTING = ("model", "finish_reason", "usage", "cost_usd", "calls", "remaining_calls", "cumulative_tokens",
                         "remaining_tokens", "cumulative_cost_usd", "remaining_cost_usd")
 CONTEXT_USAGE = ("promptTokens", "cacheReadTokens", "cacheWriteTokens")  # context size, for harness compaction only
@@ -1305,7 +1327,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         active = 0. if timing["active_start"] is None else now - timing["active_start"] - timing["paused_total"]
         if timing["pause_start"] is not None:
             active -= now - timing["pause_start"]
-        return {"wall_elapsed": now - run_started, "active_elapsed": max(0., active)}
+        return {"wall_elapsed": now - run_started - supervisor.held_seconds(), "active_elapsed": max(0., active)}
     sandbox = config["sandbox"]
     tools = enabled_tools(config)
     if tools and backend is not None:
@@ -1430,6 +1452,45 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     suspended = None  # host budget reason once the orchestrator stops inference; the container never sees it
     timing["active_start"] = time.monotonic()
     deadline = float("inf") if wall_only else timing["active_start"] + seconds
+
+    hold_seconds = inference_config.get("budget_hold_seconds")
+    holds = []
+
+    def budget_hold(reason):
+        """Freeze the run at a spend cap until the orchestrator decides (hold-decision.json in the run directory).
+
+        The agent and candidate containers are paused and the wall and active clocks stop, so a resumed run is the same
+        run it would have been with the raised caps from the start. Returns True to retry the call, False to suspend."""
+        nonlocal deadline
+        decision_path = output / "hold-decision.json"
+        assert not decision_path.exists(), "a hold decision exists before its hold"
+        (output / "hold.json").write_text(json.dumps({"reason": reason, "held_at": datetime.now(timezone.utc).isoformat(),
+                                                      "cost_usd": broker.cost, "limits": broker.limits(), **clocks()}) + "\n")
+        audit.record({"kind": "inference_hold", "reason": reason, "cost_usd": broker.cost}, reservation=context["token"])
+        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
+        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)), supervisor.hold():
+            pause = timing["pause_start"] = time.monotonic()
+            try:
+                while not decision_path.exists() and time.monotonic() - pause < float(hold_seconds):
+                    time.sleep(5)
+                decision = json.loads(decision_path.read_text()) if decision_path.exists() else {"action": "stop", "reason": "hold timeout"}
+            finally:
+                duration = time.monotonic() - pause
+                deadline += duration
+                timing["paused_total"] += duration
+                timing["pause_start"] = None
+        index = len(holds) + 1
+        for path in (decision_path, output / "hold.json"):
+            if path.exists():
+                path.rename(path.with_name("%s-%03d.json" % (path.stem, index)))
+        assert decision["action"] in ("resume", "stop"), decision
+        if decision["action"] == "resume":
+            assert set(decision) == {"action", "max_cost_usd", "cost_pool_usd"}, decision
+            assert decision["max_cost_usd"] > broker.cost and decision["cost_pool_usd"] > 0, decision
+            broker.config = {**broker.config, "max_cost_usd": float(decision["max_cost_usd"]), "cost_pool_usd": float(decision["cost_pool_usd"])}
+        holds.append({"reason": reason, "held_seconds": duration, "decision": decision})
+        audit.record({"kind": "inference_hold_decision", **holds[-1]}, reservation=context["token"])
+        return decision["action"] == "resume"
 
     def progress_note(text, source, origin, model=None):
         nonlocal progress_used
@@ -1821,21 +1882,27 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     response = {"ok": True, "world": world, "version": candidate_version,
                                 "observation": public_observation(packet["observation"], public_config), "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values())}
                 elif op == "inference":
-                    try:
-                        inference = broker.call(request, min(deadline, supervisor.deadline) - time.monotonic())
-                    except BudgetStop as exc:
-                        # Spend control belongs to the orchestrator: the run is suspended at its latest checkpoint and
-                        # can be continued later. The agent side learns only that the host stopped inference.
-                        suspended = str(exc)
-                        audit.record({"kind": "inference_suspended", "reason": suspended})
-                        inference = {"budget_stop": True, "reason": "host stop"}
-                    else:
+                    while True:
+                        try:
+                            inference = broker.call(request, min(deadline, supervisor.deadline) - time.monotonic())
+                        except BudgetStop as exc:
+                            if hold_seconds is not None and str(exc) in HOLDABLE and budget_hold(str(exc)):
+                                continue
+                            # Spend control belongs to the orchestrator: the run is suspended at its latest checkpoint.
+                            # The agent side learns only that the host stopped inference.
+                            suspended = str(exc)
+                            audit.record({"kind": "inference_suspended", "reason": suspended})
+                            inference = {"budget_stop": True, "reason": "host stop"}
+                        break
+                    if not inference.get("budget_stop"):
                         audit.record({"kind": "inference_accounting", **{key: inference.get(key) for key in INFERENCE_ACCOUNTING}})
                         for summary in inference.get("summaries", []):
                             progress_note(summary, "provider_summary", "provider", inference.get("model"))
                         # Only what the harness needs enters the container: no cost, cap or remaining-budget fields.
                         inference = {"content": inference["content"], "tool_calls": inference["tool_calls"],
                                      "usage": {key: inference["usage"][key] for key in CONTEXT_USAGE} if inference.get("usage") else None}
+                    # The harness re-anchors its wall clock on every reply, so a budget hold never shortens the agent's time.
+                    inference["deadline_unix"] = time.time() + supervisor.remaining() if supervisor.deadline != float("inf") else None
                     supervisor.check()
                     response = {"ok": True, "inference": inference}
                 elif op == "sam3d" and sam3d_relay:
@@ -1974,8 +2041,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         if candidate_video:
             candidate_video.close()
         status = {"status": termination, "reason": reason, "remaining_active_seconds": None if wall_only else max(0, deadline - time.monotonic()),
-                  "total_ticks": sum(charged.values()), "world_ticks": charged, "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values()), "submissions": submissions, "wall_elapsed": time.monotonic() - run_started,
-                  "execution_wall_elapsed": supervisor.finished_at - run_started,
+                  "total_ticks": sum(charged.values()), "world_ticks": charged, "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values()), "submissions": submissions, "wall_elapsed": time.monotonic() - run_started - supervisor.held,
+                  "execution_wall_elapsed": supervisor.finished_at - run_started - supervisor.held, "held_seconds": supervisor.held, "holds": holds,
                   "remaining_wall_seconds": supervisor.remaining() if supervisor.deadline != float("inf") else None,
                   "hard_wall_expired": supervisor.expired.is_set() or supervisor.remaining() <= 0}
         (output / "termination.json").write_text(json.dumps(status, indent=2))

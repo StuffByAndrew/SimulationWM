@@ -113,9 +113,8 @@ class Agent:
         assert self.task.get("deadline_unix"), "The sandbox agent requires a hard wall-time deadline"
         budgets = self.task["budgets"]
         self.budget = float(budgets["wall_seconds"])
-        self.deadline = float(self.task["deadline_unix"])
-        if budgets.get("active_seconds"):
-            self.deadline = min(self.deadline, now() + float(budgets["active_seconds"]))
+        self.active_deadline = now() + float(budgets["active_seconds"]) if budgets.get("active_seconds") else float("inf")
+        self.deadline = min(float(self.task["deadline_unix"]), self.active_deadline)
         self.workspace = Path(workspace)
         self.observations = self.workspace / "observations"
         self.observations.mkdir(parents=True, exist_ok=True)
@@ -148,13 +147,17 @@ class Agent:
     def infer(self, messages):
         for attempt in range(4):
             try:
-                return self.client.inference(messages, tools=self.tools)
+                reply = self.client.inference(messages, tools=self.tools)
             except RuntimeError as exc:
                 wait = 15 * 2 ** attempt
                 if attempt == 3 or self.left() - wait <= self.reserve:
                     raise
                 self.note("Model call failed (%s); retrying in %d s." % (str(exc)[:300], wait))
                 time.sleep(wait)
+                continue
+            # The host re-anchors the wall deadline on every reply (host-side holds do not count as run time).
+            self.deadline = min(float(reply.pop("deadline_unix")), self.active_deadline)
+            return reply
 
     def run(self):
         self.note("Sandbox agent started with %s of wall time." % clock(self.left()))

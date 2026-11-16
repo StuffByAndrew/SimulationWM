@@ -29,7 +29,12 @@ private `[perturbation]` table instead of hand edits; see
 Prepare physics variants on a `test` node (it compiles the scene). Preparation
 records exact values; `--start` verifies the compiled source first.
 
-To continue a finished strict run, copy its configuration, set the new wall budget
+To be able to give a run more time later as if it had it from the start, give it the full wall budget up front
+and a lower cost cap with `[inference] budget_hold_seconds`; at the cap it holds until you write
+`RUN/hold-decision.json` (resume with raised caps, or stop). See
+[budget hold](../../docs/experiments.md#continuing-a-run-at-its-spend-cap-budget-hold).
+
+The older alternative: to continue a finished strict run, copy its configuration, set the new wall budget
 and add `[continuation] parent = "RUN_ID"`, `submission = "last"` (or a number);
 prepare with a fresh ID and start it as a strict run. Keep the source, `[simulation]`
 and task unchanged; preparation refuses otherwise. Only the selected submission

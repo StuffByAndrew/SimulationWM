@@ -344,9 +344,10 @@ import re
 assert not re.search(r"cost|usd|dollar|max_calls|max_total_tokens|remaining_(calls|tokens|cost)", json.dumps(task), re.I), task["inference"]
 print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
 reply=json.loads(input())["inference"]
-assert set(reply) == {"content","tool_calls","usage"} and set(reply["usage"]) == {"promptTokens","cacheReadTokens","cacheWriteTokens"}, reply
+assert set(reply) == {"content","tool_calls","usage","deadline_unix"} and set(reply["usage"]) == {"promptTokens","cacheReadTokens","cacheWriteTokens"}, reply
 print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
-assert json.loads(input())["inference"] == {"budget_stop": True, "reason": "host stop"}
+reply=json.loads(input())["inference"]
+assert reply.pop("deadline_unix") is None and reply == {"budget_stop": True, "reason": "host stop"}  # no wall budget in this test
 print('{"op":"finish"}',flush=True)
 input()
 '''
@@ -363,6 +364,42 @@ input()
             records = [event for _, event in read_audit(Path(directory)/"run")]
             self.assertEqual([e["cost_usd"] for e in records if e.get("kind") == "inference_accounting"], [1.25])
             self.assertEqual([e["reason"] for e in records if e.get("kind") == "inference_suspended"], ["Run inference cost budget exhausted"])
+
+    def test_budget_hold_freezes_the_run_and_resumes_with_raised_caps(self):
+        """A spend-cap hold pauses the containers and both clocks; resuming retries the call as if the cap had been higher."""
+        import threading
+        from sim2sim.audit import read_audit
+        from sim2sim.runtime import BudgetStop
+        script = r'''
+print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
+start=time.time()
+reply=json.loads(input())["inference"]
+assert reply["content"] == "ok" and reply["deadline_unix"] - start > 8.6, (reply, start)
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        value = {"content": "ok", "tool_calls": [], "finish_reason": "stop", "model": "m", "summaries": [], "cost_usd": 1.0, "usage": None,
+                 "calls": 1, "remaining_calls": 9, "cumulative_tokens": 4, "remaining_tokens": None, "cumulative_cost_usd": 1.0, "remaining_cost_usd": 1.0}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("sim2sim.runtime.InferenceBroker.call", side_effect=[BudgetStop("Run inference cost budget exhausted"), value]):
+            run = Path(directory) / "run"
+            def decide():
+                while not (run / "hold.json").exists():
+                    time.sleep(.05)
+                time.sleep(1.5)
+                (run / "hold-decision.json").write_text(json.dumps({"action": "resume", "max_cost_usd": 10, "cost_pool_usd": 100}))
+            threading.Thread(target=decide, daemon=True).start()
+            self.run_agent(directory, script, {"wall_only": True, "wall_seconds": 10}, extra={"inference": {"budget_hold_seconds": 60}})
+            status = json.loads((run / "termination.json").read_text())
+            self.assertEqual(status["status"], "finished")
+            self.assertGreater(status["held_seconds"], 1.4)
+            self.assertLess(status["wall_elapsed"], 1.4)
+            self.assertEqual(status["holds"][0]["decision"]["action"], "resume")
+            self.assertIn("pause", self.host_operations)
+            self.assertTrue((run / "hold-001.json").exists() and (run / "hold-decision-001.json").exists())
+            kinds = [e.get("kind") for _, e in read_audit(run)]
+            self.assertIn("inference_hold_decision", kinds)
+            self.assertNotIn("inference_suspended", kinds)
 
     def test_partial_timeout_records_exact_confirmed_reference_ticks(self):
         from sim2sim.audit import read_audit

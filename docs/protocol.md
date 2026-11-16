@@ -540,3 +540,17 @@ Inference replies to the agent contain only `content`, `tool_calls` and context-
 `cacheReadTokens`, `cacheWriteTokens`). Spend accounting is host-only (`inference_accounting` audit events).
 When the orchestrator's spend control stops a run, the agent receives
 `{"budget_stop": true, "reason": "host stop"}`, and a subsequent `finish` is recorded as `budget_suspended`.
+
+### Budget holds (continuing a run without a special case)
+
+`[inference] budget_hold_seconds = N` turns a spend-cap stop (run `max_cost_usd` or the shared pool) into a hold. The
+controller writes `hold.json` (reason, spend, elapsed) in the run directory, pauses the agent and candidate containers
+and stops both the wall and active clocks (`WallClock.hold`). The orchestrator then writes `hold-decision.json`:
+`{"action": "resume", "max_cost_usd": X, "cost_pool_usd": Y}` raises the caps and retries the held call, so the agent
+receives an ordinary reply; `{"action": "stop"}` (or no decision within N seconds) suspends as above. Both files are
+archived as `hold-NNN.json` / `hold-decision-NNN.json`; the audit records `inference_hold` and
+`inference_hold_decision`. Hold time extends the hard deadline and is excluded from `wall_elapsed` (progress, events,
+termination), and `termination.json` lists `holds` and `held_seconds`. Every inference reply carries the current
+`deadline_unix`, which the sandbox harness adopts (never shown to the model), so the agent's remaining wall time is
+unaffected by a hold. A resumed run is therefore the same run it would have been with the higher cap from the start;
+the agent sees the full `wall_seconds` budget from its first message. Call/token caps and missing accounting never hold.

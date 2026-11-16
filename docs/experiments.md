@@ -408,7 +408,19 @@ individual Slurm job IDs, finish timestamps and counters are in
 [`panda-six-hour-20261102-batch.json`](../experiments/validation/panda-six-hour-20261102-batch.json).
 These are shared-filesystem development runs, not strict OCI/API executions.
 
+## Continuing a run at its spend cap (budget hold)
+
+To decide whether a run deserves more time without a special-cased continuation, configure the full wall budget the
+run may ever get (`budget.wall_seconds`, visible to the agent from the start) with a lower `max_cost_usd`, and set
+`[inference] budget_hold_seconds`. At the cap the run holds frozen (containers paused, clocks stopped) until the
+orchestrator writes `RUN/hold-decision.json` (`{"action":"resume","max_cost_usd":X,"cost_pool_usd":Y}` or
+`{"action":"stop"}`); see [protocol.md](protocol.md#budget-holds-continuing-a-run-without-a-special-case). Submit the
+Slurm job with `--time` covering the wall budget, the hold limit and finalization. A held run occupies its
+allocation; the daily spend rule applies to the money spent after resuming, so raise `cost_pool_usd` accordingly.
+
 ## Continuing a finished attempt
+
+(The section below is the older, separate-session mechanism. Prefer a budget hold for new runs.)
 
 Accepted `submission-NNN.zip` projects and the corresponding immutable versions
 can seed a new attempt. A finished controller cannot be restarted in place: use a
