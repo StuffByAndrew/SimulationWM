@@ -17,31 +17,52 @@ Keep this list current: strike items when a log entry covers them.
   differs); compare new-prompt runs only with new-prompt baselines.
 - Run on home (hot storage, `--root experiments`); keep ≥10 GB free.
 
+## Wave 16 tunnel levels (user, 2026-11-08): standing review rules
+- [ ] When the runs end or hold, review each automatically (audit progress notes, submitted models, `force_profile`):
+  1. If an agent never probes or discovers that something is at the far end of the tunnel, rerun that condition with a
+     hint in the task that the tunnel hides a mechanism (the original prompt never mentions it). The user's message read
+     "do try to or discover"; it is interpreted as "do not", since hinting runs that already found it adds nothing.
+  2. If runs reach their spend cap (budget hold) while still working on identifying the mechanism, resume all held wave-16
+     runs with a raised cap, up to the 6 h wall budget they had from the start (`hold-decision.json`). Stop runs that are no
+     longer working on it. Keep the $1000/ET-day rule for money spent after resuming.
+  3. For reports, plot each run's ground-truth vs reconstructed force-position profile
+     (`experiments/validation/plot-force-profiles.py`), the latch included (loading and unloading strokes are separate).
+- The original task must stay complete: the agent should finish only when nothing differs between its model and the world.
+- Status 2026-11-10:
+  - [x] Holds reviewed: 7 resumed, 7 stopped (see the log).
+  - [x] latch-franka and curved-franka finished at 6 h.
+  - [x] In-run `force_profile` missed most candidates and was replaced by a pixel grasp:
+    - agents build in shifted frames;
+    - Franka candidates that include the robot first hid their bodies from `graspable_bodies`, fixed in `simulation.py`.
+  - [x] Rescored and plotted waves 16–17 (206 submissions, job `59840356`).
+  - [ ] Rebuild the image before any further tunnel wave: the probe changed again after image `b986371a2e38`.
+  - [x] Wave 17 hinted reruns done; all 8 found the mechanism.
+  - [x] Review and rescore `w17-nonlinear-grasp-hint-20261110-002` (job `59831896`; watcher running), which replaces the -001 run that was cut short.
+  - [ ] Write the tunnel results report (by ablation: hint, sequence tool, Franka vs point grasp; with force-profile plots).
+  - [ ] Scene fixes for any later tunnel wave:
+    - the plunger hard stop is soft (an agent drove it to 39–60 mm against a 30 mm stroke; curved to 0.158 rad against 0.12);
+    - a strong pull drags the "captive" collar out through the lip.
+
 ## Waiting on the user (do not start without an answer)
-- [ ] **Spring levels review.** `w11-tetra-spring-k` and `w11-tetra-spring-block` are prepared on netscratch. The user
-  wants to review the scenes first (previews in `experiments/validation/tetra-spring/`). After approval, launch them with
-  `SIM2SIM_EXPERIMENTS_ROOT` set to netscratch. Option offered: a no-statement control on the same scene.
-- [x] ~~Replicates~~ Approved 2026-11-05, n≤3 for the key findings. Done: results table in log 2026-11-06 21:30. 20 runs were queued (log 2026-11-05 03:15) for the
-  force-sensing contrast on lever, spring and blocks, the stated mass on the spring, and the lever hint, mass + hint and
-  no-interaction chain. Still without replicates: assembly contrasts (baseline COM error varies 7× over 3 old-prompt runs),
-  old- vs new-prompt lever friction, the force-sensing effect on other seeds (`pose = "jitter"` or new nonround seeds), and
-  wave 10. When they finish, analyze them with the originals as n=3 per condition (mean and spread), and add replicate
-  pairs to `compare.py`.
+- [x] ~~Spring levels review~~ Launched 2026-11-06 23:20 UTC (wave 11, four levels, movable camera).
 - [ ] **Lab-storage copy.** Copy finished runs from home to lab only after the user states lab quota headroom (details
   under "Comparisons at equal budget").
 - [ ] **Results report for waves 7–9.** The 2026-11-04 report covers wave 6 and earlier. Rebuild with
   `experiments/validation/build-results-report.py` plus a new spec file when the user wants it.
-- [ ] **SAM-3D weights (user):** accept the license at https://huggingface.co/facebook/sam-3d-objects and run
-  `/n/netscratch/qianqian_lab/Lab/aejxie/sam3d/env/bin/hf auth login`. Then the orchestrator does the rest:
-  - `sbatch --account=qianqian_lab scripts/fetch-sam3d.slurm`
-  - `sbatch --exclude=holygpu8a19102 scripts/sam3d-smoke.slurm full` (check the camera-frame z range)
-  - start `scripts/sam3d-service.slurm`
-  - run a `{"tools": ("sam3d",)}` condition vs its baseline on `trusted-image-sam3d.json` with `SIM2SIM_SAM3D_SPOOL` exported, one service per compared run
+- [x] ~~SAM-3D weights~~ Fetched and lock-pinned 2026-11-06; wave 12 (boat undirected/directed, assembly directed) launched.
 - [ ] **Netscratch → lab:** replicates live on netscratch, which purges after 90 days. Copy them to lab after quota headroom is confirmed.
 - [ ] Retro-score earlier final submissions with `friction`/`expert`/`policy_transfer` (needs a metrics override in
   `candidate_history` or `baselines`-style tool). This would show whether scale errors (lever ×0.33) matter downstream.
 
 ## Config-only ablations (no new infrastructure)
+- [x] `movecam` (movable observation camera, 2026-11-06) vs fixed camera: run on a geometry scene (boat or assembly)
+  and on a spring level, now that the option exists. Spring levels: wave 13 done (2026-11-07). Fixed camera was worse in
+  both: Chamfer 0.5→3.6 and 0.7→1.3 mm, block-level stiffness ×1.01→×1.38. Done at n=3 (2026-11-07): movable camera better geometry 5/6 pairs and reliable
+  block-level stiffness (3/3 within 15% vs 0/3); cluster COM unaffected. Boat/assembly:
+  no detectable effect (n=1, within noise).
+- [ ] Franka load sensing without effort: the position controller's joint sag acts as a scale (w11 agents used it). To
+  ablate force information fully, also hide or quantize joint positions under load, or raise the controller gains.
+  Needs a user decision before any change.
 - [x] ~~Wrench (force-torque at the grasp) off vs on~~ Done: lever, spring, blocks, assembly, tetra (waves 2–3, 6–8).
   - damped_lever (hinge damping and friction loss)
   - random_assembly and blocks (COM)
@@ -95,9 +116,11 @@ Keep this list current: strike items when a log entry covers them.
 - [x] Segmentation-model tool inside the image (MobileSAM, CPU, offline; tools image `ea7d5678…`). Wave 3c:
   the agent never invoked it. Next: a condition whose task says when segmentation helps (e.g., per-part
   masks for primitive fitting), and record tool calls per run as an outcome. The planning tool will need the same.
-- [ ] SAM-3D tool. SAM 3D Objects needs an NVIDIA GPU with ≥32 GB VRAM and gated Hugging Face checkpoints. GPU approved
+- [x] SAM-3D tool. SAM 3D Objects needs an NVIDIA GPU with ≥32 GB VRAM and gated Hugging Face checkpoints. GPU approved
   2026-11-05: a `kempner_gpu_priority` service (A100-40GB or RTX Pro 6000, never H100/H200), relayed by the controller, so
-  agent containers stay CPU-only and offline. Merged 2026-11-05 (log 06:30); the weights are blocked on the user's HF login.
+  agent containers stay CPU-only and offline. Merged 2026-11-05 (log 06:30); weights fetched 2026-11-06.
+  Wave 12 (2026-11-07): 0 calls in 3 runs, even when the task said when it helps. Next, if wanted: a stronger
+  instruction (e.g. "call sam3d on each part before modeling it") to measure the tool's effect, separately from whether agents choose it. Wave 15 (2026-11-07): with use required, 10 and 11 calls, all ok; Chamfer 14.7 mm (boat) and 12.6 mm (assembly) vs 10.0–19.7 mm across the no-call runs: no detectable effect at n=1. Not worth replicates unless meshes become a submission format.
 - [x] Robot planning tools (2026-11-04): `tools/planning/plan.py` gains `grasp` (antipodal parallel-jaw candidates
   with pregrasp/approach), `linear` (Cartesian straight line) and `fk` (pose, contacts, clearance), adapted from
   RoboSimStudio (Apache-2.0; `tools/planning/NOTICE`). Tool files are mounted per run, so no image rebuild is needed. The
@@ -158,3 +181,14 @@ Keep this list current: strike items when a log entry covers them.
 - [ ] Time to finish is an outcome under `TASK_CONVERGE`. Spring base finished at 56 min; lever base was exact at 40 min
   but kept testing to 235 of 240 min (n=1 each). Report it, and check what the agent was testing after it was exact.
 
+## Wave 18 sealed boxes (user, 2026-11-13)
+- [ ] Review holds with the wave 16 rule: resume toward 6 h while the agent is working out the box contents; otherwise
+  stop.
+- [ ] After the runs end:
+  - compare the final models' composite CoM trajectories per probe (plots under `version-*/evaluation/artifacts`);
+  - check whether each agent found a body inside, and its mass ratio;
+  - inspect the models with the new property editor.
+- [x] Fixed `test_dashboard_physics_tab_with_live_backend`: headless Chromium's virtual clock stalls with live Viser viewers, so the check now polls the page in real time. Inspector and dashboard 47 passed (job `60359870`).
+- [x] Wave 19 (hinted marble boxes): `-001` is invalid (camera clipping). Of `-002`, heavy is valid (it inferred the ball) and equal is invalid (it carried the box around the camera). The equal rerun is `-003`, job `60555357`. Review holds as before: review holds under the same rule. After the runs, compare the
+  CoM errors with wave 18 and with the solid-box baseline.
+- [ ] The wrist camera is exempt from the covered-lens rule. Design a rule before using it with sealed boxes.

@@ -1,0 +1,232 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern,microtype,geometry,xcolor,hyperref,enumitem,booktabs,tabularx,fancyhdr}
+\geometry{margin=0.78in,top=0.82in,bottom=0.78in}
+\definecolor{navy}{HTML}{18364A}
+\definecolor{teal}{HTML}{087E83}
+\definecolor{muted}{HTML}{536471}
+\hypersetup{colorlinks=true,urlcolor=teal,linkcolor=teal,pdftitle={Learning Physics Through Interaction: sim2sim Research Handoff},pdfauthor={sim2sim research brief}}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily\color{muted}SIM2SIM / RESEARCH HANDOFF}
+\fancyhead[R]{\small\sffamily\color{muted}6 NOVEMBER 2026}
+\fancyfoot[L]{\footnotesize\color{muted}Researcher-facing context; not a benchmark-agent prompt}
+\fancyfoot[R]{\small\thepage}
+\setlength{\headheight}{15pt}
+\setlength{\parindent}{0pt}\setlength{\parskip}{6pt}
+\setlist[itemize]{leftmargin=1.3em,itemsep=3pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=5pt,topsep=3pt}
+\newcommand{\pageheading}[2]{\noindent{\small\sffamily\bfseries\color{teal}#1}\par\vspace{3pt}{\LARGE\sffamily\bfseries\color{navy}#2}\par\vspace{9pt}}
+\newcommand{\subhead}[1]{\par\vspace{5pt}{\large\sffamily\bfseries\color{navy}#1}\par}
+\newcommand{\labeltext}[1]{\textbf{\color{navy}#1}}
+\newcommand{\callout}[1]{\par\smallskip\noindent\colorbox{navy!6}{\parbox{\dimexpr\linewidth-2\fboxsep\relax}{\vspace{6pt}#1\vspace{6pt}}}\par\smallskip}
+\begin{document}
+
+\pageheading{01 / PURPOSE AND CONTEXT}{Learning physics through interaction}
+{\large A self-contained literature summary and deep-research assignment}
+
+\callout{\textbf{Central question.} Can an agent choose physical interactions that efficiently resolve uncertainty about an environment, producing a simulator that predicts unseen interventions and supports successful real-world control?}
+
+\subhead{What sim2sim is trying to do}
+sim2sim studies agents that construct executable simulation models of an initially unknown physical environment. The agent can observe and interact with a reference environment, build and test its own MuJoCo XML reconstruction, and submit candidate models. Current reference environments are simulations, enabling controlled ablations and private ground-truth evaluation. The eventual target is a real physical environment accessed through cameras and robot sensors.
+
+Tasks so far include free blocks, compound rigid assemblies, a boat-shaped rigid object, a sphere cluster, and articulated spring/lever mechanisms. Interaction is either an ideal point grasp or a Panda robot arm. Depending on the condition, observations include RGB, depth, calibration, grasp force, robot proprioception, or tactile sensing. A point grasp translates its attachment without imposing orientation. Some conditions allow observation and reset but prohibit active reference-world manipulation.
+
+The agent does not receive private model parameters or evaluator scores. It reasons from permitted observations and experiments on its own reconstruction. Researcher metrics include geometry, center of mass (COM), selected physical parameters, and some trajectory/transfer evaluations. Existing transfer coverage is limited; it does not establish general real-robot competence.
+
+\subhead{The hypothesis to sharpen}
+\textbf{Adaptive interaction should help when plausible models agree on the evidence collected so far but predict different outcomes for an available, executable action.} For example, passive motion might leave two hinge explanations plausible, while a slow reversal or a faster opening separates them.
+
+Three questions must remain distinct:
+\begin{enumerate}
+\item \textbf{Identifiability:} Can the permitted sensors and interventions determine the property at all?
+\item \textbf{Acquisition:} Can the learner choose and successfully execute an informative experiment, at reasonable physical and computational cost?
+\item \textbf{Utility:} Does the resulting model improve predictions and decisions on held-out interventions?
+\end{enumerate}
+
+\subhead{How to use this document}
+Pages 2--4 provide project evidence and four starting papers. Pages 5--7 are instructions for an independent research agent. No repository access or previous conversation is required. The assignment is to research and design experiments, not to launch evaluations or recruit participants.
+
+\textbf{Evidence scope:} this brief summarizes the discussion and inspected results through wave 10 and its relevant November 5--6 replicates. It is not an exhaustive inventory of later launches. Internal findings below are project observations, not externally published results.
+
+\newpage
+\pageheading{02 / PROJECT EVIDENCE}{What motivates the next experiments}
+
+\subhead{Signals already observed}
+\begin{itemize}
+\item \textbf{Force sensing and physical scale.} Across three runs per condition, the force-enabled spring and lever runs recovered their scored hinge parameters essentially exactly. Without force, spring damping and stiffness remained approximately proportional but took incorrect absolute scales. Stating one mass largely removed the ambiguity: two spring runs were essentially exact and one ended around 6\% high.
+\item \textbf{Passive motion can already be informative.} An observe-only spring run recovered its parameters with a stated mass. Lever runs also performed well with a mass and a hint naming hinge effects. These participants watched gravity-driven motion, not static images. Therefore, ``interaction helps'' is too broad a hypothesis.
+\item \textbf{Execution tools may matter.} In wave 10, a planning-enabled Panda lever run recovered damping and friction essentially exactly. Its paired baseline recovered roughly 53\% and 8\% of their true values. This is one run per condition and reverses a disappointing earlier planning comparison with different tools. It is a promising lead, not a replicated tool effect.
+\item \textbf{Touch can help without vision.} In one Panda-block comparison, final COM error was approximately 110 mm with proprioception, 34 mm with proprioception plus tactile sensing, and zero with vision plus proprioception. Geometry improved less with touch. This does not test the incremental benefit of touch when vision is also available.
+\item \textbf{Availability is not use.} A segmentation tool was not invoked, even when its possible use was mentioned in the task. Availability-only ablations cannot establish the value of the tool itself.
+\item \textbf{Stopping is unresolved.} One lever run reached exact scored parameters at about 40 minutes but continued to about 235 minutes. Parameter accuracy and knowing when to stop are different outcomes.
+\end{itemize}
+
+\subhead{What these findings do not establish}
+They do not establish general human-level experimentation, robustness to real sensor errors, or successful real-world control. Most contrasts are single runs. Repeats on an identical scene measure agent variability; they do not replace additional physical configurations. Old and new prompt policies, tool versions, and observation interfaces must not be pooled as interchangeable treatments. Budget-suspended runs are not voluntary finishes.
+
+Absolute mass is not universally unidentifiable without a dedicated force sensor. Known masses, calibrated applied effort, or a known robot can provide physical references. Any scale-ambiguity claim must specify the available measurements and actuation model. Likewise, fitting motion under position control may not test predictions of required force.
+
+\subhead{Working priorities, not demonstrated solutions}
+Maintain competing models and unresolved uncertainties; reuse numerical fitting tools; select discriminating probes; provide dependable manipulation skills; preserve synchronized observation/action records; validate on unseen interventions. For hardware, distinguish object properties from camera calibration, force bias, controller compliance, latency, and slip.
+
+\textbf{Evaluation principle:} separate the information in the data from the learner's ability to use it. A common estimator applied to different collectors' data can assess acquisition. Different estimators given identical data can assess inference. Both analyses require scrutiny of estimator bias and representation limits.
+
+\newpage
+\pageheading{03 / STARTING LITERATURE}{Physical experimentation and touch}
+
+\subhead{1. Intuitive experimentation in the physical world}
+\textbf{Bramley, Gerstenberg, Tenenbaum \& Gureckis (2018), Cognitive Psychology 105, 9--38.}
+
+Participants dragged simulated pucks to infer relative mass and attraction, repulsion, or absence of force. Experiment 1 compared active exploration, passive observation, and yoked observation: watching a recording of another person's actions.
+
+Experiment 2 had 120 participants, 30-second trials, and bonuses encouraging earlier correct answers. Observers answered either the explorer's question or the other property question.
+
+\begin{tabularx}{\linewidth}{@{}Xrr@{}}
+\toprule
+Condition & Mass accuracy & Force accuracy\\
+\midrule
+Active exploration & 61\% & 73\%\\
+Replay, same question & 50\% & 73\%\\
+Replay, different question & 46\% & 57\%\\
+\bottomrule
+\end{tabularx}
+
+Chance was 33\%. Participants used goal-dependent actions, including shaking for mass and bringing objects together for forces. An ideal-observer analysis and predictive-divergence measure assessed the evidence generated by interactions.
+
+\textbf{Interpretation:} people can generate question-specific evidence; personal control is not always better than viewing suitable evidence. These are virtual-world judgments, not complete simulator reconstruction or proof of globally optimal exploration. The replay comparison also leaves differences in intention and attention, so it is not a pure measurement of data quality.
+
+\href{https://cicl.stanford.edu/papers/bramley2018experiments.pdf}{Read the full paper}. The paper links public experiment code and replays at \url{https://github.com/neilbramley/active_physics}.
+
+\subhead{2. Hand movements: A window into haptic object recognition}
+\textbf{Lederman \& Klatzky (1987), Cognitive Psychology 19, 342--368.}
+
+Blindfolded participants matched real objects on a designated property. The researchers recorded exploratory hand movements. A second experiment constrained the movements available and assessed matching performance.
+
+Exploration depended on the information sought: rubbing for texture, pressing for hardness, and following contours for precise shape. The constrained-movement experiment examined whether procedures were necessary, sufficient, or comparatively optimal for particular judgments.
+
+\textbf{Interpretation:} purposeful physical exploration has experimentally testable benefits. Restricting actions gives stronger evidence than merely correlating movement styles with success. Optimality is relative to the tested tasks and procedures, not all possible actions. Object-property discrimination is also narrower than identifying a dynamical model.
+
+\href{https://doi.org/10.1016/0010-0285(87)90008-9}{Publisher / DOI: 10.1016/0010-0285(87)90008-9}.
+
+\callout{\textbf{Design question for sim2sim:} Which available probe reveals the particular uncertainty that matters for the downstream task, and what happens when that probe is unavailable or fails?}
+
+\newpage
+\pageheading{04 / STARTING LITERATURE}{Causal interventions and efficiency}
+
+\subhead{3. Strategies to intervene on causal systems are adaptively selected}
+\textbf{Coenen, Rehder \& Gureckis (2015), Cognitive Psychology 79, 102--133.}
+
+Participants were given two possible causal structures and selected variables to manipulate to identify the correct structure. Bonuses decreased with the number of interventions. Problems were selected so that information-gain and positive-testing strategies made different predictions.
+
+Information gain favors separating hypotheses. Positive testing favors actions expected to produce effects under one hypothesis, even when those effects need not distinguish the alternatives. Across three experiments, people mixed strategies. Experience that reduced the usefulness of positive testing increased discriminating choices; time pressure increased reliance on the simpler strategy.
+
+\textbf{Interpretation:} the task isolates intervention choice while making the hypothesis space explicit. Humans do not consistently maximize information gain, and reasoning cost changes behavior. The simplified discrete networks do not establish efficiency for continuous mechanics with execution uncertainty.
+
+\href{https://bpb-us-e1.wpmucdn.com/wp.nyu.edu/dist/4/20443/files/2021/01/Coenen-ea-15-CogPsych.pdf}{Read the full paper}. DOI: \href{https://doi.org/10.1016/j.cogpsych.2015.02.004}{10.1016/j.cogpsych.2015.02.004}.
+
+\subhead{4. Active sensing in the categorization of visual patterns}
+\textbf{Yang, Lengyel \& Wolpert (2016), eLife 5:e12215.}
+
+Participants classified partially hidden images as patchy or striped. Each eye fixation exposed a small region. Human-selected locations were compared with random locations and those chosen by a Bayesian active-sensing algorithm.
+
+The authors measured accuracy versus number of glimpses and modeled perceptual noise, prior biases, and eye-movement inaccuracies separately from selection. After accounting for these factors, the estimated efficiency of human fixation selection was approximately 70\% relative to their model.
+
+\textbf{Interpretation:} an explicit reference model permits quantitative efficiency estimates and distinguishes selection from perception and execution. The main experiment involved three participants, each completing about 12 hours, so it provides intensive within-person evidence with limited population coverage. The 70\% figure is model- and task-dependent, not a general human efficiency constant.
+
+\href{https://pmc.ncbi.nlm.nih.gov/articles/PMC4764587/}{Open full text}. DOI: \href{https://doi.org/10.7554/eLife.12215}{10.7554/eLife.12215}.
+
+\subhead{What to carry forward}
+``Better than passive,'' ``better than a fixed policy,'' and ``near optimal'' are separate claims. An optimal benchmark is meaningful only under declared hypotheses, sensor noise, action constraints, and costs. A strong sim2sim study should test both improved acquisition and practical predictive value, without assuming either from reconstruction accuracy alone.
+
+\newpage
+\pageheading{05 / ASSIGNMENT TO THE NEXT AGENT}{Conduct a critical, experiment-led review}
+
+\callout{\textbf{Your assignment.} Use this brief as project context. Research primary empirical literature on how humans and artificial agents acquire missing physical or causal information through interaction. Recommend rigorous, feasible next experiments for sim2sim and a path to real-world validation. Your deliverable is a research report and concrete study designs; do not execute experiments.}
+
+\subhead{Research questions}
+\begin{enumerate}
+\item When does adaptive exploration improve on passive data, fixed probes, random actions, or an expert-designed sequence? When does it not?
+\item What designs isolate action selection from inference, attention, prior knowledge, motor skill, and observation quality?
+\item How are efficiency and identifiability measured? Which studies test predictions or control outside the exploration distribution?
+\item Which physical ambiguities require contact, calibrated force, touch, viewpoint changes, or a known physical reference?
+\item What changes when reset is imperfect, measurements drift, actions fail, and the true mechanism is absent from the learner's model class?
+\end{enumerate}
+
+\subhead{Search across six connected literatures}
+\begin{itemize}
+\item Human intuitive physics and active physical experimentation: mass, friction, damping, stiffness, inertia, COM, articulation, hidden mechanisms.
+\item Human causal learning and experimental design: intervention selection, competing hypotheses, confirmation strategies, yoked controls, stopping.
+\item Haptic exploration and manipulation: exploratory procedures, active touch, instrumented object handling, sensing under occlusion.
+\item Active perception: visual search, viewpoint selection, information gain per observation, sensorimotor constraints.
+\item Robotics system identification: informative excitation, Bayesian design, dual control, uncertainty-aware probing, real-to-sim reconstruction.
+\item Model utility: held-out intervention prediction, force prediction, sim-to-real control, model discrepancy, task-dependent fidelity.
+\end{itemize}
+
+\subhead{Search and screening protocol}
+Start with the four papers on pages 3--4; trace references backward and citations forward. Search for replications, null results, critiques, and newer studies through your search date. Deduplicate conference and expanded journal versions; the 2016 Bramley conference paper and 2018 article are not independent replications of their shared experiment.
+
+Use scholarly search and publisher, author, proceedings, or institutional copies. Read methods and results, not only abstracts. Record exact queries and search dates. Example queries: \emph{human physical exploration yoked control mass}; \emph{active system identification information gain manipulation}; \emph{haptic exploratory procedures constrained movement}; \emph{dual control experiment design real-to-sim}; \emph{active learning null result intervention selection}.
+
+Prioritize a deep analysis of roughly 12--20 directly relevant empirical studies over a long superficial bibliography. Treat that range as a target, not an inclusion quota. Label preprints, reviews, and theoretical results separately. If full text or key methods are inaccessible, record the limitation and do not invent missing details.
+
+\newpage
+\pageheading{06 / EXPERIMENT DIRECTIONS}{Turn evidence into testable study designs}
+
+These are starting hypotheses, not scheduled batches or proven interventions. Refine or reject them based on the literature. For each, specify the condition contrast, controlled factors, primary endpoint, failure criterion, and smallest useful pilot.
+
+\subhead{A. Explicit competing models: can the learner choose the right probe?}
+Supply two or a small set of candidate hinge models compatible with an initial observation. Let the learner select a bounded probe; assess expected discrimination before execution and evidence gained afterward. Compare human, current agent, fixed sequence, and a computational design policy. Include trials where no permitted action separates the models: appropriate uncertainty is then a valid outcome. This isolates acquisition before requiring open-ended model discovery.
+
+\subhead{B. Full reconstruction: does adaptive acquisition beat fixed probing?}
+Compare passive observation, fixed expert probes, and adaptive exploration with the same sensors, candidate representation, and fitting tools. Include initially resting and naturally excited scenes. Evaluate on held-out speeds, directions, loads, and initial states. Match physical time or interaction count separately from inference compute. Use a common estimator on each collector's recorded data and multiple estimators on common data to expose dependencies on the fitting method.
+
+\subhead{C. Scale and calibration: when does useful information disappear?}
+Compare missing scale reference, a stated mass, and calibrated force/effort information. Introduce force bias, timestamp error, image noise, and controller compliance one at a time before combinations. Test both physical-parameter uncertainty and predictions of required effort. Specify exactly which other channels might reveal scale; do not call a condition ``no force information'' merely because one sensor key is absent.
+
+\subhead{D. Execution and sensor complementarity}
+Replicate planning-enabled versus planning-disabled manipulation on varied physical instances. Record successful intended probes, contact, slip, and time to first useful measurement. Separately compare vision with vision plus tactile sensing under occlusion and ambiguous contact. Distinguish offered tools, actual invocation, and forced standardized use. Keep sensor ablations enforced, including indirect channels and tool outputs.
+
+\subhead{E. Model mismatch and a small real-world test}
+Use modest, interpretable mismatch first: backlash, configuration-dependent resistance, or compliant grasping. Compare simple and richer model classes on unseen actions; add flexible residual models only with a clear validation plan. For hardware, consider an instrumented hinge and weighted block. Human-executed, agent-requested probes can initially isolate sensing and identification from autonomous grasping. Ultimately test whether the learned model predicts an unseen trajectory and required force, then selects a successful bounded-force action.
+
+\subhead{Common design requirements}
+Treat trials/checkpoints within a participant or agent run as dependent. Separate agent randomness, physical-instance variation, and human participant variation. Propose sample sizes from a power or precision argument, not from the project's existing three-repeat convention. Predefine exclusions, execution failures, stopping, missing data, and budget censoring. A failed probe is an outcome, not evidence of a particular object parameter. Match human and agent information/action access before claiming a capability comparison.
+
+\newpage
+\pageheading{07 / REQUIRED OUTPUT}{What the research agent should return}
+
+\subhead{1. A critical synthesis}
+State what is established, what remains uncertain, and what is genuinely new in the proposed sim2sim contribution. Separate acquisition efficiency from inference accuracy and control utility. Identify the strongest evidence against your preferred hypothesis. Do not assume that human strategies are optimal or that a more accurate physical parameter always improves a particular control task.
+
+\subhead{2. An evidence matrix with verified references}
+For each included study, record:
+\begin{itemize}
+\item Full citation, stable link, publication status, and whether the full methods were read.
+\item Population and sample size, task, target unknowns, action space, sensor access, and prior information.
+\item Conditions, assignment/counterbalancing, time or action costs, and stopping rule.
+\item Definition of efficiency; primary outcomes; effect sizes and uncertainty where reported.
+\item Baselines and optimal-observer assumptions; handling of perceptual/motor noise.
+\item Main result, null results, confounds, limitations, and available code/data.
+\item The transferable experimental design principle and its specific relevance to sim2sim.
+\end{itemize}
+Tie every empirical claim and numerical result to a primary source and section, page, table, or figure. Distinguish author conclusions from your interpretation. If a detail is unknown, mark it unknown.
+
+\subhead{3. A ranked shortlist and three complete experiment cards}
+Recommend about five experiment directions, ranked by scientific discrimination, relevance to real hardware, feasibility, implementation burden, and expected resource use. State which can reuse existing sim2sim capabilities and which require development. Develop the top three into cards containing:
+\begin{enumerate}
+\item Falsifiable hypothesis and the competing explanation being ruled out.
+\item Manipulated factors, matched controls, and sensor/information boundaries.
+\item Environments and held-out physical variations; necessary implementation changes.
+\item Primary endpoint, secondary diagnostics, and a task-relevant definition of success.
+\item Sample-size rationale and analysis accounting for participants/runs and scene variation.
+\item Predicted outcomes under each explanation, failure modes, and what a null result would teach us.
+\item Small pilot, criterion for expanding it, and the bridge to a real-world experiment.
+\end{enumerate}
+
+\subhead{4. A recommendation we can act on}
+Choose the single next experiment you would run first and explain why it resolves an important uncertainty more cleanly than the alternatives. Include a compact search log, an annotated bibliography, and any unanswered questions requiring project-specific information. Write the report so it can be evaluated without opening every cited paper.
+
+\callout{\textbf{Scope and boundaries.} This is a researcher-facing literature and design task. It does not authorize model/API runs, robot execution, participant recruitment, or spending. Keep private evaluation data out of prompts for agents being evaluated. If implementation is later authorized in the project, follow its current repository instructions and compute policies. This document supplies context, not access to credentials, private source models, or hidden evaluator state.}
+
+\end{document}

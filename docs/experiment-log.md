@@ -6,6 +6,629 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-15 00:30 UTC — Wave 19 complete: with the hint, both marble agents inferred the ball from loads alone
+- **marble-equal-hint-003 is valid.**
+  - Finished by `finish` at 5.9 h, 7 submissions, on image `cb84098cc84e`.
+  - Its interior camera request was rejected (8643 s). It compared one sphere, two spheres and a loose block against
+    tilt, shake and pressure-pulse data.
+  - Final model: a free sphere of 40 g (true 40) in a 40 g shell (true 40), radius 12 mm (true 9.5), friction 0.3
+    (true 0.3).
+  - Composite-CoM mean / final error in mm: forward 1/4, side 22/81, toss 4/24, tilt 2/6. Compare the solid box 14/30,
+    24/65, 11/24, 12/16 and wave 18 unhinted 18/20, 35/86, 15/11, 12/29.
+- **Valid box-level results:**
+  - The cylinder (unhinted) and both hinted marbles identified a moving internal body and beat the empty-box baseline
+    on most probes.
+  - The unhinted marble models are worse than the empty box.
+  - The side throw stays hard for every model.
+- **Invalid runs:**
+  - `w19-*-001` (near-plane clipping);
+  - `w19-marble-equal-hint-002` (box carried around a stationary camera).
+
+## 2026-11-14 19:00 UTC — Wave 19 -002: heavy valid and inferred the ball; equal invalid (box carried around the camera)
+- **marble-heavy-hint-002 is valid.**
+  - Finished by `finish` at 5.9 h, 7 submissions. Its interior camera placements were rejected (notes at 62–1478 s).
+  - From settled CoM shifts under controlled tilts, its final model has a free sphere: 67.3 g (true 68 g), radius
+    11.6 mm (true 9.5 mm), friction 0.32 (true 0.3).
+  - Composite-CoM mean / final error in mm: forward 13/27, side 6/14, toss 10/32, tilt 3/9. Compare the solid box
+    24/39, 13/13, 12/9, 22/29 and wave 18 unhinted 34/36, 25/22, 33/44, 21/43.
+- **marble-equal-hint-002 is invalid.**
+  - At 6185 s: "position the camera at a clear location and move the held box toward it". It carried the box until the
+    camera sat inside the cavity, then measured the sphere radius (9.5 mm), the 4 mm walls and the sphere colour from
+    "interior views".
+  - The aim-time check could not stop this: objects move after the camera is placed.
+- **Second fix** (`Simulation.observe`): whenever any surface is within the camera clearance of the observation camera
+  at render time, the image is black and the depth is zero, like a real lens covered by an object.
+  - This also covers carrying an object to the fixed camera. It uses the same `_surface_within` ray test, now
+    `mj_multiRay`, as the aim check.
+  - The wrist camera is exempt: the hand's own geoms surround it. It was not enabled in these runs.
+  - The test covers a box moved to 1 cm from a clear-aimed camera (black RGB, zero depth). 66 passed (job `60554164`).
+- **Wave 18 unaffected:** no cavity, clipping or carry-to-camera notes in any of its three runs.
+- **Image `cb84098cc84e`:** build job `60554519`, inspection clean; OCI 4 passed, 1 skipped (job `60555357`'s check job
+  `60555092`).
+- **Relaunched** as `w19-marble-equal-hint-20261114-003` (job `60555357`). Pool `sim2sim-20261114` stood at $137 at
+  relaunch.
+
+## 2026-11-14 13:00 UTC — Wave 19 -001 invalid (camera clipped through the box); fixed and relaunched as -002
+- **What happened:** both hinted runs saw inside the sealed box within about 1 min.
+  - They parked the movable camera against the box, and the near clip plane (0.01 × extent ≈ 2 cm) cut its 4 mm wall.
+  - Notes: "The cavity view reveals a spherical internal weight" (heavy); "a sphere intersected by the camera's near
+    plane" (equal).
+  - None of the three unhinted wave 18 runs did this (no clipping or interior notes), so wave 18 stands.
+- **Runs `-001` are invalid:**
+  - equal was stopped at its hold (3.8 h, `budget_suspended`);
+  - heavy was cancelled with its job, `60451443`;
+  - spend $74.59 in pool `sim2sim-20261114`.
+- **Fix** (`Simulation._aim_camera`):
+  - The rule: `camera` rejects any `pos` closer than 1.5 × the near-plane frustum corner reach to any surface.
+  - How: 512 Fibonacci-sphere rays, all geom groups. `mj_ray` also catches positions inside a geom, or inside a small
+    closed cavity.
+  - For the box levels the minimum clearance is 3.4 cm.
+  - Test `test_movable_camera_cannot_clip_into_a_sealed_box`; simulation, Panda and wrist-camera tests 41 passed.
+  - Documented in `docs/protocol.md`.
+- **Image `b573545561d7`:** build job `60478907`, inspection clean; OCI 4 passed, 1 skipped (job `60479478`).
+- **Relaunched** as `w19-marble-{heavy,equal}-hint-20261114-002`, job `60479567`, with the same configs.
+
+## 2026-11-14 08:30 UTC — Wave 18 results; wave 19 (hinted marble boxes) launched
+- **Wave 18 outcomes:**
+  - marble-heavy: `finish` at 6.0 h, 7 submissions, never held.
+  - cylinder: `finish` at 5.9 h, 8 submissions.
+  - marble-equal: held at the cap at 5.4 h and was stopped. It had noticed an off-centre CoM (modelled as fixed offset
+    inertia) and briefly tested a hollow-box collision model, but never considered a moving body; it was on shadow
+    artifacts when it held.
+- **Discovery:**
+  - Only the cylinder agent found the contents. From load-centre shifts in tilted grasps it built a fore–aft internal
+    slider, and checked that this was not a pose-estimation artifact. Its model slides rather than rolls.
+  - Neither marble agent identified a body inside.
+- **Composite-CoM error vs a "nothing inside" baseline** (`experiments/validation/box-baseline.py`): a solid uniform 80 g
+  box with the level's exterior; results in `wave18-analysis/baseline/box-baseline.json`. Mean error in mm, final model /
+  baseline, for forward / side / toss / tilt-shake:
+
+  | Level | Forward | Side | Toss | Tilt-shake |
+  |---|---|---|---|---|
+  | cylinder | 7 / 21 | 31 / 32 | 8 / 18 | 8 / 15 |
+  | marble-heavy | 34 / 24 | 25 / 13 | 33 / 12 | 21 / 22 |
+  | marble-equal | 18 / 14 | 35 / 24 | 15 / 11 | 12 / 12 |
+
+  - The cylinder slider is 2–3× better than the empty box on three probes.
+  - Both marble models are worse than the empty box: their contact and friction fits compensate for the hidden ball.
+  - Total mass was exact (80 g) in every final model. Chamfer is 2.6–2.8 mm, dominated by the hidden body's surface.
+- **Wave 19** = the two marble levels rerun with the hint "The closed box is not solid: it has hidden contents that can
+  move inside it when the box moves; your reconstruction must reproduce them too."
+  - Otherwise identical to wave 18 (`RUNS21`), on image `8887bc5f3292`; only `inspector.py` changed after the build.
+  - Job `60451443`, pool `sim2sim-20261114`.
+
+## 2026-11-13 UTC — Wave 18 (sealed boxes with hidden contents) launched
+- **Question (user, 2026-11-13):** can an agent reconstruct an object whose geometry is hidden inside a sealed, grippable
+  box?
+- **Levels** (`environments/panda_small/box_*`, written by `experiments/validation/box-scenes.py`, checked by `box-check.py`;
+  check jobs `60337517`, `60336828`):
+  - **Box:** outer 57 × 82 × 42 mm, identical in every level; 80 g total; shell friction 1.5.
+  - **Friction model:** elliptic cones with impratio 10. The fixture gripper squeezes only about 1.4 N per finger, and with
+    the default cones a heavy marble crept out of the grip.
+  - **Contents:**
+    - `box_marble_heavy`: a 19 mm ball of 68 g in a 12 g shell. The interior is 49 × 74 mm, 2.6× and 3.9× the diameter,
+      so the ball rolls.
+    - `box_marble_equal`: the same ball, 40 g in a 40 g shell.
+    - `box_cylinder`: a 19 mm × 48.4 mm cylinder of 55 g in a 25 g shell. 0.6 mm end play, so it rolls along y only.
+  - The hidden body collides only with invisible liners. Hard impacts press it up to about 2 mm into them; it is hidden
+    behind 4 mm walls.
+- **Conditions:** Franka with joint torques, movable camera, `sequence` tool (code-written action lists), and plain
+  `TASK_CONVERGE` with nothing about the contents. 6 h wall, $44 cap with the 36 h hold.
+- **Evaluation:**
+  - Four arm probes, the same in every level: `throw_forward`, `throw_side`, `toss_up`, `tilt_shake`.
+  - Each probe starts with a pick. Release speeds are 0.9–1.2 m/s and every box lands on the table.
+  - New in `dynamics`: the composite CoM trajectory of all non-robot free bodies, sampled every 10 ticks, with errors and
+    a PNG per probe. It is model-agnostic.
+  - Between levels the mean CoM paths differ by 6–30 mm; source vs itself scores 0.
+  - Chamfer and `center_of_mass` include the hidden body.
+- **Inspector:**
+  - Registry-based property editor (opacity, mass, friction; a new property is one entry).
+  - Live composite and per-body CoM markers.
+  - Tests: inspector job `60335253` passed 22. `test_dashboard_physics_tab_with_live_backend` then timed out twice
+    (jobs `60338257`, `60339218`). Fixed in the test: Chromium's virtual time stalls with live Viser viewers, so the check now polls in real time. Inspector and dashboard tests 47 passed (job `60359870`).
+- **Validation:**
+  - Affected tests: 142 passed and 2 failed (job `60338257`). The runtime timing test then passed on rerun (job
+    `60339218`).
+  - Image `8887bc5f3292` (build job `60338360`); OCI test 4 passed, 1 skipped (job `60339219`).
+- **Jobs:** `60340049` (marble-heavy, marble-equal) and `60340071` (cylinder), sapphire. Pool `sim2sim-20261113`, worst
+  case $132 before holds.
+
+## 2026-11-11 23:59 UTC — Wave 17 results: the hint makes the hidden mechanism identifiable
+- **All 8 hinted runs found the mechanism**; in wave 16 none of these 8 conditions had one in the final model.
+  - Seven ended by `finish` near the 6 h wall after being resumed at the $44 cap.
+- **Orchestrator error:** w17-nonlinear-grasp-hint was never reviewed and timed out after 36 h, stopping at 3.1 h.
+  - It held 48 s after another run, and the restarted `hold-watch.sh` seeded "seen" from holds already present.
+  - Fixed: the watcher now reports any hold without a written decision.
+  - The condition is rerun as `-002` (job `59831896`, pool `sim2sim-20261110`):
+    - resumed at the cap (2.4 h, while testing a wrong "stateful latch" hypothesis), then finished at 5.9 h with 20
+      submissions;
+    - its final model has all three zones (linear, the 2 N plateau, the quadratic rise), at 0.15 / 2.2 N;
+    - use `-002` for the hinted nonlinear point-grasp condition and keep `-001` as cut short.
+- **Probe rule changes:** the probe now attaches at time 0, before `settle_ticks`, and grasps the nearest movable pixel
+  within `grasp_radius_px` = 3 of `grasp_pixel`.
+  - Why: two hinted curved candidates sat ~1 px off the reference handle, or drifted off it while settling.
+  - Effect: all 206 submissions of waves 16–17 now score (job `59840356`).
+  - The trusted image still has the earlier probe; rebuild it before any further tunnel wave.
+- **Summary** (`experiments/validation/tunnel-summary.py`; `wave17-analysis/tunnel-summary.{json,md}`): final-model RMS
+  error over the 30–59 mm working range vs the source magnitude there.
+  - **Hinted runs:**
+    - damper (both) 0.00–0.03 / 3.4 N, including the fast (damped) cycle;
+    - nonlinear-seq 0.01–0.02 / 2.2 N;
+    - spring 0.06–0.12 / 3.3 N;
+    - nonlinear (3.1 h) 0.2 / 2.2 N;
+    - curved 0.4–2.2 / 3.2 N.
+  - **Latch-seq hinted:** retract 0.48 / 3.2 N. It reproduces the latch, holding at 0 N until about 48 mm (plot). Its
+    push error of 6.75 N is one spurious 48 N spike in the final version; versions 004–005 had 0.86 N overall.
+  - **Wave 16 for contrast:**
+    - spring-grasp-seq 0.1 and damper-franka 0.14–0.16 are the only near-exact unhinted models;
+    - latch-grasp and latch-franka have an exact spring and no latch (1.2 N);
+    - the six no-mechanism models score about their source magnitude;
+    - curved-grasp is a 77 N collision artifact.
+- **Plots:** `experiments/validation/wave1{6,7}-analysis/force-profiles/`. Engagement: `wave17-analysis/engagement.jsonl`
+  (every hinted run hit the plunger within 20–340 s, except curved-grasp-hint at 1754 s).
+
+## 2026-11-10 07:45 UTC — Wave 17 (hinted tunnel reruns) launched; wave 16 force profiles
+- **Force-profile probe fixed and rescored** (`experiments/validation/rescore-force-profile.py`, jobs `59440676`,
+  `59451247`):
+  - **What was wrong:** the in-run probe used a fixed world ray and missed most candidates, because point-grasp agents
+    build in shifted frames.
+  - **Fix 1:** the probe now grasps through a trusted-camera pixel (`grasp_pixel`, emitted by `tunnel-scenes.py`; scenes
+    byte-identical).
+  - **Fix 2:** `Simulation` collected default graspable bodies from the first `<worldbody>` only. Franka agents include
+    the robot first, which hid their bodies; the fix only affects researcher point grasps on Panda scenes.
+  - **Median error dropped:** free travel dominates the samples, so a model with no mechanism scored 0.
+  - **Coverage:** all 18 finished runs, every submission `ok`.
+  - **Plots:** `experiments/validation/wave16-analysis/force-profiles/`. The hard-stop spike (~35 N at 61 mm)
+    dominates the RMS, so read the plots.
+- **Final model vs truth (slow push at 45 mm / 58 mm, fast push at 45 mm; true spring 2.94 / 5.53 N):**
+  - **Exact or close:**
+    - spring-grasp-seq: exact spring.
+    - latch-grasp: exact spring, no latch (its retract branch is wrong).
+    - damper-franka: spring and damping (fast 4.54 vs 4.58 N).
+    - damper-franka-seq: spring, damping too low.
+  - **Mechanism present, magnitude wrong:**
+    - spring-franka, nonlinear-franka: too stiff.
+    - spring-franka-seq, nonlinear-franka-seq: too soft.
+    - latch-franka-seq: 20 vs 5.6 N.
+    - curved-franka-seq: wrong shape.
+  - **No mechanism:**
+    - zero force: nonlinear-grasp, nonlinear-grasp-seq, curved-grasp-seq, latch-grasp-seq, damper-grasp,
+      damper-grasp-seq.
+    - geometry artifacts only: spring-grasp (force before the plunger), curved-grasp (340 N spike).
+  - latch-franka (finished 6 h, job `59477038`): spring close (2.79 / 5.32 N), no latch.
+  - curved-franka: mechanism present but wrong shape (2.10 / 2.32 N; 1.75 N already at 20 mm).
+- **Plunger engagement from audit states** (`wave16-analysis/engagement.jsonl`):
+  - Never touched: spring-grasp, nonlinear-grasp, damper-grasp, damper-grasp-seq.
+  - Every Franka run engaged it.
+  - curved-grasp(-seq) and latch-grasp-seq touched it within minutes without noticing.
+  - Soft hard stop: compression reached 40–60 mm on a 30 mm stroke.
+- **Wave 17** = the 8 "no mechanism" conditions rerun with the hint "The closed housing hides a mechanism at its far end,
+  out of view, that the visible parts can interact with; your reconstruction must reproduce its behavior too."
+  - Otherwise identical to wave 16 (`experiments/configs/generate-waves.py` `RUNS19`).
+  - Image `b986371a2e38`: build job `59451970`, inspection clean, OCI 4 passed / 1 skipped (job `59453491`).
+  - Jobs `59454676`, `59454690`, `59454713`, `59454717` (sapphire, 2 runs each).
+  - Pool `sim2sim-20261110`; worst case $352 before holds.
+  - Agent prompts were checked: run IDs and level names never reach the agent.
+
+## 2026-11-09 08:25 UTC – 2026-11-10 06:12 UTC — Wave 16 hold reviews (in progress)
+- **Rule:** at the $44 cap a run held. I read its model-origin progress notes and, where they were unclear, its audit
+  states.
+  - **Resumed** (cap $120, pool $1000, same run) if the agent had engaged the mechanism and its model of it was still
+    incomplete.
+  - **Stopped** otherwise.
+- **Stopped (7), all `budget_suspended`:**
+  - Six never pushed past the free travel. They spent their time pulling the stick out and fitting its collars, inertia
+    and the entrance lip: nonlinear-grasp (2.5 h), curved-grasp-seq (2.7 h), curved-grasp (2.8 h), damper-grasp (2.8 h),
+    damper-grasp-seq (2.9 h), spring-grasp (3.5 h).
+  - latch-grasp-seq (3.3 h) pushed 100 mm in at ~4400 s. Its audit states show the plunger fully compressed and the latch
+    toggled, but the agent called it "a strong stop near the housing entrance" and never modelled it.
+  - Scene note from that push: under the stiff point grasp the plunger overshot its 30 mm limit to 39 mm (soft joint
+    limit, `solreflimit .004`). The force-profile probe stays at 61 mm and slow, so the metric does not reach this.
+- **Resumed (7):**
+  - latch-grasp: a spring-loaded internal stop found by push + release at ~5160 s.
+  - nonlinear-franka: an inward-only self-returning slider, then fitting the onset of nonlinear resistance.
+  - spring-grasp-seq: first inward probe at 4.9 h, which showed a mismatch at the far end.
+  - spring-franka: a compliant "upper stop" with rebound.
+  - damper-franka: soft axial stops fitted to push-and-release.
+  - latch-franka and curved-franka: compliant inner stop and spring-like return. Both were held ~20 h while the
+    orchestrator session was down; the hold excluded that time.
+- **Never held (6):** spring-franka-seq, nonlinear-grasp-seq, nonlinear-franka-seq, latch-franka-seq, damper-franka-seq
+  and curved-franka-seq. They finished under $44, the last at the 6 h wall.
+- **Pool spend** at 2026-11-10 06:11 UTC: $808.53 (all charged to ET 2026-11-09 except the final two resumes).
+- **New tool:** `experiments/validation/mechanism-engagement.py RUN...` prints each run's maximum plunger compression from
+  the audit states, for the results report.
+
+## 2026-11-09 05:51 UTC — Wave 16 (occluded tunnel levels) launched
+- **Question (user, 2026-11-08):** can an agent use a stick to identify a mechanism it cannot see, at the closed far
+  end of a tunnel? The task is plain `TASK_CONVERGE` and never mentions a tunnel, spring or mechanism.
+- **Levels** (`environments/tunnel_*`, `environments/panda_small/tunnel_*`, written by
+  `experiments/validation/tunnel-scenes.py`; check job `59098236`, plots in `experiments/validation/tunnel-check/r6/`):
+  - All levels: a frictionless bore, a 0.38 kg stick with a knob, a 30 mm gap, then a plunger with a 30 mm stroke to a
+    hard stop.
+  - **spring:** k = 200 N/m, no damping.
+  - **nonlinear:** linear to 10 mm, a 2 N plateau to 20 mm, then plateau + 4e4·(x−0.02)² N. Built from deadband
+    tendons; within 1% of the design.
+  - **curved:** tunnel and stick are an arc of radius 0.25 m.
+  - **latch:** a push-push heart cam that latches at 18.8 mm. Reliable over 3 cycles at 10, 50 and 100 mm/s.
+  - **damper:** k = 200 N/m plus b = 20 N·s/m.
+- **Design:** 5 levels × {point grasp + wrench, Franka + joint torques} × {without, with the new `sequence` tool} =
+  20 runs, `w16-<level>-<grasp|franka>[-seq]-20261109-001`.
+- **Budgets:** 6 h wall budget, visible to the agent from the start, and a $44 cap.
+  - New `budget_hold_seconds` = 36 h: at the cap the run holds frozen for review, then either resumes with a raised cap
+    in the same run or stops.
+  - Review rules are in experiment-todo.md: rerun with a hint if a run never discovers the mechanism; continue to 6 h
+    if runs are still working on it.
+  - `audit_bytes` = 16 GiB.
+- **Infrastructure changes:**
+  - Budget hold:
+    - `WallClock.hold` freezes the run, and hold time is excluded from elapsed time.
+    - The orchestrator answers through `hold-decision.json`.
+    - Inference replies carry `deadline_unix`, which the harness adopts.
+  - `[tools] sequence`: the harness runs an agent-written JSON list of up to 2000 physical actions in one world and saves
+    each step's non-image outputs.
+  - Metric `force_profile` (`src/sim2sim/force_profile.py`) gives source vs candidate resistance along the push path;
+    plot with `experiments/validation/plot-force-profiles.py`.
+  - **Wrench fix (affects all point-grasp runs from now on):**
+    - `Simulation._wrench` now reports the force applied in the last step.
+    - It used to re-solve after integration, which read low by about 10 N·s/m × velocity: phantom damping, found while
+      building these levels.
+    - Earlier wrench runs used the old reading; do not compare their damping estimates with new runs.
+- **Validation:**
+  - Focused tests: 65 passed (job `59089897`), then 46 passed after the wrench fix (job `59098223`).
+  - OCI integration on the intermediate image `6a02a145af5f`: 4 passed, 1 skipped (tools image not opted in; job
+    `59092028`).
+  - Final image `c50bab6efa8f` (build job `59098387`, inspection clean).
+- **Jobs:** `59099991`, `59100005`, `59100009`, `59100011`–`59100017` on sapphire, 2 runs each, 44 h limit. List in
+  `experiments/validation/wave16-20261109-jobs.txt`.
+- **Budget:** pool `sim2sim-20261109`, initial worst case 20 × $44 = $880.
+
+## 2026-11-07 13:45 UTC — Wave 15 results: SAM-3D use required, no detectable effect
+- **Both runs finished** at the $44 cap (`budget_suspended`): boat 5 submissions in 116 min, assembly 5 in 108 min
+  (jobs `58615374`/`58615376`). Services `58615373`/`58615375` were released at run end. Scored with tag `-M`.
+- **The agents called the tool:** boat 10 `sam3d_call` events, assembly 11, all `ok` (8–20 s each). Most calls came in
+  the first 15 minutes, one per part, as instructed. The assembly agent later used a SAM-3D sphere estimate as a
+  hypothesis and then checked it with depth measurements.
+- **Final Chamfer, no other differences (mass and COM exact except w12 assembly):**
+
+  | Scene | w10 base | w12 offered (0 calls) | w12 directed (0 calls) | w14 movable camera | w15 use required |
+  |---|---|---|---|---|---|
+  | Boat | 12.5 mm (15.9 at matched tokens) | 11.9 mm | 10.0 mm | 13.8 mm | 14.7 mm |
+  | Assembly | 13.9 mm (13.8 at matched tokens) | — | 19.7 mm (COM 26 mm) | 12.7 mm | 12.6 mm |
+
+- **Conclusion:** conditions that differ only in an unused tool already span 10–20 mm, so that is the run-to-run noise at n=1. Calling SAM-3D does not
+  measurably change shape accuracy on these scenes. The agents still build primitive unions, so the meshes serve only as
+  hints. No replicates queued.
+- Pool `sim2sim-20261107`: $482 billed.
+
+## 2026-11-07 11:38 UTC — Wave 15 (SAM-3D use required) queued (done; see 13:45)
+- **Question:** wave 12 agents never called `sam3d`. Does the tool help when the task requires calling it?
+- **Runs:** `w15-boat-sam3d-required` and `w15-assembly-sam3d-required`.
+  - Each equals the w12 directed config except the task sentence: "Before modeling each part, call the sam3d action on a
+    camera image with a mask of that part ..., and compare the returned 3D shape with your observations before using
+    it." No scene information is added.
+  - Sources are identical to `w10-*-base`.
+- **Setup:** image `9bf221a1c5bc` (current main, contains the relay). One A100 service per run on
+  `kempner_gpu_priority` (`58615373`, `58615375`, 6 h, never H100/H200); strict jobs `58615374`/`58615376` start 5 min
+  after their service.
+- Pool `sim2sim-20261107` (about $400 billed), worst case +$88. The waiter releases the services when the runs end. List
+  in `experiments/validation/wave15-20261107-jobs.txt`.
+
+## 2026-11-07 14:30 UTC — Camera r3 results: movable vs fixed camera on spring levels, n=3
+- **All four r3 runs finished** (jobs `58594552`/`53`), each at the $44 cap. Scored with tag `-L`.
+- **Final submissions, r1 / r2 / r3:**
+
+  | level | Chamfer, movable | Chamfer, fixed | COM, movable | COM, fixed |
+  |---|---|---|---|---|
+  | K stated | 0.5 / 0.69 / 4.11 mm | 3.6 / 3.46 / 3.57 mm | 10.3 / 30.3 / 39.3 mm | 22.2 / 13.1 / 48.9 mm |
+  | block | 0.7 / 1.03 / 1.03 mm | 1.3 / 3.93 / 3.85 mm | 7.1 / 33.7 / 6.7 mm | 6.7 / 7.3 / 7.2 mm |
+
+  - **Block-level stiffness ratio:** movable ×1.01 / ×1.15 / ×0.92, fixed ×1.38 / ×0.27 / ×4.61.
+  - **Exact plate masses (0.012 / 0.008):** movable 4/6 runs, fixed 1/6.
+- **Conclusions (n=3):**
+  - The movable camera improves geometry: median Chamfer 0.69 vs 3.57 mm (K) and 1.03 vs 3.85 mm (block); better in 5/6
+    pairs.
+  - It also makes the spring identification reliable. With the block mass stated, stiffness was within 15% in 3/3
+    movable runs and off by 38% to 4.6× in 3/3 fixed runs.
+  - The cluster COM is not improved (mixed). No run resolved the 1:2:4:8 sphere masses.
+- Pool `sim2sim-20261107`: about $400 billed.
+
+## 2026-11-07 10:40 UTC — Wave 14 and camera r2 results; camera r3 launched
+- **All six runs finished** (jobs `58553798`/`99`/`801`), each at the $44 per-run cap (about $40 billed). Scored with
+  tag `-K`.
+- **Geometry scenes** (movable camera vs w10 baseline, n=1). The movecam runs reached the cap faster, with 4 submissions
+  each.
+  - Boat: final Chamfer 13.8 mm at 16.5M tokens. Baseline 15.9 mm at matched tokens, 12.5 mm final.
+  - Assembly: final Chamfer 12.65 mm, COM 0.4 mm at 13.7M tokens. Baseline final 13.94 mm.
+  - Both are within the run-to-run spread (the three wave 12 boats ranged 10.0–12.5 mm). **No camera effect is
+    detectable on the geometry scenes.**
+- **Spring levels, movable vs fixed, final submissions (r1 → r2):**
+
+  | level | Chamfer, movable | Chamfer, fixed | COM, movable | COM, fixed | block-level stiffness, movable | fixed |
+  |---|---|---|---|---|---|---|
+  | K stated | 0.5, 0.69 mm | 3.6, 3.46 mm | 10.3, 30.3 mm | 22.2, 13.1 mm | — | — |
+  | block | 0.7, 1.03 mm | 1.3, 3.93 mm | 7.1, 33.7 mm | 6.7, 7.3 mm | ×1.01, ×1.15 | ×1.38, ×0.27 |
+
+  - Chamfer is better with the movable camera in 4/4 pairs, and so is the block-level stiffness in 2/2.
+  - Masses and COM are mixed: the r2 movable runs missed the masses (k-r2 plates ×1.3/×1.2, cluster ×2.1). **The exact
+    plate masses of w11-k did not reproduce.**
+- **r3 of all four camera conditions launched** (`experiments/configs/rep3-20261107/`). Jobs `58594552`/`58594553`; list
+  in `experiments/validation/rep3-20261107-jobs.txt`. Pool `sim2sim-20261107`: $241 billed before launch, worst case
+  +$176.
+
+## 2026-11-07 06:30 UTC — Wave 14 (movable camera on geometry scenes) and camera replicates launched
+- Pool `sim2sim-20261107` ($1000), $44 per run, convergence prompt, image `9bf221a1c5bc`, netscratch root. Worst case
+  $264.
+- **Wave 14:** `w14-boat-movecam` and `w14-assembly-movecam`. Each is identical to its `w10-*-base` config except for
+  `movable_camera = true` (diffed) and the pool lines. Sources are identical to w10.
+- **Replicates (n=2) of the camera pair on the spring levels:** `w11-tetra-spring-{k,block}-r2` and
+  `w13-tetra-spring-{k,block}-fixedcam-r2` (`experiments/configs/rep-20261107/`).
+- Jobs `58553798`/`58553799`/`58553801` (sapphire); list in `experiments/validation/wave14-rep-20261107-jobs.txt`.
+- The agent-visible `public_tool_config` was checked: movable camera on/off exactly as intended; effort and wrench
+  unchanged from each twin.
+
+## 2026-11-07 06:00 UTC — Wave 13 results: fixed camera vs movable camera (spring levels, n=1 each)
+- **Wave 13 finished.** Job `58492344` COMPLETED. Both runs stopped at the $44 per-run cap: `k-fixedcam` at 190 min with
+  10 submissions, `block-fixedcam` at 181 min with 7. Scored with tag `-J`.
+- **Scoring-script fixes.** `report-extract-models.py`:
+  - Joint-axis inertia is now computed for hinges only. An agent's slide-joint body had child bodies, and the lever-only
+    assertion failed.
+  - Per-geom masses compile with `boundmass`/`boundinertia`, so a massless geom alone still compiles. This replaces the
+    02:30 special case.
+  - `compare.py` skips hinge-only quantities on slide joints. Wave 11 was rescored with the same script (`-I`); its
+    results are unchanged.
+- **Final submissions, movable (w11) → fixed (w13):**
+
+  | level | Chamfer | COM | cluster mass | plates (0.012 / 0.008) | stiffness (21.7) |
+  |---|---|---|---|---|---|
+  | K stated | 0.5 → 3.6 mm | 10.3 → 22.2 mm | ×1.05 → ×1.40 | exact → exact | stated |
+  | block mass stated | 0.7 → 1.3 mm | 7.1 → 6.7 mm | ×1.00 → ×1.00 | exact → 0.010 / 0.010 | ×1.01 → ×1.38 |
+
+  - At matched tokens the ranking is the same.
+  - At 120 min both conditions were still far from their final values: cluster mass ×1.4–2.1.
+- **Reading:** the movable camera helped geometry (Chamfer) in both levels. In the block level it also helped the spring
+  identification: equal plates and a stiffness 38% too high without it. This is n=1 per condition; replicate before
+  citing.
+
+## 2026-11-07 02:30 UTC — Wave 11 (spring levels) results; wave 13 (fixed-camera twins) launched
+- **Wave 11 finished.** Jobs `58441029`/`58441031` COMPLETED. All four runs stopped at the $44 per-run cap after
+  138–152 min, with 7–9 submissions each. Scored with tag `-I` (job `58490059`).
+  - The first attempt (`58489539`) crashed: `report-extract-models.py` recompiled the zero-mass coil core alone. Massless
+    geoms are now recorded as 0 without recompiling.
+- **Final submissions** (masses in kg; source cluster 0.0572 = spheres 0.0038/0.0076/0.0153/0.0305; plates
+  0.012/0.008; K 21.7):
+
+  | run | Chamfer | COM | cluster | plates | other | stiffness |
+  |---|---|---|---|---|---|---|
+  | `k` | 0.5 mm | 10.3 mm | 0.060 (×1.05), 4 equal spheres | 0.012 / 0.008 exact | — | 21.7 (stated) |
+  | `k-square` | 2.8 mm | 31.8 mm | 0.100 (×1.75), equal | 0.012 / 0.008 exact | — | 21.7 (stated) |
+  | `k-plug` | 0.7 mm | 5.7 mm | 0.0572 exact total, equal | 0.012 / 0.008 exact | plug 0.0318 (true 0.0317) | 21.7 (stated) |
+  | `block` | 0.7 mm | 7.1 mm | 0.0572 exact total, equal | 0.012 / 0.008 exact | block 0.0235 (stated) | 22.0 (×1.014) |
+
+- **The exact plate masses were checked for a leak; there is none.**
+  - The `k` agent tracked the free two-plate oscillation in images and fitted it with the known K: reduced mass 0.0048,
+    split 0.4, hence 0.012 / 0.008.
+  - It also used the Panda's joint-angle sag under load ("the robot's known position-controller deflection") as a scale.
+    The `k-plug` agent weighed the plug the same way.
+  - **Caveat for every Franka "no force sensing" ablation:** hiding `actuator_effort_nm` does not remove load sensing,
+    because the position controller's steady-state joint deflection encodes the payload.
+- **No agent seated the spring in the hole** (no insertion attempt in any progress note).
+- **No agent resolved the 1:2:4:8 sphere masses** of the cluster: all used equal spheres. This is the remaining COM error.
+- **Camera use:** 37–51 `camera` actions per run, for face-on plate measurements and orthogonal views.
+- **Wave 13** (pool `sim2sim-20261106`, $622 spent before launch, worst case +$88): `w13-tetra-spring-k-fixedcam` and
+  `w13-tetra-spring-block-fixedcam`.
+  - Each is identical to its w11 twin except that `movable_camera` is absent. Configs were diffed; sources are identical
+    to w11.
+  - Job `58492344` (sapphire); list in `experiments/validation/wave13-20261106-jobs.txt`.
+
+## 2026-11-07 01:40 UTC — Wave 12 (SAM-3D) results: the tool was never called; baseline scoring fix
+- **Wave 12 finished.** Slurm jobs `58391601`/`58391610`/`58391614` all COMPLETED; the GPU services were released.
+
+  | run | end | submissions | wall | final Chamfer | final COM | baseline (w10) final |
+  |---|---|---|---|---|---|---|
+  | `w12-boat-sam3d` | per-run cap ($44) | 7 | 139 min | 11.9 mm | 0 | boat 12.5 mm, COM 0 |
+  | `w12-boat-sam3d-directed` | per-run cap ($44) | 7 | 100 min | 10.0 mm | 0 | boat 12.5 mm, COM 0 |
+  | `w12-assembly-sam3d-directed` | `agent_finish` | 7 | 234 min | 19.7 mm | 26.1 mm | assembly 13.9 mm, COM 0 |
+
+- **SAM-3D calls: 0 in all three runs.**
+  - Counted from the audit payloads (`sam3d_call` events).
+  - The `sam3d` tool definition was in every model request (about 690 blobs per run).
+  - The agents' progress notes never mention it, including the two runs whose task says when it helps.
+  - Observation PNGs are saved under `/workspace/observations/`, so inputs were available.
+  - So the score differences are run-to-run variation, not a tool effect. Assembly is already known to be noisy at n=1
+    (COM 4–28 mm across three baselines).
+- **Pairs added to `rerun-analysis/compare.py`** (index tag `-H`, job `58474114`).
+- **Trivial-baseline scoring:**
+  - Jobs `58373539`–`41`: 53/56 ok.
+  - The empty baseline failed on the w10 boat, assembly and tetra runs ("object has no positive compiled mass"). Policy
+    transfer flings the object, and an empty scene has none.
+  - Fix in `sim2sim/baselines.py`: the empty baseline drops `policy_transfer`, which becomes a gap.
+  - Rerun `58474633`: all 6 ok.
+
+## 2026-11-06 23:05 UTC — Research handoff PDF (document build only)
+- User requested a self-contained PDF summarizing human information-acquisition studies and instructions for further experiment-design research.
+- Source: `docs/research/sim2sim-research-handoff-20261106.tex`; build: `experiments/validation/build-research-handoff.slurm` on CPU `test` (1 CPU, 1 GiB, 5 min).
+- No simulation, model calls, or experimental batch is planned by this document task.
+- Built in jobs `58436665` and `58437038` (final pagination fix). Final PDF: 7 pages, 253,419 bytes; all seven sections retained, link annotations present, and rendered pages visually checked. No LaTeX overflow warnings. Output: `docs/research/sim2sim-research-handoff-20261106.pdf`.
+
+## 2026-11-06 21:00 UTC — SAM-3D validated end to end; wave 12 (first SAM-3D runs) queued
+- **SAM-3D test, first attempt (`58373463`) failed:** the model loaded (70.8 s), but the test sent the upstream full-size
+  example photo. The relay correctly rejected it as over the agents' 4 MiB PNG limit. The test then didn't stop its service
+  thread, so the job idled to its 1 h limit. Fixed in `scripts/sam3d-smoke.slurm`: the image is downscaled to 1024 px
+  longest side (mask nearest-neighbour), and the service is stopped in a `finally`.
+- **SAM-3D test, rerun (`58390179`, A100, holygpu8a19204) passed:**
+  - pipeline loaded in 44 s
+  - one request through the spool relay took 36.8 s and returned 19,964 vertices and 40,000 faces
+  - camera-frame z −1.94..−1.74 (in front of the camera, as expected)
+  - `sam3d-lock.json` written with 228 sha256-pinned files (checkpoints, HF cache and torch cache)
+  - Caveat: the first load fetched the DINOv2 hub code (GitHub `main`, unpinned) and its 1.1 GB weights into the netscratch
+    torch cache. That cache is now hash-locked; the service verifies the lock and runs with HF offline.
+- **Wave 12** (pool `sim2sim-20261106`, $1000; convergence prompt; 4 h; image `trusted-image-sam3d.json`
+  `5e99630de861`; netscratch root; jobs in `experiments/validation/wave12-20261106-jobs.txt`):
+
+  | run | factor | baseline |
+  |---|---|---|
+  | `w12-boat-sam3d` | `sam3d` action available | `w10-boat-base` |
+  | `w12-boat-sam3d-directed` | + `SAM3D_HINT` (task says when it helps) | `w12-boat-sam3d` |
+  | `w12-assembly-sam3d-directed` | tool + hint | `w10-assembly-base` (assembly is noisy at n=1) |
+
+  - Metrics match the w10 baselines (including friction, expert and policy_transfer, so the evaluation load is the same).
+    Prepared sources equal the baselines' (`diff -r`). Config diffs: only the tool, hint and pool.
+  - Each run has its own A100 service on `kempner_gpu_priority` (jobs `58391593`, `58391607`, `58391613`; 6 h) and its
+    own spool, so runs never queue on each other. The strict jobs start 5 min after their service (`after:+5`).
+  - The baselines ran on image `5904fd183fa4`. The sam3d harness change only adds the action when it is enabled.
+
+## 2026-11-06 23:20 UTC — Wave 11 (spring levels) launched; new ablation option `movecam`
+- **User:** start the spring levels; let the agent move the camera for these; add camera movement as an ablation option;
+  use the stop-when-done prompt (`TASK_CONVERGE`, already in all four configs).
+- **New option** `[simulation] movable_camera = true` (`generate-waves.py` option `movecam`):
+  - adds a controller action `camera {world, pos, lookat}` that re-aims that world's observation camera (up = +z;
+    coordinates within ±4 m; at least 0.05 m apart) and returns an observation
+  - no physics time or ticks pass; the pose persists across resets
+  - evaluation is unaffected: it builds fresh simulations with the trusted camera
+  - it enters the public config and task only when set, so other configs are byte-identical
+  - code: `Simulation._aim_camera` (`mj_camlight`), candidate-worker allowlist, runtime contract and routing, harness tool schema
+- **Validation:**
+  - unit test `tests/test_simulation.py::test_movable_camera…` (pose and forward exact, image changes, no ticks or time,
+    persists across reset, bounds, opt-in)
+  - full suite `58437252` passed (282 passed, 13 skipped)
+  - new main image `9bf221a1c5bc` (`58437250`; previous record kept as `trusted-image-a9482d3ea278.json`)
+  - strict OCI `58440163` passed (4 passed, 1 skipped), including the new `MovableCameraOCITests`: the in-container agent
+    re-aims both worlds, the returned poses match, and 0 ticks are charged. The first attempt (`58439288`) failed only
+    because the test read the observation at the wrong key.
+- **Wave 11** (pool `sim2sim-20261106`, at $443.62 before launch; worst case +$176; 4 h; convergence prompt; image
+  `trusted-image.json` `9bf221a1c5bc`; netscratch; jobs `58441029`, `58441031` in
+  `experiments/validation/wave11-20261106-jobs.txt`):
+  - `w11-tetra-spring-k` (round plates, stiffness stated)
+  - `w11-tetra-spring-k-square` (square plates, stiffness stated)
+  - `w11-tetra-spring-k-plug` (plug of unstated mass in the hole, stiffness stated)
+  - `w11-tetra-spring-block` (ideal spring + block mass stated)
+  - all: Franka, camera on and movable, `wrench = false`, `effort = false`
+  - The agent-visible `public_tool_config` was checked: `effort` false, `movable_camera` true, `wrench` false. Within a
+    minute all four agents were using the camera (top and axis-aligned views).
+- Wave 12: both boat runs ended (17:33 and 18:11 ET), and their GPU services were released. The assembly run continues.
+
+## 2026-11-07 01:40 UTC — Live dashboard draws visual tendons (spring coil)
+- **User:** the coil was missing from the live dashboard. The Viser inspector drew only geoms, never tendons.
+- **Change:**
+  - `inspector_worker.describe` lists the visible spatial tendons (color and width; fixed tendons such as the Panda's finger
+    coupling are excluded). `Session.state` sends each one's polyline: MuJoCo's wrap points, with a cylinder wrap's arc
+    filled in as a helix and a sphere wrap's as a great circle.
+  - `inspector.Viewer` adds one line-segments node per tendon and moves its points with every state.
+- **Checks (srun on `test`):**
+  - paths end exactly on the plate sites, and the arc points lie on the 0.039 m core (170° sweep)
+  - the hidden core geom is not sent to the viewer
+  - a Viser viewer builds four tendon nodes that follow the physics state
+  - `tests/test_inspector.py` + `tests/test_dashboard.py`: 45 passed (`58419120`)
+- `scripts/serve-dashboard.sh` default roots now include netscratch. The running dashboard (job `58409684`, started
+  16:48 ET) has the old viewer code loaded and must be restarted.
+
+## 2026-11-07 01:00 UTC — Spring levels: helical coil visual (user review 4)
+- **User:** show visually that this is a spring, without changing any collision properties.
+- **Change:** four visual-only tendon strands, from bottom-plate angle 90k° to top-plate angle 90k°+170°. Each wraps
+  around an invisible core cylinder on the bottom plate (`spring_coil_core`: `mass="0"`, `contype`/`conaffinity` 0,
+  group 3, transparent), so it follows a helix. The result looks like a four-start coil whose pitch tightens under
+  compression.
+- **Why collision is unchanged:** the core is not in `object_geoms`, so no metric sees it. Tendons do not collide. All
+  physics checks give the same numbers as before (masses, flush 0.16 mm, compression 26.4 mm, dim-1 plate–table contacts),
+  and the core appears in no contact.
+- The four wave-11 runs were re-prepared (sources byte-identical). **Held for the user's review.**
+
+## 2026-11-07 00:30 UTC — Spring levels: square-plate and plug variants; slight damping (user review 3)
+- **User:**
+  - add square plates whose diagonal equals the round diameter, as a separate level, so the hole fit is less obvious
+  - add a level with a cylindrical plug of unknown mass starting in the hole
+  - these are the stiffness-stated levels
+  - give every spring very slight damping so it settles
+- **Levels** (`LEVELS` in `experiments/validation/tetra-spring-scenes.py`; renders in `experiments/validation/tetra-spring-panda/`):
+
+  | level | plates | extra | task statement |
+  |---|---|---|---|
+  | `tetra_spring` | round, 13 cm | — | stiffness exactly 21.7 N/m |
+  | `tetra_spring_square` | square, 9.19 cm sides (13 cm diagonal; fits the hole at any yaw) | — | stiffness exactly 21.7 N/m |
+  | `tetra_spring_plug` | round | teal cylinder in the hole, 7.2 cm wide (graspable) × 13 cm tall (4 cm above the table), 0.0317 kg, mass not stated | stiffness exactly 21.7 N/m |
+  | `tetra_spring_block` | round | purple block, 0.0235 kg | ideal spring; block mass exactly 0.0235 kg |
+
+  - All springs: damping 0.06 N·s/m, a damping ratio of about 3% with the cluster on top. The cluster's bounce decays from
+    ±25.7 mm to ±0.7 mm in 7 s. The statements say "two plates" (was "two round plates").
+  - The task text still says "ideal", by the user's earlier wording, although the spring now has this slight damping.
+  - On the square plates the cluster footprint (0.052 m) slightly exceeds the 0.046 m half-side along the axes. It still
+    rests stably; the sphere centers are 0.027 m from the axis.
+- **Checks (srun on `test`), all four levels:**
+  - no robot–object penetration at reset
+  - top plate flush within 0.16 mm in the hole
+  - cluster compression 26.4 mm (expected 25.9)
+  - plate–table contacts are frictionless (dim 1)
+  - the spring slides down the hole wall to the floor
+  - the plug stays upright and centered in the hole
+- **Wave 11** is now four configs; differences between them are only the scene and its statement. All four are prepared on
+  netscratch with sources byte-identical to the environments. **Held for the user's review.**
+
+## 2026-11-06 23:30 UTC — Spring levels: rigid column removed (user review 2)
+- **User:** the rigid piece between the plates must go; the cluster's weight compresses the spring into it. The tube was
+  6 cm long in a 7.8 cm gap, so it reached the top plate after 1.8 cm of compression (the cluster's static compression is
+  2.6 cm).
+- **Now:**
+  - Between the plates are eight visual-only coil strands: spatial tendons with no collision and no mass, bottom-plate site
+    k to top-plate site k+2 (a quarter-turn twist), 3.5 mm wide. The spring stays massless and ideal.
+  - The slide range allows compression until the plates are 2 mm apart (−72 mm).
+  - Plates are 8 mm thick. They are frictionless only against the table and hole, through masks (table 2/3, plates 4/1)
+    plus 58 explicit `condim = 1` pairs. Against the gripper, cluster and block they have normal friction, so the Franka can
+    pinch a rim and the cluster no longer slides on the plate.
+- **Checks:**
+  - no robot–object penetration at reset
+  - in the hole the top plate is 0.17 mm below flush
+  - the cluster compresses the spring 25.8 mm (expected 25.9) with an undamped ±24 mm bounce, which stays clear of the stop
+  - plate–table contacts are dim 1 only; plate–cluster contacts are dim 3
+  - the spring slides down the hole wall to the floor
+- Renders are in `experiments/validation/tetra-spring-panda/`. Wave 11 was re-prepared from the new sources (byte-identical);
+  configs and stated values are unchanged. **Held for the user's review.**
+
+## 2026-11-06 22:40 UTC — Spring levels rebuilt for the Franka (user review); `effort` option; new main image
+- **User review of the first spring levels:**
+  - empty between the plates
+  - should be manipulable by the Franka
+  - hole not visible
+  - start the spring on its side
+
+  The point-grasp versions (`environments/tetra_spring*`) and their prepared runs were deleted, unrun.
+- **New levels:** `environments/panda_small/tetra_spring{,_block}` (generator `experiments/validation/tetra-spring-scenes.py`,
+  checks `tetra-spring-check.py`, renders and close-ups in `experiments/validation/tetra-spring-panda/`).
+  - **Base:** the `panda_small` tetrahedral cluster (10 cm, 0.0572 kg), Franka arm and table. The round hole is cut into the table
+    top: 13.6 cm wide, 9 cm deep. Its geometry is a 24-gon of hidden tangent collision boxes inside a square frame, plus one
+    visual-only ring mesh.
+  - **Spring:**
+    - stiffness 21.7 N/m, no damping
+    - frictionless 13 cm plates (the cluster footprint is 10.4 cm)
+    - a telescoping column (3.2 cm orange tube on the bottom plate, yellow rod on the top plate) with normal friction, so the
+      gripper (8 cm opening) can hold it
+    - lies on its side at the start
+  - **Level 2:** adds a 3 cm, 0.0235 kg purple block.
+  - **Checks (srun on `test`):**
+    - no robot–object penetration at reset
+    - the lying spring stays put (2.7 mm settle)
+    - upright in the hole the top plate is 0.17 mm below flush (undamped oscillation ±0.56 mm)
+    - the cluster on the spring compresses it 26.3 mm (expected 25.9 mm), no overhang (0.052 vs 0.065 m)
+    - plate contacts are condim 1, and the spring slides down the hole wall to the floor
+  - The fixed camera is moved closer than `panda_small`'s so the hole and spring are visible at 320×240.
+- **No force sensing on the Franka:** Panda proprioception always included `actuator_effort_nm` (joint torques), which
+  lets an agent weigh what it holds. New `[simulation] effort = false` (Panda only, default true) removes it from reference
+  and reconstruction observations and from the observation contract. It enters the public config only when set, so all
+  other configs and tasks are unchanged. Wave 11 sets `effort = false` and `wrench = false` (tactile is off by default).
+  Unit test in `tests/test_infrastructure.py`.
+- **Validation:**
+  - full suite `58396489` passed (280 passed, 12 skipped)
+  - new main image `a9482d3ea278` (job `58396513`, archive on netscratch); the previous record is kept as
+    `trusted-image-5904fd183fa4.json`
+  - strict OCI `58398616` passed (3 passed, 1 skipped)
+  - The SAM-3D relay OCI test first failed (`58397456`, `58398087`) on its own check that no `/opt` path names sam3d. The
+    image legitimately contains the `sim2sim/sam3d.py` module, which the sub-agent had noted. The check now allows only
+    that module (and its bytecode) and still forbids any spool path.
+- **Wave 11** (`w11-tetra-spring-k`: "ideal linear spring with a stiffness of exactly 21.7 N/m"; `w11-tetra-spring-block`:
+  "ideal linear spring" + "purple block … exactly 0.0235 kg"; values asserted against the scenes):
+  - convergence prompt, camera on, metrics chamfer, center_of_mass, density, image_mse
+  - prepared on netscratch with sources byte-identical to the environments
+  - **held for the user's review again**
+
 ## 2026-11-06 21:30 UTC — Replicates and wave 10 results; cap raised to $1000/day; SAM-3D weights fetched; spring levels built (held for user review)
 - **User (2026-11-06):** daily cap $1000 (`generate-waves.py` default for pools from `sim2sim-20261106`; earlier configs
   byte-identical). Start the new experiments. Build two tetrahedral spring levels without force sensing (below).
@@ -49,7 +672,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     - assembly: Chamfer 13.9 mm, COM 0
     - boat: Chamfer 12.5 mm, COM 0
     - Assembly and boat ended at the spend cap.
-- **Trivial baselines** for wave 10 and the replicates: jobs `58373539`–`41` (running).
+- **Trivial baselines** for wave 10 and the replicates: jobs `58373539`–`41` (done; see 2026-11-07 01:40).
 - **SAM-3D:** user logged in to Hugging Face. Weights fetched at the pinned revision; all 19 pinned files verified (job
   `58373415`). Real-inference smoke test `58373463` (A100) running.
 - **New levels** (`environments/tetra_spring`, `environments/tetra_spring_block`, generated by
