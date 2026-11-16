@@ -70,15 +70,19 @@ example = repo / "notebook/images/shutterstock_stylish_kidsroom_1640806567"
 rgb = Image.open(example / "image.png").convert("RGB")
 mask = np.asarray(Image.open(example / "14.png")) > 0  # as notebook/inference.py load_mask: alpha if multichannel
 mask = Image.fromarray((mask[..., -1] if mask.ndim == 3 else mask).astype(np.uint8) * 255)
+size = tuple(round(v * 1024 / max(rgb.size)) for v in rgb.size)  # agent-sized input: the full photo exceeds MAX_PNG_BYTES
+rgb, mask = rgb.resize(size, Image.LANCZOS), mask.resize(size, Image.NEAREST)
 spool, stop = root / ("smoke-spool-" + job), threading.Event()
 spool.mkdir(mode=0o700)
 thread = threading.Thread(target=serve, args=(spool, model, {"name": "smoke"}, stop))
 thread.start()
 time.sleep(1)
 clock = time.monotonic()
-result, record = Relay(spool).call({"image_png_b64": encode(rgb), "mask_png_b64": encode(mask), "seed": 42}, time.monotonic() + 900, lambda: None)
-stop.set()
-thread.join()
+try:
+    result, record = Relay(spool).call({"image_png_b64": encode(rgb), "mask_png_b64": encode(mask), "seed": 42}, time.monotonic() + 900, lambda: None)
+finally:  # a failed call must not leave the service thread holding the GPU job open
+    stop.set()
+    thread.join()
 assert result is not None, record
 print("inference through the relay in %.1f s: %d vertices, %d faces, layout %s" % (time.monotonic() - clock, result["vertices"], result["faces"], json.dumps(result["layout"])))
 mesh = base64.b64decode(result["mesh_ply_b64"])

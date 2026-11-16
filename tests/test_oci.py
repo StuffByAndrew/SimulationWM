@@ -289,7 +289,9 @@ from PIL import Image
 from sim2sim.client import Client
 client = Client()
 assert "sam3d" in client.task["actions"] and "sam3d" in client.task["action_schema"] and "controller action sam3d" in client.task["task"]
-assert not Path("/opt/public/tools").exists() and not any("sam3d" in p.name or "spool" in p.name for p in Path("/opt").rglob("*"))
+assert not Path("/opt/public/tools").exists() and not any("spool" in p.name for p in Path("/opt").rglob("*"))
+found = sorted(str(p) for p in Path("/opt").rglob("*sam3d*"))
+assert all(p.endswith(("/sim2sim/sam3d.py", "/sim2sim/__pycache__/sam3d.cpython-312.pyc")) for p in found), found  # package module only
 observation = client.observe()
 mask = np.zeros((240, 320), np.uint8)
 mask[100:140, 140:180] = 255
