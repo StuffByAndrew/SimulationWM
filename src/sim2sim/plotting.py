@@ -181,3 +181,32 @@ def update_metric_history(output_dir, submission, report, *, render_plots=True):
     temporary.write_text(json.dumps(history, indent=2, allow_nan=False))
     temporary.replace(path)
     return history
+
+
+def plot_com_trajectories(destination, name, sample_seconds, source, candidate):
+    """Researcher-only PNG of one arm probe's composite object COM: x, y, z over time and the source-candidate distance.
+    A model without free object mass has None samples, drawn as gaps."""
+    import numpy as np
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    rows = lambda samples: np.array([[math.nan] * 3 if p is None else p for p in samples], dtype=float).reshape(-1, 3)
+    a, b = rows(source), rows(candidate)
+    t = np.arange(len(a)) * sample_seconds
+    figure = Figure(figsize=(9, 8), constrained_layout=True)
+    FigureCanvasAgg(figure)
+    axes = figure.subplots(4, 1, sharex=True)
+    for k, axis in enumerate(axes[:3]):
+        axis.plot(t, a[:, k], color="#2a78d6", linewidth=2, label="source")
+        axis.plot(t, b[:, k], color="#eb6834", linewidth=2, linestyle="--", label="candidate")
+        axis.set_ylabel(f"COM {'xyz'[k]} (m)")
+    axes[0].legend(loc="upper left", frameon=False, fontsize=9)
+    axes[3].plot(t, np.linalg.norm(a - b, axis=1), color="#2a78d6", linewidth=2)
+    axes[3].set_ylabel("distance (m)")
+    axes[3].set_ylim(bottom=0)
+    axes[3].set_xlabel("probe time (s)")
+    for axis in axes:
+        axis.grid(True, alpha=.25)
+    figure.suptitle(f"Composite object centre of mass — arm probe {name}", fontsize=12)
+    figure.savefig(destination, format="png", dpi=110)
+    figure.clear()

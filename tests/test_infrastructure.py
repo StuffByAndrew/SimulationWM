@@ -98,3 +98,19 @@ def test_trivial_baselines_evaluate_and_normalize(tmp_path, environment, source)
     ratios = normalize(reports['bounding_box'], reports['bounding_box'])
     assert ratios['reset.rgb_mse'] == 1 and ratios['reconstruction.chamfer_distance_m'] == 1
     assert normalize(reports['bounding_box'], reports['empty'])['reconstruction.chamfer_distance_m'] is None
+
+
+def test_force_profile_reads_no_phantom_damping_and_scores_a_wrong_spring(tmp_path):
+    from sim2sim import force_profile
+    level = ROOT / 'environments/tunnel_spring'
+    spec = tomllib.loads((level / 'manifest.toml').read_text())['force_profile']
+    image = {'camera': 'fixed', 'width': 320, 'height': 240}  # the evaluation image the probe's grasp_pixel refers to
+    free = force_profile.measure(level / 'scene.xml', image, {**spec, 'strokes': [[.02, .1], [0, .1]], 'sample_ticks': 5})
+    steady = np.abs(free['resistance_n'])[np.r_[10:18, 30:38]]  # mid-stroke, free travel before the plunger, at 0.1 m/s
+    assert free['status'] == 'ok' and steady.max() < .05, steady  # the wrench is the applied force, not a re-solve after integration
+    soft = tmp_path / 'scene.xml'
+    soft.write_text((level / 'scene.xml').read_text().replace('stiffness="200.0"', 'stiffness="100.0"'))
+    same = force_profile.evaluate(level / 'scene.xml', level / 'scene.xml', image, image, spec)
+    wrong = force_profile.evaluate(level / 'scene.xml', soft, image, image, spec)
+    assert same['rms_resistance_error_n'] == 0 and wrong['rms_resistance_error_n'] > .5
+    assert max(same['source']['resistance_n']) > 5.5 and set(same['source']['stroke']) == set(range(6))

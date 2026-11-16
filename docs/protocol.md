@@ -220,7 +220,7 @@ this setting is independent of RGB, depth and calibration.
 ```
 
 `force` is the force the object applies to the handle, expressed in world axes
-at the grasp point. The ideal point grasp transmits no pure rotational couple,
+at the grasp point: the constraint force the solver applied during the latest physics step. The ideal point grasp transmits no pure rotational couple,
 so its measured `torque` is exactly zero. An off-center applied force can still
 produce a moment about the object's center of mass; that COM-relative moment
 is not exposed. `active` indicates whether a grasp is attached. An inactive

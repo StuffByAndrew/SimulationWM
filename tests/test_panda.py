@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 import tomllib
 import zipfile
@@ -14,23 +15,24 @@ from sim2sim.simulation import Simulation
 
 ROOT = Path(__file__).resolve().parents[1]
 PANDA = ROOT / 'environments' / 'panda'
+SMALL = ROOT / 'environments' / 'panda_small'
 LEVELS = ('blocks', 'spring', 'damped_lever', 'tetrahedral_cluster',
           'random_assembly', 'primitive_boat', 'blocks_proprio', 'fixed_cube_proprio')
 
 
-def _candidate(level, scene_edit=None, robot_edit=None):
-    scene=(PANDA/level/'scene.xml').read_text().replace('../robot/assets','robot/assets').replace('../robot/panda.xml','robot/panda.xml')
+def _candidate(level, scene_edit=None, robot_edit=None, root=PANDA):
+    scene=(root/level/'scene.xml').read_text().replace('../robot/assets','robot/assets').replace('../robot/panda.xml','robot/panda.xml')
     if scene_edit:
         scene=scene_edit(scene)
     buffer=io.BytesIO()
     with zipfile.ZipFile(buffer,'w',compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('scene.xml',scene)
-        for path in sorted((PANDA/'robot').rglob('*')):
+        for path in sorted((root/'robot').rglob('*')):
             if path.is_file():
                 data=path.read_bytes()
                 if robot_edit and path.name=='panda.xml':
                     data=robot_edit(data)
-                archive.writestr('robot/'+path.relative_to(PANDA/'robot').as_posix(),data)
+                archive.writestr('robot/'+path.relative_to(root/'robot').as_posix(),data)
     return buffer.getvalue()
 
 
@@ -70,7 +72,7 @@ def test_panda_private_arm_probe_reaches_target(level):
         for probe in manifest['arm_probes']:
             target=probe.get('target_body')
             selected=[mujoco.mj_name2id(sim._model,mujoco.mjtObj.mjOBJ_BODY,target)] if target else bodies
-            _,contacts=_panda_probe(sim,probe,selected,False)
+            _,contacts,_=_panda_probe(sim,probe,selected,False)
             assert contacts>0, f"{level} arm probe {probe['name']} never contacts its target"
     finally:
         sim.close()
@@ -135,3 +137,23 @@ def test_panda_fixed_cube_contact_dynamics_distinguish_absent_target(tmp_path):
     assert probe['source_target_contact_ticks']>0
     assert probe['candidate_target_contact_ticks']==0
     assert probe['actuator_effort_mae_nm']>0.01
+
+
+def test_panda_box_object_com_trajectory(tmp_path):
+    level='box_marble_equal'
+    probe=tomllib.loads((SMALL/level/'manifest.toml').read_text())['arm_probes'][0]
+    def evaluate(name,edit=None):
+        report=evaluate_submission(_candidate(level,scene_edit=edit,root=SMALL),dict(source_dir=str(SMALL),
+            source_entrypoint=f'{level}/scene.xml',manifest=f'{level}/manifest.toml',output_dir=str(tmp_path/name),
+            metrics=['dynamics'],arm_probes=[probe],camera='fixed',width=64,height=48,
+            source_config=dict(robot='panda',rgb=False,depth=False,calibration=False,width=64,height=48)))
+        assert report['status']=='ok',report.get('error')
+        assert (tmp_path/name/'artifacts'/report['version']/'arm_probe_000'/'com.png').is_file()
+        return report['scores']['arm_probes'][0]['object_com']
+    same=evaluate('same')
+    assert same['status']=='ok' and same['trajectory_max_error_m']==0 and same['mass_absolute_error_kg']==0
+    double=lambda s: re.sub(r'(name="marble" type="sphere" size="[^"]+" density=")([0-9.]+)',
+                            lambda m: m[1]+str(2*float(m[2])),s)
+    heavier=evaluate('heavier',double)
+    assert heavier['mass_absolute_error_kg']==pytest.approx(.04,rel=1e-6)
+    assert heavier['trajectory_mean_error_m']>1e-3

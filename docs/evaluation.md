@@ -84,6 +84,15 @@ contacts and image artifacts stay researcher-only. A probe that never contacts
 its target cannot establish contact-based fidelity and must be corrected during
 environment validation.
 
+Each arm probe also samples, every 10 ticks (20 ms), the composite centre of mass
+of every non-robot body not welded to the world, in source and candidate alike
+(model-agnostic: no body correspondence; a box and its hidden contents count
+together). `object_com` reports the mean, final and maximum source-candidate COM
+distance along the probe, both total free masses and their absolute difference.
+Without positive free mass on either side the COM errors are `null` with
+`status = "unavailable"`, never zero. The raw COM samples go into the probe's
+`trajectory.json`, with a `com.png` plot of x, y, z and the distance over time.
+
 ## Independent RGB image MSE
 
 Select `image_mse` in `evaluation.metrics` or `experiment.evaluation_metrics`
@@ -174,6 +183,22 @@ both policies and whether the candidate grasp succeeds. Searches are seeded and
 MuJoCo is deterministic, so evaluating the source against itself gives zero
 regret. Five manifests define a fling task; the spring defines none because its
 outcome cannot depend on the policy. A Panda selection fails explicitly.
+
+## Mechanism force profile
+
+`force_profile` (selector; needs a private manifest `[force_profile]`, see `src/sim2sim/force_profile.py`) measures a
+hidden mechanism the same way in the source and the candidate, independent of how the candidate models it: the
+trusted-camera ray through `grasp_pixel` (or, if that misses, the nearest pixel within `grasp_radius_px` whose ray hits a
+movable body) attaches an ideal point grasp to the first movable body (the stick handle),
+exactly as an agent's pixel grasp does (agents often build in a shifted world frame that still matches the image), at
+time 0 and then held still for `settle_ticks` (a candidate not at rest would otherwise drift off the pixel), and
+the grasp target follows the polyline `path` through `strokes` (`[arc_length_m, speed_m_s]` targets: slow push, retract,
+push, retract, then one fast push and retract). Every `sample_ticks` it records the grasp reaction and `resistance_n`,
+its component against the path tangent. Panda scenes run this probe with point grasps enabled and the robot at home.
+Scores: `rms_resistance_error_n`, `max_resistance_error_n`, `source_rms_resistance_n`, plus both raw sample series
+(`stroke`, `arc_length_m`, `resistance_n`, `force_world_n`) for plotting the ground-truth force-position profile
+against the model's; loading and unloading strokes stay separate, so latch hysteresis and damping are plottable. A
+candidate handle the ray misses is `missed_grasp` with null errors (a gap). The empty baseline has no handle.
 
 ## Trivial baselines and normalization
 

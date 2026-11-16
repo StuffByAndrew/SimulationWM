@@ -140,7 +140,6 @@ class Simulation:
         glob.set("offheight", str(max(self.height, int(glob.get("offheight", 480)))))
         self._model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
         self._data = mujoco.MjData(self._model)
-        self._wrench_data = None
         if "timestep" in self.config:
             self._model.opt.timestep = float(self.config["timestep"])
         self._constraints = {}
@@ -207,19 +206,14 @@ class Simulation:
         force = np.zeros(3)
         active = self._grasp is not None and bool(self._data.eq_active[self._grasp[0]])
         if active:
-            # mj_step integrates qpos after computing constraint forces. Solve a
-            # copied current state so sensing cannot alter warm starts, derived
-            # render state, physics, simulation time, or tick budgets.
-            if self._wrench_data is None:
-                self._wrench_data = mujoco.MjData(self._model)
-            mujoco.mj_copyData(self._wrench_data, self._model, self._data)
-            mujoco.mj_forward(self._model, self._wrench_data)
-            equality = self._grasp[0]
-            rows = np.flatnonzero((self._wrench_data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
-                                  & (self._wrench_data.efc_id == equality))
+            # The force the solver applied to the handle during the latest physics step (mj_step leaves its
+            # constraint solution in efc_force; grasp attach and reset run mj_forward). Re-solving the integrated state
+            # instead would read low by about m*v*dt/timeconst**2, a spurious velocity-proportional force (-10 N s/m on
+            # a 0.4 kg stick at the default grasp softness). Reading the arrays changes no state, time or ticks.
+            rows = np.flatnonzero((self._data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY) & (self._data.efc_id == self._grasp[0]))
             if len(rows) != 3:
                 raise RuntimeError("active point grasp must supply three constraint-force rows")
-            force = -self._wrench_data.efc_force[rows]
+            force = -self._data.efc_force[rows]
         return {"force": force.tolist(), "torque": [0.0, 0.0, 0.0],
                 "frame": "world", "reference": "grasp_point", "sign": "object_on_handle",
                 "active": active, "force_unit": "N", "torque_unit": "N m"}

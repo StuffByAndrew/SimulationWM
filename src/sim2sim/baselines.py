@@ -98,7 +98,10 @@ def evaluate_baselines(run_dir, *, timeout=600):
         extract_bundle(source, temp)
         for kind in BASELINES:
             archive = baseline_archive(temp, evaluation['source_entrypoint'], evaluation['source_config'], kind)
-            report = evaluate_archive(config, evaluation, source, archive, 'scene.xml', run / 'baselines' / kind, timeout)
+            # An empty candidate has no object to fling: policy transfer is a gap for it, not a failed evaluation.
+            trial = {**evaluation, 'metrics': [m for m in evaluation['metrics'] if m != 'policy_transfer']} \
+                if kind == 'empty' and 'policy_transfer' in (evaluation.get('metrics') or ()) else evaluation
+            report = evaluate_archive(config, trial, source, archive, 'scene.xml', run / 'baselines' / kind, timeout)
             result['baselines'][kind] = {'evaluated_at': datetime.now(timezone.utc).isoformat(), 'status': report['status'], 'report': report}
             print(json.dumps({'run': run.name, 'baseline': kind, 'status': report['status']}), flush=True)
     _save(run / 'baseline-scores.json', result)

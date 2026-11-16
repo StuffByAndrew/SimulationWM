@@ -459,12 +459,31 @@ def _panda_contact_ticks(sim, target_bodies):
     return 0
 
 
+COM_SAMPLE_TICKS = 10  # composite object COM sampling interval along an arm probe (20 ms at the 2 ms step)
+
+
+def _free_object_bodies(sim):
+    """Model-agnostic moving object: every non-robot body not welded to the world."""
+    from .primitive_metrics import _robot_bodies
+    robot=_robot_bodies(sim)
+    return [b for b in range(1,sim._model.nbody) if b not in robot and int(sim._model.body_weldid[b])!=0]
+
+
 def _panda_probe(sim, probe, target_bodies, with_rgb):
+    """Observations after each step, robot-target contact ticks, and the composite COM of the free object bodies at ticks
+    0, COM_SAMPLE_TICKS, ... (MuJoCo's xipos from the step's own forward pass is the state at the start of that step);
+    the COM samples are None without positive free mass."""
     import numpy as np
     sim.action({'op':'reset'},render=False)
-    observations=[];contacts=[0]
+    observations=[];contacts=[0];com=[]
+    free=_free_object_bodies(sim)
+    mass=sim._model.body_mass[free]
+    def record(current):
+        contacts[0]+=_panda_contact_ticks(current,target_bodies)
+        if (current.ticks-1)%COM_SAMPLE_TICKS==0:
+            com.append((mass@current._data.xipos[free]/mass.sum()).tolist() if mass.sum()>0 else None)
     old_callback=sim._callback
-    sim._callback=lambda current: contacts.__setitem__(0,contacts[0]+_panda_contact_ticks(current,target_bodies))
+    sim._callback=record
     try:
         for step in probe['steps']:
             sim.action({'op':'arm_target','joint_targets':step['joint_targets'],
@@ -474,7 +493,21 @@ def _panda_probe(sim, probe, target_bodies, with_rgb):
             observations.append(sim.observe() if with_rgb else sim.observe())
     finally:
         sim._callback=old_callback
-    return observations,contacts[0]
+    return observations,contacts[0],{'bodies':[sim._model.body(b).name for b in free],'mass_kg':float(mass.sum()),'com_m':com}
+
+
+def _com_comparison(source, candidate):
+    """Composite object COM path error and total free-mass difference; unavailable COM stays None, never zero."""
+    import numpy as np
+    assert len(source['com_m'])==len(candidate['com_m']), 'COM sample count mismatch'
+    record={'sample_ticks':COM_SAMPLE_TICKS,'source_mass_kg':source['mass_kg'],'candidate_mass_kg':candidate['mass_kg'],
+            'mass_absolute_error_kg':abs(source['mass_kg']-candidate['mass_kg'])}
+    if source['mass_kg']<=0 or candidate['mass_kg']<=0:
+        return {**record,'status':'unavailable','reason':'no free object mass in '+('source' if source['mass_kg']<=0 else 'candidate'),
+                'trajectory_mean_error_m':None,'trajectory_final_error_m':None,'trajectory_max_error_m':None}
+    error=np.linalg.norm(np.asarray(source['com_m'])-np.asarray(candidate['com_m']),axis=1)
+    return {**record,'status':'ok','trajectory_mean_error_m':float(error.mean()),
+            'trajectory_final_error_m':float(error[-1]),'trajectory_max_error_m':float(error.max())}
 
 
 def _panda_dynamics(source,candidate,config,artifacts):
@@ -505,8 +538,8 @@ def _panda_dynamics(source,candidate,config,artifacts):
             if body not in source_ids:
                 raise ValueError('Panda arm probe target must be a declared object body')
             probe_source_ids=[body]
-        a,source_contacts=_panda_probe(source,probe,probe_source_ids,with_rgb)
-        b,candidate_contacts=_panda_probe(candidate,probe,candidate_ids,with_rgb)
+        a,source_contacts,source_com=_panda_probe(source,probe,probe_source_ids,with_rgb)
+        b,candidate_contacts,candidate_com=_panda_probe(candidate,probe,candidate_ids,with_rgb)
         if len(a)!=len(b): raise ValueError('Panda probe trajectory length mismatch')
         keys={'joint_positions_rad':'joint_position_mae_rad',
               'joint_velocities_rad_s':'joint_velocity_mae_rad_s',
@@ -517,7 +550,8 @@ def _panda_dynamics(source,candidate,config,artifacts):
         record={'name':probe.get('name',f'arm_probe_{index}'),'status':'ok',
                 'source_target_contact_ticks':source_contacts,
                 'candidate_target_contact_ticks':candidate_contacts,
-                'target_contact_tick_difference':abs(source_contacts-candidate_contacts)}
+                'target_contact_tick_difference':abs(source_contacts-candidate_contacts),
+                'object_com':_com_comparison(source_com,candidate_com)}
         for field,label in keys.items():
             record[label]=float(np.mean([np.mean(np.abs(np.asarray(x['proprioception'][field])-np.asarray(y['proprioception'][field])))
                                          for x,y in zip(a,b)]))
@@ -529,7 +563,11 @@ def _panda_dynamics(source,candidate,config,artifacts):
             'source_proprioception':[x['proprioception'] for x in a],
             'candidate_proprioception':[x['proprioception'] for x in b],
             'source_target_contact_ticks':source_contacts,
-            'candidate_target_contact_ticks':candidate_contacts},allow_nan=False))
+            'candidate_target_contact_ticks':candidate_contacts,
+            'com_sample_ticks':COM_SAMPLE_TICKS,'source_object_com':source_com,'candidate_object_com':candidate_com},allow_nan=False))
+        from .plotting import plot_com_trajectories
+        plot_com_trajectories(path/'com.png',record['name'],COM_SAMPLE_TICKS*float(source._model.opt.timestep),
+                              source_com['com_m'],candidate_com['com_m'])
         results.append(record)
     return results
 
@@ -581,7 +619,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer'})
+                               'expert', 'policy_transfer', 'force_profile'})
 
 
 def selected_metrics(config):
@@ -612,7 +650,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
-                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks'):
+                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -641,11 +679,17 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
         _trusted_camera(source, candidate)
         correspondence = config.get('correspondence')
         artifacts = output / 'artifacts' / version
+        source_path = Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml'))
+        candidate_path = target / 'project' / config.get('entrypoint', 'scene.xml')
+        def force_profile():
+            from .force_profile import evaluate
+            assert config.get('force_profile'), 'force_profile metric requires a private [force_profile] probe'
+            return evaluate(source_path, candidate_path, simconfig, candidate_config, config['force_profile'])
         if simconfig.get('robot')=='panda':
             _verify_panda_fixture(config['source_dir'],target/'project')
-            scores=_evaluate_panda(source,candidate,config,selection,artifacts,
-                Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint','scene.xml')),
-                target / 'project' / config.get('entrypoint','scene.xml'))
+            scores=_evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path)
+            if 'force_profile' in selection:
+                scores['force_profile']=force_profile()
             json.dumps(scores,allow_nan=False)
             report.update(status='ok',scores=scores)
             return report
@@ -703,6 +747,8 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
                 scores['reconstruction'] = {'status': 'unavailable', 'error': f'{type(exc).__name__}: {exc}',
                     'chamfer_distance_m': None, 'center_of_mass_error_m': None,
                     'density': {'status': 'unavailable', 'per_primitive': []}}
+        if 'force_profile' in selection:
+            scores['force_profile'] = force_profile()
         hook = config.get('metrics_hook')
         if hook:
             import importlib
