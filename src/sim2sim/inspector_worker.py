@@ -17,6 +17,7 @@ import mujoco
 import numpy as np
 
 from .evaluation import _relative, extract_submission
+from .inspector import PROPERTIES
 from .runtime import decode_submission, extract_bundle
 from .simulation import Simulation, _load_xml
 
@@ -74,14 +75,62 @@ def _array(values, dtype):
     return base64.b64encode(np.ascontiguousarray(values, dtype=dtype).tobytes()).decode("ascii")
 
 
+def _visible_tendons(m):
+    """Spatial tendons MuJoCo would draw (fixed tendons such as the Panda's finger coupling have no path)."""
+    return [t for t in range(m.ntendon) if m.wrap_type[m.tendon_adr[t]] != mujoco.mjtWrap.mjWRAP_JOINT
+            and m.tendon_group[t] < 3 and m.tendon_rgba[t, 3] > 0 and m.tendon_width[t] > 0]
+
+
+def tendon_paths(m, d, samples=12):
+    """Current polyline of each visible tendon: MuJoCo's wrap points, with the arc between a wrapping geom's two tangent
+    points filled in (a helix on a cylinder: angle and height linear; a great circle on a sphere), as mjv draws it."""
+    paths = []
+    for t in _visible_tendons(m):
+        start, count = d.ten_wrapadr[t], d.ten_wrapnum[t]
+        points, objects = d.wrap_xpos.reshape(-1, 3)[start:start + count], d.wrap_obj.ravel()[start:start + count]
+        path = [points[0]]
+        for i in range(1, count):
+            g = int(objects[i])
+            if g >= 0 and int(objects[i - 1]) == g:  # the arc on wrapping geom g between consecutive tangent points
+                frame, center = d.geom_xmat[g].reshape(3, 3), d.geom_xpos[g]
+                a, b = (frame.T @ (points[i - 1] - center)), (frame.T @ (points[i] - center))
+                u = np.linspace(0, 1, samples)[1:-1, None]
+                if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                    start_angle, turn = np.arctan2(a[1], a[0]), (np.arctan2(b[1], b[0]) - np.arctan2(a[1], a[0]) + np.pi) % (2 * np.pi) - np.pi
+                    angle, radius = start_angle + u * turn, m.geom_size[g, 0]
+                    local = np.c_[radius * np.cos(angle), radius * np.sin(angle), a[2] + u * (b[2] - a[2])]
+                else:  # sphere
+                    local = (a + u * (b - a)) * (np.linalg.norm(a) / np.linalg.norm(a + u * (b - a), axis=1, keepdims=True))
+                path.extend(center + local @ frame.T)
+            path.append(points[i])
+        paths.append(np.round(np.asarray(path), 5).tolist())
+    return paths
+
+
+def object_bodies(sim):
+    """Bodies not welded to the world, not mocap (e.g. grasp targets) and outside the Panda arm's subtree: the object
+    whose CoM the viewer marks."""
+    m = sim._model
+    robot = (int(m.body_rootid[m.jnt_bodyid[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, "joint1")]])
+             if sim.robot == "panda" else -1)
+    return [b for b in range(1, m.nbody) if m.body_weldid[b] and m.body_mocapid[b] < 0 and m.body_rootid[b] != robot]
+
+
+def _column(m, spec):
+    """The live MjModel array (a writable view) behind one editable property."""
+    values = getattr(m, spec["field"])
+    return values[:, spec["column"]] if "column" in spec else values
+
+
 def describe(sim, camera="fixed"):
     m = sim._model
     graspable = set(sim._constraints)
     geoms, meshes, vertices = [], {}, 0
     for g in range(m.ngeom):
+        # Bake MuJoCo's material colour into geom_rgba (display only), so the opacity property reads the shown alpha.
+        if m.geom_matid[g] >= 0 and np.allclose(m.geom_rgba[g], [.5, .5, .5, 1]):
+            m.geom_rgba[g] = m.mat_rgba[m.geom_matid[g]]
         rgba = m.geom_rgba[g]
-        if m.geom_matid[g] >= 0 and np.allclose(rgba, [.5, .5, .5, 1]):
-            rgba = m.mat_rgba[m.geom_matid[g]]
         if m.geom_group[g] >= 3 or rgba[3] <= 0:
             continue
         mesh = int(m.geom_dataid[g]) if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH else -1
@@ -93,7 +142,10 @@ def describe(sim, camera="fixed"):
                 raise ValueError("visible mesh vertices exceed inspector limit")
             meshes[str(mesh)] = {"vertices": _array(m.mesh_vert[start:start + count], "<f4"),
                                  "faces": _array(m.mesh_face[face_start:face_start + face_count], "<i4")}
-        geoms.append({"body": int(m.geom_bodyid[g]), "type": int(m.geom_type[g]), "size": m.geom_size[g].tolist(),
+        body = int(m.geom_bodyid[g])
+        geoms.append({"id": g, "name": mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_GEOM, g)
+                      or f"{mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, body) or f'body {body}'} geom {g - m.body_geomadr[body]}",
+                      "body": body, "type": int(m.geom_type[g]), "size": m.geom_size[g].tolist(),
                       "pos": m.geom_pos[g].tolist(), "quat": m.geom_quat[g].tolist(), "rgba": [float(x) for x in rgba],
                       "mesh": mesh})
     bodies = [{"name": mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, b) or f"body {b}",
@@ -104,8 +156,10 @@ def describe(sim, camera="fixed"):
         frame = sim._data.cam_xmat[cam].reshape(3, 3)
         view = {"pos": sim._data.cam_xpos[cam].tolist(), "forward": (-frame[:, 2]).tolist(),
                 "up": frame[:, 1].tolist(), "fovy": float(m.cam_fovy[cam])}
-    return {"type": "model", "bodies": bodies, "geoms": geoms, "meshes": meshes, "camera": view,
-            "center": m.stat.center.tolist(), "extent": float(m.stat.extent), "timestep": float(m.opt.timestep),
+    tendons = [{"rgba": m.tendon_rgba[t].tolist(), "width": float(m.tendon_width[t])} for t in _visible_tendons(m)]
+    values = {key: _column(m, spec).tolist() for key, spec in PROPERTIES.items()}
+    return {"type": "model", "bodies": bodies, "geoms": geoms, "meshes": meshes, "camera": view, "tendons": tendons,
+            "objects": object_bodies(sim), "values": values, "center": m.stat.center.tolist(), "extent": float(m.stat.extent), "timestep": float(m.opt.timestep),
             "robot": sim.robot}
 
 
@@ -113,6 +167,40 @@ class Session:
     def __init__(self, sim):
         self.sim, self.playing, self.speed, self.target = sim, False, 1.0, None
         self.debt, self.lagging = 0.0, False
+        self.objects = object_bodies(sim)
+        m = sim._model
+        self.original = {field: getattr(m, field).copy() for spec in PROPERTIES.values() if spec.get("relative")
+                         for field in (spec["field"], *spec.get("scales", ()))}
+
+    def com(self):
+        """Composite CoM of the object bodies and each one's own CoM, from the live (possibly edited) masses."""
+        m, d = self.sim._model, self.sim._data
+        mass = m.body_mass[self.objects]
+        com = (mass @ d.xipos[self.objects] / mass.sum()).round(6).tolist() if mass.sum() > 0 else None
+        return com, d.xipos[self.objects].round(6).tolist()
+
+    def set_property(self, key, index, value):
+        """Researcher-side edit of this worker's live MjModel; recorded archives, audits and scores are untouched."""
+        spec = PROPERTIES[key]
+        if "display" in spec:
+            raise ValueError(f"{key} is a display property; the viewer applies it")
+        m, d = self.sim._model, self.sim._data
+        index, value, (low, high, _) = int(index), float(value), spec["range"]
+        if not 0 <= index < (m.nbody if spec["kind"] == "body" else m.ngeom) or not low <= value <= high:
+            raise ValueError(f"{key} edit out of range")
+        if spec.get("relative"):
+            for field in (spec["field"], *spec.get("scales", ())):
+                getattr(m, field)[index] = self.original[field][index] * value
+        else:
+            _column(m, spec)[index] = value
+        # Derived constants (subtree masses, inverse weights) follow the edit; mj_setConst works at qpos0, so the
+        # current state is restored around it.
+        kind = mujoco.mjtState.mjSTATE_INTEGRATION
+        state = np.empty(mujoco.mj_stateSize(m, kind))
+        mujoco.mj_getState(m, d, state, kind)
+        mujoco.mj_setConst(m, d)
+        mujoco.mj_setState(m, d, state, kind)
+        mujoco.mj_forward(m, d)
 
     def grasp_state(self):
         if self.sim._grasp is None:
@@ -126,10 +214,12 @@ class Session:
 
     def state(self):
         d = self.sim._data
-        return {"type": "state", "time": float(d.time), "xpos": d.xpos.round(6).tolist(),
+        com, coms = self.com()
+        return {"com": com, "coms": coms, "type": "state", "time": float(d.time), "xpos": d.xpos.round(6).tolist(),
                 "xquat": d.xquat.round(6).tolist(), "grasp": self.grasp_state(), "playing": self.playing,
                 "speed": self.speed, "lagging": self.lagging,
-                "unstable": int(d.warning[mujoco.mjtWarning.mjWARN_BADQACC].number)}
+                "unstable": int(d.warning[mujoco.mjtWarning.mjWARN_BADQACC].number),
+                "tendons": tendon_paths(self.sim._model, d)}
 
     def step(self, count):
         m, d = self.sim._model, self.sim._data
@@ -176,6 +266,8 @@ class Session:
             self.target, self.playing = point.copy(), bool(message.get("play", True))
             return {"type": "grasp", "ok": True, "point": point.tolist(),
                     "body": mujoco.mj_id2name(self.sim._model, mujoco.mjtObj.mjOBJ_BODY, body)}
+        elif op == "set":
+            self.set_property(message["property"], message["index"], message["value"])
         elif op == "target":
             position = np.asarray(message["position"], dtype=float)
             if position.shape != (3,) or not np.isfinite(position).all():

@@ -41,7 +41,11 @@ Do not launch local simulations to investigate a failed compute job.
 - `src/sim2sim/inspector.py`, `inspector_worker.py`: researcher-only Viser
   physics inspector for recorded versions (Slurm `test` node only). Versions come
   from the verified audit; candidate/source MJCF is parsed only in limited
-  development workers. Launch via `scripts/serve-dashboard.sh`.
+  development workers. Launch via `scripts/serve-dashboard.sh`. Each viewer has a
+  researcher-only property editor driven by the `inspector.PROPERTIES` registry
+  (opacity in the viewer; mass, friction via a worker `set` op on the live
+  MjModel + `mj_setConst`) and an object CoM marker (non-welded, non-robot
+  bodies). Edits never touch recorded runs, audits or scores.
 - `src/sim2sim/client.py`: agent-facing versioned JSON client.
 - `src/sim2sim/sam3d.py`: optional `[tools] sam3d` relay. The strict controller forwards the agent's validated
   image+mask over a private 0700 spool to a researcher GPU service (`scripts/sam3d-service.slurm`,

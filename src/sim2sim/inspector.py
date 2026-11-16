@@ -36,6 +36,20 @@ PLANE, SPHERE, CAPSULE, ELLIPSOID, CYLINDER, BOX, MESH = 0, 2, 3, 4, 5, 6, 7
 WORLDS = ('reference', 'candidate')
 AGENT_ASPECT = 320 / 240  # the agent's camera image (every experiment config); MuJoCo cameras carry no aspect
 ENVIRONMENT = 'environment'  # the Environments view's own world: never coupled or camera-synced with the run worlds
+# Researcher-side editable properties; adding one is one entry. ``kind``: the item edited (a displayed geom or a body).
+# ``field``/``column``: the MjModel array (and column) holding its value; the physics worker sets it and refreshes the
+# model's derived constants, unless ``display`` names the mesh-handle attribute the viewer sets instead (no physics).
+# ``relative``: the slider is a multiple of the item's original value, applied to its rows of ``field`` and ``scales``.
+# ``range``: slider (min, max, step). Edits change only the live inspector worlds, never recorded runs, audits or scores.
+PROPERTIES = {
+    'opacity': dict(label='Opacity', kind='geom', field='geom_rgba', column=3, display='opacity', range=(0.0, 1.0, .05)),
+    'mass': dict(label='Mass × original (inertia scales too)', kind='body', field='body_mass', scales=('body_inertia',),
+                 relative=True, range=(.1, 10.0, .05)),
+    'friction': dict(label='Sliding friction', kind='geom', field='geom_friction', column=0, range=(0.0, 2.0, .05)),
+}
+WORLD_LABELS = {'reference': 'source (reference)', 'candidate': 'candidate (reconstruction)',
+                'both': 'both (items with the same name)', ENVIRONMENT: 'environment'}
+COM_COLORS = {'reference': (255, 80, 200), 'candidate': (90, 230, 120), ENVIRONMENT: (255, 80, 200)}
 
 
 def _lathe(profile, segments=32):
@@ -257,12 +271,12 @@ def _rgb(rgba):
     return tuple(int(round(255 * min(max(float(x), 0.0), 1.0))) for x in rgba[:3])
 
 
-def _add_model(scene, model, root, *, opacity=None, keep=None, on_click=None):
-    """Add a worker model description under ``root``; returns ({body: frame}, nodes, unsupported geom count)."""
+def _add_model(scene, model, root, *, opacity=1.0, keep=None, on_click=None):
+    """Add a worker model description under ``root``; returns ({body: frame}, nodes, {geom: mesh}, unsupported count)."""
     extent = float(model.get('extent') or 1.0)
     meshes = {key: (_decode(value['vertices'], '<f4', 3), _decode(value['faces'], '<i4', 3))
               for key, value in model['meshes'].items()}
-    frames, nodes, skipped = {}, [], 0
+    frames, nodes, handles, skipped = {}, [], {}, 0
     for index, geom in enumerate(model['geoms']):
         body = int(geom['body'])
         if not 0 <= body < len(model['bodies']):
@@ -282,7 +296,7 @@ def _add_model(scene, model, root, *, opacity=None, keep=None, on_click=None):
         if mesh is None or not np.isfinite(mesh[0]).all():
             skipped += 1
             continue
-        alpha = float(geom['rgba'][3]) * (opacity or 1.0)
+        alpha = float(geom['rgba'][3]) * opacity
         handle = scene.add_mesh_simple(
             f'{root}/b{body}/g{index}', mesh[0].astype(np.float32), mesh[1].astype(np.uint32),
             color=_rgb(geom['rgba']), opacity=None if alpha >= 1 else alpha,
@@ -290,9 +304,10 @@ def _add_model(scene, model, root, *, opacity=None, keep=None, on_click=None):
             side='double' if int(geom['type']) == PLANE else 'front',
             position=tuple(geom['pos']), wxyz=tuple(geom['quat']))
         nodes.append(handle)
-        if body and on_click is not None:
-            handle.on_click(on_click)
-    return frames, nodes, skipped
+        handles[index] = handle
+        if on_click is not None:
+            handle.on_click(lambda event, index=index: on_click(event, index))
+    return frames, nodes, handles, skipped
 
 
 def _pose(frames, model, state):
@@ -313,6 +328,22 @@ def _object_geom(model):
     return lambda geom: int(geom['type']) != PLANE and (not model.get('robot') or int(geom['body']) == 0 or graspable[int(geom['body'])])
 
 
+def _items(model, kind):
+    """{name: index} of the editable items of ``kind``: displayed geoms, or the non-world bodies that own one."""
+    if kind == 'geom':
+        return {geom['name']: index for index, geom in enumerate(model['geoms'])}
+    owners = {int(geom['body']) for geom in model['geoms']} - {0}
+    return {body['name']: index for index, body in enumerate(model['bodies']) if index in owners}
+
+
+def _model_id(model, kind, index):
+    return model['geoms'][index]['id'] if kind == 'geom' else index
+
+
+def _empty_layer():
+    return dict(frames={}, nodes=[], markers=None, model=None, positions=None, tendons=[], meshes={}, fade=1.0, com=None)
+
+
 def _server(port, label):
     import viser
     server = viser.ViserServer(host='127.0.0.1', port=port, label=label, verbose=False)
@@ -322,6 +353,77 @@ def _server(port, label):
     server.scene.set_up_direction('+z')
     server.gui.configure_theme(dark_mode=True, control_width='small', show_share_button=False)
     return server
+
+
+class Editor:
+    """One viewer's researcher-only property editor: a target world, a ``PROPERTIES`` entry, an item and a slider.
+
+    Programmatic GUI updates (no client) only resynchronise the panel; a researcher's slider move makes the edit.
+    """
+    def __init__(self, viewer, worlds):
+        gui, self.viewer, self.app = viewer.server.gui, viewer, viewer.app
+        self.worlds = {WORLD_LABELS[world]: world for world in (*worlds, 'both') if world != 'both' or worlds[0] in WORLDS}
+        self.keys = {spec['label']: key for key, spec in PROPERTIES.items()}
+        with gui.add_folder('Edit properties', expand_by_default=False):
+            gui.add_markdown('Researcher-only edits of the live worlds: recorded runs, audits and scores never change, '
+                             'and loading another version or environment discards them.')
+            self.click = gui.add_dropdown('Click', ('grasp', 'select item'), initial_value='grasp')
+            self.world = gui.add_dropdown('World', tuple(self.worlds))
+            self.property = gui.add_dropdown('Property', tuple(self.keys))
+            self.item = gui.add_dropdown('Item', ('(none loaded)',))
+            self.slider = gui.add_slider('Value', min=0.0, max=1.0, step=.05, initial_value=1.0)
+            self.note = gui.add_markdown('')
+            gui.add_button('Revert to original').on_click(lambda _: self.revert())
+        self.world.on_update(lambda _: self.refresh())
+        self.property.on_update(lambda _: self.refresh())
+        self.item.on_update(lambda _: self.sync())
+        self.slider.on_update(lambda event: event.client is not None and self.apply(float(self.slider.value)))
+
+    @property
+    def key(self):
+        return self.keys[self.property.value]
+
+    def targets(self):
+        world = self.worlds[self.world.value]
+        return WORLDS if world == 'both' else (world,)
+
+    def refresh(self):
+        """Re-list the items of the chosen property's kind present in every target world, then show the current value."""
+        spec = PROPERTIES[self.key]
+        self.slider.min, self.slider.max, self.slider.step = spec['range']
+        self.item.options = self.app.common_items(self.targets(), spec['kind']) or ('(none loaded)',)
+        self.sync()
+
+    def sync(self):
+        rows = [(world, self.app.property_value(world, self.key, self.item.value)) for world in self.targets()]
+        rows = [(world, row) for world, row in rows if row is not None]
+        if rows:
+            low, high, _ = PROPERTIES[self.key]['range']
+            self.slider.value = min(max(rows[0][1][0], low), high)
+        self.note.content = '  \n'.join(f'Applies to **{WORLD_LABELS[world]}** `{self.item.value}`: original {original:.4g}, '
+                                        f'now {current:.4g}' for world, (_, original, current) in rows) or 'No loaded item.'
+
+    def apply(self, value):
+        if self.item.value in self.app.common_items(self.targets(), PROPERTIES[self.key]['kind']):  # not "(none loaded)"
+            self.app.edit(self.targets(), self.key, self.item.value, value)
+
+    def revert(self):
+        relative = PROPERTIES[self.key].get('relative')
+        for world in self.targets():
+            row = self.app.property_value(world, self.key, self.item.value)
+            if row is not None:
+                self.app.edit((world,), self.key, self.item.value, 1.0 if relative else row[1])
+
+    def pick(self, world, index):
+        """Select the clicked geom (or its body) of ``world``; leave "both" only when the other world lacks that name."""
+        spec, model = PROPERTIES[self.key], self.app.model(world)
+        geom = model['geoms'][index]
+        name = geom['name'] if spec['kind'] == 'geom' else model['bodies'][geom['body']]['name']
+        if name not in self.app.common_items(self.targets(), spec['kind']):
+            self.world.value = WORLD_LABELS[world]
+        if name not in self.item.options:
+            return self.viewer.notice(f'{name} has no editable {spec["label"].lower()}.')
+        self.item.value = name
 
 
 class Viewer:
@@ -352,8 +454,14 @@ class Viewer:
                          'and one drag moves both handles by the same displacement.' if self.single else
                          'Reference opaque, reconstruction objects translucent. Click a part of either world to pick it '
                          'for the coupled grasp; drag the gizmo to move both handles together.')
+        with gui.add_folder('Centre of mass'):
+            gui.add_markdown('Composite CoM of the object (bodies not welded to the world, no robot links), live with '
+                             'physics and edits: magenta source, green reconstruction.')
+            self.show_com = gui.add_checkbox('Show object CoM', initial_value=True)
+            self.show_body_coms = gui.add_checkbox('Show per-body CoMs', initial_value=False)
+        self.editor = Editor(self, worlds)
         self.server.on_client_connect(self._connected)
-        self.layers = {world: dict(frames={}, nodes=[], markers=None, model=None, positions=None) for world in worlds}
+        self.layers = {world: _empty_layer() for world in worlds}
         self.gizmo = self.gizmo_origin = self.description = None
         self.summary = dict(status='waiting', message='Waiting for a recorded version.')
         self.last_status = 0.0
@@ -375,7 +483,7 @@ class Viewer:
             with self.server.atomic():
                 for node in reversed(layer['nodes']):
                     node.remove()
-            layer.update(frames={}, nodes=[], markers=None, model=None, positions=None)
+            layer.update(_empty_layer())
             if self.single:
                 self.description = description
                 self.summary = dict(status=status, message=message)
@@ -385,14 +493,23 @@ class Viewer:
         scene, layer = self.server.scene, self.layers[world]
         extent = float(model.get('extent') or 1.0)
         translucent = not self.single and world == 'candidate'
+        fade = .4 if translucent else 1.0
         with self.lock, self.server.atomic():
-            frames, nodes, skipped = _add_model(scene, model, f'/{world}', opacity=.4 if translucent else None,
-                                                keep=_object_geom(model) if translucent else None,
-                                                on_click=lambda event: self._clicked(world, event))
+            frames, nodes, meshes, skipped = _add_model(scene, model, f'/{world}', opacity=fade,
+                                                        keep=_object_geom(model) if translucent else None,
+                                                        on_click=lambda event, index: self._clicked(world, index, event))
             radius = max(.006, .012 * extent)
             markers = (scene.add_icosphere(f'/{world}/grasp/anchor', radius=radius, color=(105, 226, 255), visible=False),
                        scene.add_icosphere(f'/{world}/grasp/handle', radius=radius * .8, color=(255, 212, 107), visible=False))
-            layer.update(frames=frames, nodes=nodes + list(markers), markers=markers, model=model)
+            # Visual tendons (e.g. a spring's coil) follow the worker's per-state paths; they have no body frame.
+            tendons = [scene.add_line_segments(f'/{world}/tendon{k}', np.zeros((1, 2, 3), np.float32), _rgb(t['rgba']),
+                                               thickness=2 * float(t['width']), thickness_units='world')
+                       for k, t in enumerate(model.get('tendons', []))]
+            com = scene.add_icosphere(f'/{world}/com', radius=1.5 * radius, color=COM_COLORS[world], visible=False)
+            coms = [scene.add_icosphere(f'/{world}/coms/b{body}', radius=.7 * radius, color=COM_COLORS[world], visible=False)
+                    for body in model['objects']]
+            layer.update(frames=frames, nodes=nodes + list(markers) + tendons + [com] + coms, markers=markers, model=model,
+                         tendons=tendons, meshes=meshes, fade=fade, com=(com, coms))
             if self.single:
                 self.summary = dict(status='ready', message='Loaded' + (f'; {skipped} unsupported geoms hidden' if skipped else ''))
 
@@ -443,8 +560,18 @@ class Viewer:
                 client.camera.position, client.camera.look_at = camera.position, camera.look_at
                 client.camera.up_direction = camera.up_direction
 
-    def _clicked(self, world, event):
-        self.app.control('grasp', world, {'origin': list(event.ray_origin), 'direction': list(event.ray_direction)})
+    def _clicked(self, world, index, event):
+        if self.editor.click.value != 'grasp':
+            self.editor.pick(world, index)
+        elif self.layers[world]['model']['geoms'][index]['body']:  # world geometry is never grasped
+            self.app.control('grasp', world, {'origin': list(event.ray_origin), 'direction': list(event.ray_direction)})
+
+    def restyle(self, world, index, attribute, value):
+        """Apply a display property to one geom's mesh (absent when the overlay hides it or it is unsupported)."""
+        with self.lock:
+            layer = self.layers[world]
+            if index in layer['meshes']:
+                setattr(layer['meshes'][index], attribute, value * layer['fade'] if attribute == 'opacity' else value)
 
     def place_gizmo(self, origin):
         """Show the handle gizmo at ``origin``; None removes it. An unchanged origin keeps a dragged gizmo."""
@@ -483,6 +610,16 @@ class Viewer:
                 if xpos is False:
                     self.summary['message'] = 'Worker state is non-finite or malformed; display held.'
                     return
+                for line, path in zip(layer['tendons'], state.get('tendons', [])):
+                    path = np.asarray(path, np.float32)
+                    if len(path) > 1 and np.isfinite(path).all():
+                        line.points = np.stack([path[:-1], path[1:]], axis=1)
+                com, coms = layer['com']
+                com.visible = self.show_com.value and state['com'] is not None
+                if state['com'] is not None:
+                    com.position = tuple(state['com'])
+                for node, position in zip(coms, state['coms']):
+                    node.visible, node.position = self.show_body_coms.value, tuple(position)
                 anchor, handle = layer['markers']
                 anchor.visible = handle.visible = grasp is not None
                 if grasp is not None:
@@ -527,6 +664,7 @@ class InspectorApp:
         self.expires_at = _job_end() or time.time() + session_seconds
         self.lock = threading.RLock()
         self.viewers, self.environments_root, self.environment = {}, environments, None
+        self.edits = {world: {} for world in (*WORLDS, ENVIRONMENT)}  # {(property, item index): value} per live world
         try:
             self.viewers['reference'] = Viewer(self, 'reference', 'Reference · private source scene', ports[0], ('reference',))
             self.viewers['candidate'] = Viewer(self, 'candidate', 'Reconstruction · recorded version', ports[1], ('candidate',))
@@ -664,7 +802,55 @@ class InspectorApp:
             viewer.clear(world, status, message, description)
         with self.lock:
             self.anchors.pop(world, None)
+            self.edits[world] = {}
             self._place_gizmos()
+            self._refresh_editors()
+
+    def _refresh_editors(self):
+        for viewer in self.viewers.values():
+            viewer.editor.refresh()
+
+    # Researcher-side property edits ----------------------------------------------
+    def model(self, world):
+        return self._showing(world)[0].layers[world]['model']
+
+    def common_items(self, worlds, kind):
+        """Names of the ``kind`` items present in every world's loaded model, in the first world's order."""
+        models = [self.model(world) for world in worlds]
+        if None in models:
+            return []
+        names = [_items(model, kind) for model in models]
+        return [name for name in names[0] if all(name in other for other in names[1:])]
+
+    def property_value(self, world, key, name):
+        """(slider value, original, current) of one item's property in ``world``, or None when it is not loaded."""
+        spec, model = PROPERTIES[key], self.model(world)
+        items = _items(model, spec['kind']) if model else {}
+        if name not in items:
+            return None
+        original = model['values'][key][_model_id(model, spec['kind'], items[name])]
+        value = self.edits[world].get((key, items[name]), 1.0 if spec.get('relative') else original)
+        return value, original, original * value if spec.get('relative') else value
+
+    def edit(self, worlds, key, name, value):
+        """Set one property of the item ``name`` in each live world. Display properties restyle every viewer of that
+        world; physics properties go to the world's worker. Recorded runs, audits and scores are never touched."""
+        spec = PROPERTIES[key]
+        low, high, _ = spec['range']
+        assert low <= value <= high, (key, value)
+        with self.lock:
+            for world in worlds:
+                model = self.model(world)
+                index = _items(model, spec['kind'])[name]
+                self.edits[world][(key, index)] = float(value)
+                if 'display' in spec:
+                    for viewer in self._showing(world):
+                        viewer.restyle(world, index, spec['display'], value)
+                else:
+                    self.workers[world].send({'op': 'set', 'property': key, 'index': _model_id(model, spec['kind'], index),
+                                              'value': float(value)})
+            for viewer in self.viewers.values():
+                viewer.editor.sync()
 
     def _place_gizmos(self):
         """Uncoupled: each world's own viewer drags its grasp. Coupled: once both parts are picked, every viewer drags both."""
@@ -688,10 +874,12 @@ class InspectorApp:
                 for viewer in viewers:
                     viewer.show(world, message)
                     viewer.set_camera(message.get('camera'), message['center'], float(message['extent']), move_clients=True)
+                    viewer.editor.refresh()
             elif kind == 'model':
                 for viewer in viewers:
                     viewer.show(world, message)
                 with self.lock:
+                    self._refresh_editors()
                     if world == 'reference':
                         self.source_camera = (message.get('camera'), message['center'], float(message['extent']))
                     camera = self.source_camera

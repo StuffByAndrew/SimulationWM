@@ -242,6 +242,78 @@ def test_live_coupled_grasp_moves_both_worlds_and_overlay_shows_both(live_app):
     _wait(lambda: all(viewer.gizmo is None for viewer in app.viewers.values()), message='gizmos removed')
 
 
+def _expected_com(masses, positions):
+    masses = np.asarray(masses)
+    return masses @ np.asarray(positions) / masses.sum()
+
+
+def test_worker_property_registry_and_object_com(tmp_path):
+    if not ON_TEST_NODE:
+        pytest.skip('Native MJCF loading runs only on a Slurm test allocation')
+    import mujoco
+    from sim2sim.inspector_worker import Session, describe, load
+    sim = load(tmp_path / 'worker', {'kind': 'source', 'archive_b64': base64.b64encode(_zip({'scene.xml': SOURCE})).decode(),
+                                     'entrypoint': 'scene.xml', 'simulation': {'graspable_bodies': ['box', 'ball']}})
+    m, d, session = sim._model, sim._data, Session(sim)
+    model = describe(sim)
+    box, ball = (mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, name) for name in ('box', 'ball'))
+    assert model['objects'] == [box, ball]  # grasp mocap targets are welded to the world
+    assert model['values']['mass'][box] == pytest.approx(.2) and model['values']['opacity'][model['geoms'][-1]['id']] == 1
+    state = session.state()
+    assert np.allclose(state['com'], _expected_com(m.body_mass[[box, ball]], d.xipos[[box, ball]]), atol=1e-6)
+    assert np.allclose(state['coms'], d.xipos[[box, ball]], atol=1e-6)
+    qpos, inertia = d.qpos.copy(), m.body_inertia[box].copy()
+    session.command({'op': 'set', 'property': 'mass', 'index': box, 'value': 4.0})
+    assert m.body_mass[box] == pytest.approx(.8) and np.allclose(m.body_inertia[box], 4 * inertia)
+    assert m.body_subtreemass[box] == pytest.approx(.8) and np.array_equal(d.qpos, qpos)  # constants refreshed, state kept
+    moved = session.state()['com']
+    assert np.allclose(moved, _expected_com([.8, m.body_mass[ball]], d.xipos[[box, ball]]), atol=1e-6)
+    assert np.linalg.norm(np.subtract(moved, d.xipos[box])) < np.linalg.norm(np.subtract(state['com'], d.xipos[box]))
+    geom = m.body_geomadr[box]
+    session.command({'op': 'set', 'property': 'friction', 'index': geom, 'value': .25})
+    assert m.geom_friction[geom, 0] == .25
+    for bad in ({'property': 'opacity', 'index': geom, 'value': .5}, {'property': 'mass', 'index': box, 'value': 99},
+                {'property': 'mass', 'index': m.nbody, 'value': 1}):
+        with pytest.raises(ValueError):
+            session.command({'op': 'set', **bad})
+
+
+def test_live_property_edits_and_com_marker(live_app):
+    import mujoco
+    from sim2sim.inspector import PROPERTIES
+    app = live_app
+    app.select({'run': 'inspect-fixture', 'time': 2.0})
+    reference, overlay = app.viewers['reference'], app.viewers['overlay']
+    _wait(lambda: reference.positions is not None and app.viewers['candidate'].positions is not None, message='worlds ready')
+    m = mujoco.MjModel.from_xml_string(SOURCE)
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    bodies = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, name) for name in ('box', 'ball')]
+    marker = reference.layers['reference']['com'][0]
+    expected = _expected_com(m.body_mass[bodies], d.xipos[bodies])
+    _wait(lambda: marker.visible and np.allclose(marker.position, expected, atol=1e-5), message='CoM marker at mass-weighted mean')
+    assert np.allclose(overlay.layers['reference']['com'][0].position, expected, atol=1e-5)
+    app.edit(('reference',), 'mass', 'box', 4.0)  # a physics property reaches the worker and moves the CoM
+    moved = _expected_com(m.body_mass[bodies] * [4, 1], d.xipos[bodies])
+    _wait(lambda: np.allclose(marker.position, moved, atol=1e-5), message='CoM follows the mass edit')
+    assert app.property_value('reference', 'mass', 'box') == (4.0, pytest.approx(.2), pytest.approx(.8))
+    # A display property restyles the geom in every viewer of that world, with the overlay's own fading.
+    editor = reference.editor
+    editor.click.value = 'select item'
+    geom = next(i for i, g in enumerate(reference.model['geoms']) if g['name'] == 'box geom 0')
+    reference._clicked('reference', geom, None)
+    assert editor.property.value == PROPERTIES['opacity']['label'] and editor.item.value == 'box geom 0'
+    app.edit(editor.targets(), 'opacity', editor.item.value, .25)
+    assert reference.layers['reference']['meshes'][geom].opacity == .25
+    assert overlay.layers['reference']['meshes'][geom].opacity == .25
+    assert app.common_items(('reference', 'candidate'), 'body') == []  # "both" offers only items named in both worlds
+    app.edit(('candidate',), 'mass', 'guess', 2.0)
+    assert app.edits['candidate']
+    app.select({'run': 'inspect-fixture', 'index': 1})  # loading another version discards that world's edits
+    _wait(lambda: app.state()['worlds']['candidate']['status'] == 'error', message='plugin version rejected')
+    assert app.edits['candidate'] == {} and app.edits['reference']
+
+
 def test_live_environment_viewer_loads_one_scene_and_drags_it(tmp_path):
     if not ON_TEST_NODE:
         pytest.skip('Interactive physics runs only on a Slurm test allocation')
@@ -333,6 +405,25 @@ def test_unchanged_audit_reuses_verified_recovery(live_app, tmp_path, monkeypatc
     assert calls[-1] == 'second' and len(calls) == 3
 
 
+def _page_verdict(profile, timeout):
+    """(data-test, result text) of the self-test page in the headless browser using ``profile``, polled over DevTools."""
+    from websockets.sync.client import connect
+    deadline = time.monotonic() + timeout
+    _wait(lambda: (profile / 'DevToolsActivePort').is_file(), timeout=30, message='DevTools port')
+    port = (profile / 'DevToolsActivePort').read_text().split()[0]
+    page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json', timeout=10)) if t['type'] == 'page')
+    with connect(page['webSocketDebuggerUrl'], max_size=None) as socket:
+        while time.monotonic() < deadline:
+            socket.send(json.dumps({'id': 1, 'method': 'Runtime.evaluate', 'params': {
+                'returnByValue': True, 'expression': "[document.body&&document.body.dataset.test||null,"
+                                                     "(document.getElementById('result')||{}).textContent||'']"}}))
+            verdict = json.loads(socket.recv(timeout=10))['result']['result']['value']
+            if verdict[0]:
+                return verdict
+            time.sleep(.25)
+    return None, 'no verdict within %s s' % timeout
+
+
 def test_dashboard_physics_tab_with_live_backend(live_app, tmp_path):
     browser = shutil.which('chromium-browser') or shutil.which('chromium')
     if not browser:
@@ -342,16 +433,21 @@ def test_dashboard_physics_tab_with_live_backend(live_app, tmp_path):
     (tmp_path / 'dashboard/selftest.html').write_text(PHYSICS_CHECK)
     server = ThreadingHTTPServer(('127.0.0.1', 0), _handler(live_app, tmp_path / 'dashboard'))
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    # Real time, polled over DevTools: with live Viser viewers embedded, headless virtual time
+    # (--virtual-time-budget) intermittently stops advancing while every process is idle.
+    browser_process = subprocess.Popen([browser, '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+                                        '--disable-background-networking', '--no-first-run', '--window-size=1440,1250',
+                                        '--remote-debugging-port=0', f'--user-data-dir={tmp_path}/profile',
+                                        f'http://127.0.0.1:{server.server_address[1]}/selftest.html'],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        result = subprocess.run([browser, '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-                                 '--disable-background-networking', '--no-first-run', '--window-size=1440,1250',
-                                 '--virtual-time-budget=30000', '--dump-dom', f'--user-data-dir={tmp_path}/profile',
-                                 f'http://127.0.0.1:{server.server_address[1]}/selftest.html'],
-                                capture_output=True, text=True, timeout=180)
+        verdict = _page_verdict(tmp_path / 'profile', timeout=90)
     finally:
+        browser_process.kill()
+        browser_process.wait()
         server.shutdown()
         server.server_close()
-    assert 'data-test="passed"' in result.stdout, result.stdout[-4000:] + '\n' + result.stderr[-2000:]
+    assert verdict[0] == 'passed', verdict
     assert live_app.run == 'inspect-fixture'
     state = live_app.state()
     assert 0 < state['expires_at_unix'] - state['server_time_unix'] <= 600  # Slurm job end or 300 s session
@@ -438,6 +534,8 @@ def test_live_panda_candidate_with_robot_include_first_is_graspable(tmp_path):
     import mujoco
     names = [mujoco.mj_id2name(sim._model, mujoco.mjtObj.mjOBJ_BODY, body) for body in sim._constraints]
     assert names == ['block']
+    from sim2sim.inspector_worker import object_bodies
+    assert object_bodies(sim) == [mujoco.mj_name2id(sim._model, mujoco.mjtObj.mjOBJ_BODY, 'block')]  # no robot links
     # Hidden group-3 geometry blocks an all-group ray but not a displayed-group click.
     from sim2sim.inspector_worker import Session, VISIBLE_GROUPS
     origin, down = np.array([.4, .4, 1.0]), np.array([0, 0, -1.0])

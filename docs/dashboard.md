@@ -255,6 +255,31 @@ including when a model includes the robot before its own worldbody. Clicks are
 raycast only against displayed geom groups 0–2, so hidden collision geometry
 (for example Panda group-3 meshes) cannot block a visible body.
 
+**Property editor and centre of mass.** Each viewer's **Edit properties** folder
+edits the live worlds only: recorded runs, audits and scores never change, and
+loading another version or environment discards that world's edits (a world
+**Reset** keeps them). Choose the **World** (the viewer's own, or in the run
+viewers **both**, which lists only items with the same name in both worlds), a
+**Property** and an **Item**, then drag the **Value** slider; the panel lists
+each target world's original and current value. With **Click** set to
+*select item*, clicking a geom selects it (or its body, for body properties)
+instead of grasping. Properties come from the `PROPERTIES` registry in
+`inspector.py`; each entry names its item kind (displayed geom or body), slider
+range, the MjModel array (and column) holding its value, and either a mesh
+`display` attribute the viewer sets (opacity: e.g. see a marble inside a sealed
+box) or nothing, in which case the viewer sends
+`{"op": "set", "property", "index", "value"}` to the world's worker. The worker
+writes the field, recomputes derived constants with `mj_setConst` (restoring
+the current state around it) and continues. `relative` entries multiply the
+original (mass × original also scales the body inertia). Adding a property is
+one registry entry. Friction applies to the selected displayed geom only, not
+to hidden collision geoms of the same body.
+The **Centre of mass** folder shows the object's composite CoM (mass-weighted
+over bodies not welded to the world, excluding Panda links), magenta for the
+source and green for the reconstruction, following physics and mass edits, and
+optionally each object body's own CoM. Markers inside opaque geometry are
+hidden by it; lower that geometry's opacity to see them.
+
 Starting the server:
 
 ```sh
@@ -293,8 +318,14 @@ researcher-only, like the rest of the dashboard.
 Tests: `tests/test_inspector.py` covers primitive meshes, version selection,
 audit recovery, refusal of mismatched sources and the JSON API. On a Slurm
 `test` node it also runs live workers: load and plugin rejection, a pre-load
-empty state, grasp-and-lift, reset, and a refused floor click. It then drives
-Chromium against a live backend and against a static snapshot.
+empty state, grasp-and-lift, reset, and a refused floor click; registry edits
+(opacity in every viewer of a world, mass and friction in the worker with
+refreshed constants) and the CoM marker at the mass-weighted mean before and
+after a mass edit. It then drives
+Chromium against a live backend and against a static snapshot. The live-backend
+check runs on real time and polls the page's verdict over DevTools: with live Viser
+viewers embedded, headless virtual time (`--virtual-time-budget`) intermittently stops
+advancing while every process is idle (diagnosis: `experiments/validation/inspector-chromium-diag/`).
 
 Validation, 2026-11-02: Slurm `test` job `57112482` passed **91 tests**, none
 skipped: inspector, dashboard, replay, simulation, candidate history,
