@@ -186,7 +186,8 @@ Exhaustion suspends the run (`budget_suspended`); the orchestrator may resume it
 Record every launched or planned batch in [docs/experiment-log.md](docs/experiment-log.md)
 (dated, newest first); remaining experiments for the next agent are in
 [docs/experiment-todo.md](docs/experiment-todo.md). For configuring or running experiments, read
-[skills/run-experiment/SKILL.md](skills/run-experiment/SKILL.md). View experiments
+[skills/run-experiment/SKILL.md](skills/run-experiment/SKILL.md); for designing and adding a new level, read
+[skills/add-level/SKILL.md](skills/add-level/SKILL.md). View experiments
 directly in the dashboard; there is no separate viewing or experiment-selection
 skill. Future experiment filters belong in the dashboard. The protected
 `.agents` directory is not a skill installation destination here.
