@@ -21,3 +21,4 @@ sim2sim-experiment-*.out
 /experiments/cost-ledger/
 /oom
 /*.log
+/experiments/images/*.tar

@@ -2,22 +2,22 @@
 evaluate_candidate_changes = true
 record_video = false
 plot_checkpoints = false
-task = "Reconstruct the observed scene and its physical behavior as a self-contained MuJoCo scene.xml project, using the permitted observations and interactions. Hidden tests evaluate your submissions from unobserved viewpoints and under interactions you have not tried, so run discriminating comparison experiments in both worlds, refine, and resubmit whenever your reconstruction improves. Call finish when you believe nothing about your reconstruction differs from the reference world. The spring between the two round plates is an ideal linear spring with a stiffness of exactly 1730 N/m."
+task = "Reconstruct the observed scene and its physical behavior as a self-contained MuJoCo scene.xml project, using the permitted observations and interactions. Hidden tests evaluate your submissions from unobserved viewpoints and under interactions you have not tried, so run discriminating comparison experiments in both worlds, refine, and resubmit whenever your reconstruction improves. Call finish when you believe nothing about your reconstruction differs from the reference world. The spring between the two plates is an ideal linear spring with a stiffness of exactly 21.7 N/m."
 
 [experiment]
-name = "Wave 11 · tetra_spring · spring stiffness stated, no force sensing"
-environment = "tetra_spring"
+name = "Wave 11 · panda_small/tetra_spring · Franka, round plates, stiffness stated, no force sensing"
+environment = "panda_small_tetra_spring"
 execution_mode = "strict_oci"
 model = "gpt-6-astra"
-model_constraints = ["Use standard MuJoCo primitives and joints.", "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
+model_constraints = ["Use standard MuJoCo primitives and joints for the target object; preserve the provided Panda robot fixture unchanged.", "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
 evaluation_metrics = ["chamfer", "center_of_mass", "density", "image_mse"]
 
 [experiment.physical_parameters]
-scene = "Original authored MJCF physical parameters of tetra_spring."
-factor = "spring stiffness stated, no force sensing"
+scene = "Original authored MJCF physical parameters of panda_small/tetra_spring."
+factor = "Franka, round plates, stiffness stated, no force sensing"
 
 [source]
-scene = "environments/tetra_spring/scene.xml"
+scene = "environments/panda_small/tetra_spring/scene.xml"
 
 [sandbox]
 image = "localhost/sim2sim:latest"
@@ -43,19 +43,22 @@ audit_bytes = 8589934592
 event_log_bytes = 67108864
 
 [simulation]
+robot = "panda"
 rgb = true
 depth = false
 calibration = true
 wrench = false
+effort = false
+movable_camera = true
 width = 320
 height = 240
 camera = "fixed"
 default_ticks = 20
 
 [evaluation]
-manifest = "manifest.toml"
-source_dir = "environments/tetra_spring"
-source_entrypoint = "scene.xml"
+manifest = "tetra_spring/manifest.toml"
+source_dir = "environments/panda_small"
+source_entrypoint = "tetra_spring/scene.xml"
 entrypoint = "scene.xml"
 camera = "fixed"
 width = 320
@@ -65,8 +68,6 @@ timeout_seconds = 180
 [evaluation.reconstruction]
 samples = 2048
 seed = 20261029
-matching_same_type = true
-matching_max_distance_m = 0.08
 
 [inference]
 endpoint = "https://api.aqinference.com/v1/responses"
