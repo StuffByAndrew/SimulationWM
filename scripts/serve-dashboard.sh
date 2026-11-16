@@ -5,7 +5,7 @@
 # Usage: scripts/serve-dashboard.sh [--static] [SSH_DESTINATION]
 #   SSH_DESTINATION  client-side SSH target for this login node (default USER@HOST)
 #   --static         live recordings only, served from this login node, no physics
-# Environment: SIM2SIM_PYTHON, SIM2SIM_EXPERIMENTS (default: lab storage and the repository's experiments/),
+# Environment: SIM2SIM_PYTHON, SIM2SIM_EXPERIMENTS (default: lab storage, netscratch (replicates, new levels) and the repository's experiments/),
 #   SIM2SIM_DASHBOARD_DIR, SIM2SIM_INSPECT_TIME (02:00:00), SIM2SIM_INSPECT_CPUS (4), SIM2SIM_INSPECT_MEM (8G)
 set -euo pipefail
 
@@ -14,7 +14,7 @@ if [[ "${1:-}" == --static ]]; then static=1; shift; fi
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 python_bin="${SIM2SIM_PYTHON:-$repo_root/.venv/bin/python}"
 # Colon-separated roots; every run in every root is listed, and the first root holds dashboard/ (verified asset cache).
-root="${SIM2SIM_EXPERIMENTS:-/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:$repo_root/experiments}"
+root="${SIM2SIM_EXPERIMENTS:-/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments:/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments:$repo_root/experiments}"
 IFS=: read -r -a roots <<<"$root"
 root_args=(); for r in "${roots[@]}"; do root_args+=(--root "$r"); done
 dashboard="${SIM2SIM_DASHBOARD_DIR:-${roots[0]}/dashboard}"
