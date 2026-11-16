@@ -50,12 +50,16 @@ ACTIONS = {
     "release": ({"world": WORLD, "ticks": {"type": "integer", "minimum": 0}}, ["world"]),
     "arm_target": ({"world": WORLD, "joint_targets": NUMBERS(7), "gripper_width_m": {"type": "number"},
                     "ticks": {"type": "integer", "minimum": 1}}, ["world", "joint_targets", "gripper_width_m"]),
+    "camera": ({"world": WORLD, "pos": NUMBERS(3), "lookat": NUMBERS(3)}, ["world", "pos", "lookat"]),
     "reset": ({"world": WORLD}, ["world"]),
     "load_reconstruction": ({"project_dir": STRING, "entrypoint": STRING, "camera": STRING}, []),
     "submit": ({"project_dir": STRING}, []),
     "sam3d": ({"image": STRING, "mask": STRING, "seed": {"type": "integer", "minimum": 0}}, ["image", "mask"]),
+    "sequence": ({"world": WORLD, "steps_file": STRING, "images": {"type": "string", "enum": ["last", "none"]}}, ["world", "steps_file"]),
     "finish": ({}, []),
 }
+SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "camera", "reset")  # physical actions a sequence may contain
+SEQUENCE_STEPS = 2000
 LOCAL = {
     "bash": ("Run a bash command in /workspace and return its exit status and combined stdout/stderr (long output is truncated in the middle). "
              "Each command runs in its own process group, which is terminated when the command returns or times out (default 300 s).",
@@ -99,7 +103,8 @@ def tool_schemas(task):
         notes = {"load_reconstruction": " Packages project_dir (default /workspace/project) as a ZIP and loads it into the reconstruction world.",
                  "submit": " Packages project_dir (default /workspace/project) as a ZIP and submits it for hidden evaluation.",
                  "finish": " Irreversibly ends the session.",
-                 "sam3d": " image and mask are PNG file paths in the sandbox; the mesh is saved as a PLY file under /workspace/sam3d/."}.get(op, "")
+                 "sam3d": " image and mask are PNG file paths in the sandbox; the mesh is saved as a PLY file under /workspace/sam3d/.",
+                 "sequence": " Write steps_file with your own code, then analyze the saved per-step outputs with code."}.get(op, "")
         tools.append({"name": op, "description": "Controller action. Contract: %s.%s" % (json.dumps(contract), notes),
                       "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}})
     return tools
@@ -228,6 +233,8 @@ class Agent:
                 return self.finish()
             if name == "sam3d":
                 return [text(self.sam3d(args))], False
+            if name == "sequence":
+                return self.sequence(args), False
             if name in ("load_reconstruction", "submit"):
                 project = Path(args.get("project_dir", self.workspace / "project"))
                 self.project = project
@@ -312,6 +319,32 @@ class Agent:
         path = folder / ("%03d-mesh.ply" % (len(list(folder.glob("*-mesh.ply"))) + 1))
         path.write_bytes(base64.b64decode(result.pop("mesh_ply_b64"), validate=True))
         return json.dumps({"mesh_ply": str(path), **result}, separators=(",", ":"))
+
+    def sequence(self, args):
+        """Run an agent-written JSON list of physical actions back to back in one world as ordinary controller requests."""
+        steps = json.loads(Path(args["steps_file"]).read_text())
+        allowed = [op for op in SEQUENCE_OPS if op in self.task["actions"]]
+        if not (isinstance(steps, list) and 1 <= len(steps) <= SEQUENCE_STEPS
+                and all(isinstance(step, dict) and step.get("op") in allowed and "world" not in step for step in steps)):
+            raise ValueError("steps_file must hold a JSON array of 1 to %d action objects with op in %s and no world field" % (SEQUENCE_STEPS, allowed))
+        folder = self.workspace / "sequences"
+        folder.mkdir(exist_ok=True)
+        path = folder / ("%04d.json" % (len(list(folder.glob("*.json"))) + 1))
+        records, response, error = [], None, None
+        for index, step in enumerate(steps):
+            try:
+                response = self.client.request(step["op"], world=args["world"], **{k: v for k, v in step.items() if k != "op"})
+            except RuntimeError as exc:
+                error = "step %d (%s) was rejected: %s" % (index, step["op"], exc)
+                break
+            observation = {k: v for k, v in response["observation"].items() if k not in IMAGE_KEYS and not k.endswith(("_format", "calibration"))}
+            records.append({"step": index, "op": step["op"], "observation": observation})
+        path.write_text(json.dumps(records, separators=(",", ":")))
+        summary = text("Ran %d of %d steps in the %s world; each step's non-image observation fields are saved in %s.%s"
+                       % (len(records), len(steps), args["world"], path, " Stopped: " + error if error else ""))
+        if response is None or args.get("images", "last") == "none":
+            return [summary]
+        return [summary] + self.render(response, args["world"])
 
     def view_image(self, path):
         data = Path(path).read_bytes()

@@ -27,6 +27,7 @@ Every request has an `op` string:
 | `move` | `displacement: [dx, dy, dz]`, optional `ticks` | Move the grasp target by world meters over physics ticks; requires an active grasp. |
 | `release` | optional `ticks` (default 0) | Disable the grasp, then advance physics. |
 | `reset` | none | Restore initial physical state and release the grasp. |
+| `camera` | `pos: [x, y, z]`, `lookat: [x, y, z]` (only with `simulation.movable_camera = true`) | Re-aim the observation camera (up = +z) without advancing time. Both points within ±4 m, at least 0.05 m apart, and `pos` at least the near-plane frustum reach (`1.5 · znear · extent · corner factor`) from every surface, so the near clip plane can never cut a wall; a camera inside a geom or a small closed cavity is rejected too. |
 | `submit` | `project_b64` | Submit a base64 ZIP containing `scene.xml` and local assets. |
 | `inference` | `messages`, optional `tools` | Request inference from the configured host broker. |
 | `finish` | none | End the run. |
@@ -138,7 +139,12 @@ its path and `--help` is appended to the task. A disabled tool is neither mounte
 nor named, and no image contains its code or weights. `segmentation` (MobileSAM,
 pinned weights sha256 `6dbb9052…6c2f`) needs the tools image, whose label the
 runtime checks before launch; `planning` (IK, interpolation, collision-checked
-straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`.
+straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `sequence` (no files) adds a `sequence` action that the
+sandbox harness executes itself: the agent's code writes a JSON array of at most 2000 physical action objects
+(`observe`, `grasp`, `move`, `release`, `arm_target`, `camera`, `reset`, as offered, without `world`), the harness
+sends them in order to one world as ordinary controller actions (each charged and audited as usual), stops at the
+first rejected step, saves every step's non-image observation fields to `/workspace/sequences/NNNN.json` and returns
+the final step's images (or none). The controller never receives a `sequence` request.
 
 ```toml
 [sandbox]

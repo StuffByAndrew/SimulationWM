@@ -64,6 +64,9 @@ def test_tactile_senses_a_closed_grasp_without_advancing_time():
     full = {**sim.observe(), 'width': 64}
     assert 'tactile' in public_observation(full, {'robot': 'panda', 'tactile': True})
     assert 'tactile' not in public_observation(full, {'robot': 'panda'})
+    assert 'actuator_effort_nm' in public_observation(full, {'robot': 'panda'})['proprioception']
+    assert set(public_observation(full, {'robot': 'panda', 'effort': False})['proprioception']) == \
+        set(public_observation(full, {'robot': 'panda'})['proprioception']) - {'actuator_effort_nm'}
     for bad in ({'tactile': True}, {'robot': 'panda', 'tactile': 1}):
         with pytest.raises(ValueError, match='tactile'):
             Simulation(ROOT / ('environments/panda/blocks/scene.xml' if 'robot' in bad else 'environments/blocks/scene.xml'), bad)

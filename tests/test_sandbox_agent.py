@@ -257,3 +257,42 @@ def test_harness_budget_stop_submits_unsubmitted_work_then_finishes(tmp_path, su
     agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.).run()
     assert [r["op"] for r in controller.requests if r["op"] not in ("inference", "progress")] == ["submit", "finish"]
     assert any(text.startswith("Inference budget exhausted (host stop)") for _, text in controller.notes)
+
+
+def test_wall_clock_hold_extends_the_deadline_and_excludes_the_hold():
+    clock = WallClock(.4)
+    try:
+        with clock.hold():
+            time.sleep(.6)
+            assert not clock.expired.is_set() and clock.remaining() > .3
+        assert clock.held > .55 and clock.remaining() > .3 and not clock.expired.is_set()
+        assert clock.expired.wait(2)
+    finally:
+        clock.close()
+
+
+def test_harness_reanchors_its_deadline_on_every_reply(tmp_path):
+    controller = Controller([[("observe", {"world": "reference"})]], now=lambda: 1000.)
+    loop = agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.)
+    controller.task["deadline_unix"] += 500  # e.g. a host-side hold of 500 s
+    loop.infer(loop.messages())
+    assert loop.left() == 4100
+
+
+def test_harness_sequence_runs_agent_written_steps_and_saves_outputs(tmp_path):
+    controller = Controller([], now=lambda: 1000.)
+    controller.task["actions"].insert(4, "sequence")
+    controller.task["action_schema"]["sequence"] = {"steps_file": "path"}
+    loop = agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.)
+    assert "sequence" in loop.schemas
+    steps = [{"op": "observe", "ticks": 5}, {"op": "move", "displacement": [0, 0, .01], "ticks": 3}, {"op": "release"}]
+    (tmp_path / "steps.json").write_text(json.dumps(steps))
+    parts, done = loop.execute({"id": "c", "name": "sequence", "arguments": json.dumps({"world": "reconstruction", "steps_file": str(tmp_path / "steps.json")})})
+    sent = [r for r in controller.requests if r["op"] != "progress"]
+    assert not done and [r["op"] for r in sent] == ["observe", "move", "release"] and all(r["world"] == "reconstruction" for r in sent)
+    records = json.loads((tmp_path / "sequences/0001.json").read_text())
+    assert [r["op"] for r in records] == ["observe", "move", "release"] and "rgb" not in records[0]["observation"]
+    assert "Ran 3 of 3 steps" in parts[0]["text"] and any(p["type"] == "image_url" for p in parts)
+    (tmp_path / "bad.json").write_text(json.dumps([{"op": "finish"}]))
+    parts, _ = loop.execute({"id": "d", "name": "sequence", "arguments": json.dumps({"world": "reference", "steps_file": str(tmp_path / "bad.json")})})
+    assert parts[0]["text"].startswith("ERROR: steps_file must hold")

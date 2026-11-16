@@ -8,7 +8,7 @@ import sys
 
 MAX_LINE = 48 * 1024 * 1024
 MAX_STATE = 4 * 1024 * 1024
-PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile",
+PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "movable_camera",
                  "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "recording_fps"}
 
 
@@ -103,8 +103,8 @@ def public_observation(complete, config):
         result.pop("wrench", None)
         proprioception = complete.get("proprioception")
         if isinstance(proprioception, dict):
-            keys = {"joint_positions_rad", "joint_velocities_rad_s", "actuator_effort_nm",
-                    "finger_positions_m", "finger_velocities_m_s", "gripper_width_m", "gripper_opening"}
+            keys = {"joint_positions_rad", "joint_velocities_rad_s", "finger_positions_m", "finger_velocities_m_s",
+                    "gripper_width_m", "gripper_opening"} | ({"actuator_effort_nm"} if config.get("effort", True) else set())
             result["proprioception"] = {key: value for key, value in proprioception.items() if key in keys}
         if config.get("tactile", False):
             result["tactile"] = complete["tactile"]
@@ -163,7 +163,8 @@ def main(*, project_dir=Path("/workspace/project")):
                     if sim is None:
                         raise ValueError("Load a candidate before acting")
                     action = message["action"]
-                    allowed_actions = ("observe", "reset", "arm_target") if sim.config.get("robot") == "panda" else ("observe", "grasp", "move", "release", "reset")
+                    allowed_actions = (("observe", "reset", "arm_target") if sim.config.get("robot") == "panda" else ("observe", "grasp", "move", "release", "reset")) \
+                        + (("camera",) if sim.config.get("movable_camera") else ())
                     if not isinstance(action, dict) or action.get("op") not in allowed_actions:
                         raise ValueError("Unsupported candidate action")
                     def callback(simulation):

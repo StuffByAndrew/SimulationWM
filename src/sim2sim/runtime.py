@@ -180,6 +180,9 @@ AGENT_TOOLS = {
               "placed in that image's camera frame, with the predicted pose and scale. Shape, scale and depth are learned "
               "estimates from one image and can be wrong. Each call takes about a minute or longer.",
               None),
+    "sequence": ("Optional tool: the sequence action runs a list of physical actions that your code writes to a JSON file, back to back "
+                 "in one world, and saves every step's non-image observation fields to a file for analysis.",
+                 None),
 }
 
 
@@ -1387,6 +1390,10 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         sim_config.setdefault(key, default)
     if not isinstance(sim_config["reference_interaction"], bool):
         raise RuntimeFailure("simulation.reference_interaction must be a boolean")
+    if sim_config.get("movable_camera", False) not in (True, False):
+        raise RuntimeFailure("simulation.movable_camera must be a boolean")
+    if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or sim_config.get("robot") != "panda"):
+        raise RuntimeFailure("simulation.effort is a boolean for robot = \"panda\" (false hides actuator_effort_nm: no force sensing)")
     source_manifest = Path(scene).resolve().parent / config["source"].get("manifest", "manifest.toml")
     if source_manifest.is_file():
         with source_manifest.open("rb") as handle:
@@ -1398,7 +1405,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     from .simulation import Simulation
     sim = Simulation(scene, sim_config)
     supervisor.check()
-    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
+    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
     public_config.setdefault("width", getattr(sim, "width", 640))
     public_config.setdefault("height", getattr(sim, "height", 480))
     public_config["timestep"] = float(sim._model.opt.timestep) if hasattr(sim, "_model") else float(sim_config.get("timestep", .002))
@@ -1664,6 +1671,22 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             "submissions": max_submissions, "audit_bytes": audit.limit},
                 "submission": {"format": "base64 ZIP", "entrypoint": "scene.xml", "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024))},
                 "observation": public_observation(cache["reference"]["observation"], sim_config)}
+        if sim_config.get("movable_camera"):
+            task["actions"].insert(task["actions"].index("reset"), "camera")
+            task["action_schema"]["camera"] = {"pos": "[x,y,z] world meters", "lookat": "[x,y,z] world meters; up is +z",
+                                               "effect": "re-aims the selected world's observation camera and returns an observation; "
+                                                         "no physics time passes; the pose persists across resets",
+                                               "limits": "each coordinate within +-4 m; pos and lookat at least 0.05 m apart"}
+        if "sequence" in tools:
+            task["actions"].insert(task["actions"].index("reset"), "sequence")
+            task["action_schema"]["sequence"] = {
+                "world": "reference or reconstruction; every step runs in this world",
+                "steps_file": "sandbox path of a JSON array of 1 to 2000 action objects, each {\"op\": observe, grasp, move, release, "
+                              "arm_target, camera or reset (as offered), plus that action's own fields, no world}",
+                "images": "last (default): return the final step's images; none: return none",
+                "execution": "the sandbox harness sends the steps in order as ordinary controller actions, each charged and recorded as "
+                             "usual, and stops at the first rejected step",
+                "outputs": "/workspace/sequences/NNNN.json: per step its index, op and all non-image observation fields"}
         if sam3d_relay:
             task["actions"].insert(task["actions"].index("progress"), "sam3d")
             task["action_schema"]["sam3d"] = {"image_png_b64": "8-bit RGB(A) PNG, at most 2048x2048", "mask_png_b64": "grayscale PNG, same size, nonzero = object",
@@ -1701,7 +1724,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     "(rows distal to proximal, columns across the finger) and finger_normal_force_n over the whole finger, newtons; "
                     "any contact on the finger counts")
                 task["observation_contract"]["modalities"]["tactile"] = True
-            task["observation_contract"]["proprioception"] = "joint_positions_rad[7], joint_velocities_rad_s[7], actuator_effort_nm[7], finger_positions_m[2], finger_velocities_m_s[2], gripper_width_m, gripper_opening (0..1); robot sensors only"
+            task["observation_contract"]["proprioception"] = ("joint_positions_rad[7], joint_velocities_rad_s[7], " + ("actuator_effort_nm[7], " if sim_config.get("effort", True) else "")
+                + "finger_positions_m[2], finger_velocities_m_s[2], gripper_width_m, gripper_opening (0..1); robot sensors only")
         with audit.reserve(len(json.dumps(task)) * 3 + 65536) as token:
             context["token"] = token
             transport.send(task, min(deadline, supervisor.deadline))
@@ -1742,7 +1766,9 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     raise RuntimeFailure("Shared cumulative physics tick budget exceeded")
                 if op not in ("observe", "move", "release", "arm_target") and ticks:
                     raise RuntimeFailure("This operation does not accept ticks")
-                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m") if k in request}
+                if op == "camera" and not sim_config.get("movable_camera"):
+                    raise RuntimeFailure("Unknown operation")
+                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "pos", "lookat") if k in request}
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
@@ -1757,7 +1783,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 if time.monotonic() >= min(deadline, supervisor.deadline):
                     supervisor.check()
                     raise RuntimeFailure("Active wall-time budget exhausted")
-                if op in ("observe", "grasp", "move", "release", "reset", "arm_target"):
+                if op in ("observe", "grasp", "move", "release", "reset", "arm_target", "camera"):
                     action = {k: v for k, v in resolved.items() if k != "world"}
                     if world == "reference":
                         if op == "reset":
@@ -1968,7 +1994,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 response = {"ok": False, "error": str(exc) if isinstance(exc, RuntimeFailure) and op != "submit" else "Operation failed"}
                 if world == "reference" and hasattr(sim, "total_ticks"):
                     charged[world] = int(sim.total_ticks)
-                    if action_started and op in ("observe", "grasp", "move", "release", "reset", "arm_target"):
+                    if action_started and op in ("observe", "grasp", "move", "release", "reset", "arm_target", "camera"):
                         save_checkpoint(world, snapshot_simulation(sim), None, "interrupted", token)
             finally:
                 if response is not None:

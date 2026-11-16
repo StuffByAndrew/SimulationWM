@@ -17,6 +17,11 @@ import numpy as np
 from PIL import Image
 
 
+CAMERA_REACH_M = 4.0  # movable_camera bound on |pos| and |lookat| per axis (world frame)
+_SPHERE_DIRECTIONS = np.array([[np.sqrt(1 - z * z) * np.cos(2.399963 * i), np.sqrt(1 - z * z) * np.sin(2.399963 * i), z]
+                               for i, z in enumerate(np.linspace(1 - 1 / 512, -1 + 1 / 512, 512))])  # Fibonacci sphere: camera clearance rays
+
+
 # Panda fingertip pad face (fixture class fingertip_pad_collision_1) in its finger body frame: x across, z along the finger.
 TAXEL_HALF_WIDTH, TAXEL_Z = .0085, (.036, .053)
 
@@ -79,6 +84,8 @@ class Simulation:
             raise ValueError("image dimensions must be positive")
         if self.config.get("tactile", False) is not False and (self.config["tactile"] is not True or self.robot != "panda"):
             raise ValueError("tactile is a boolean and requires robot='panda'")
+        if self.config.get("movable_camera", False) not in (True, False):
+            raise ValueError("movable_camera is a boolean")
         self.camera = self.config.get("camera", "fixed")
         self.default_ticks = int(self.config.get("default_ticks", 60))
         self.total_ticks = self.ticks = 0
@@ -300,8 +307,17 @@ class Simulation:
         cameras = [("", self._camera_id)]
         if self._wrist_camera_id is not None:
             cameras.append(("wrist_", self._wrist_camera_id))
+        # The near clip plane must never cut a surface, or a camera could see through opaque walls: wave-19 agents parked
+        # the movable camera against a sealed box, then carried the box around a camera aimed at a clear spot. A surface
+        # within the clearance covers the lens (black image, zero depth), as a real camera pressed against an object.
+        covered = self._surface_within(camera_data.cam_xpos[self._camera_id], self._camera_clearance(), camera_data)
         for prefix, camera_id in cameras:
-            if rgb_enabled or depth_enabled:
+            if (rgb_enabled or depth_enabled) and prefix == "" and covered:
+                if rgb_enabled:
+                    result["rgb"], result["rgb_format"] = self._png(np.zeros((self.height, self.width, 3), np.uint8)), "png_rgb8"
+                if depth_enabled:
+                    result["depth"], result["depth_format"] = self._png(np.zeros((self.height, self.width), np.uint16)), "png_uint16_mm"
+            elif rgb_enabled or depth_enabled:
                 if self._renderer is None:
                     self._renderer = mujoco.Renderer(self._model, height=self.height, width=self.width)
                 self._renderer.disable_depth_rendering()
@@ -430,9 +446,45 @@ class Simulation:
             mujoco.mj_forward(self._model, self._data)
         elif op in ("wait", "advance"):
             self._advance(action.get("ticks", self.default_ticks))
+        elif op == "camera":
+            self._aim_camera(action["pos"], action["lookat"])
         else:
             raise ValueError(f"unknown action: {op}")
         return self.observe() if render else None
+
+    def _aim_camera(self, pos, lookat):
+        """movable_camera: re-aim the observation camera (world frame, up = +z) without advancing physics time or ticks.
+        The pose persists across resets; evaluation always builds fresh simulations with the trusted camera."""
+        if self.config.get("movable_camera") is not True:
+            raise ValueError("camera requires simulation.movable_camera = true")
+        pos, lookat = np.asarray(pos, dtype=float), np.asarray(lookat, dtype=float)
+        if pos.shape != (3,) or lookat.shape != (3,) or not (np.isfinite(pos).all() and np.isfinite(lookat).all()):
+            raise ValueError("camera pos and lookat must be three finite numbers")
+        if max(np.abs(pos).max(), np.abs(lookat).max()) > CAMERA_REACH_M or np.linalg.norm(lookat - pos) < .05:
+            raise ValueError(f"camera pos and lookat must lie within {CAMERA_REACH_M} m of the origin and at least 0.05 m apart")
+        clearance = self._camera_clearance()
+        if self._surface_within(pos, clearance, self._data):
+            raise ValueError(f"camera pos must stay at least {clearance:.3f} m from every surface")
+        forward = (lookat - pos) / np.linalg.norm(lookat - pos)
+        right = np.cross(forward, [0, 0, 1] if abs(forward[2]) < .999 else [0, 1, 0])
+        right /= np.linalg.norm(right)
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, np.column_stack([right, np.cross(right, forward), -forward]).ravel())
+        self._model.cam_pos[self._camera_id], self._model.cam_quat[self._camera_id] = pos, quat
+        mujoco.mj_camlight(self._model, self._data)
+
+    def _camera_clearance(self):
+        """Distance within which a surface could reach the observation camera's near clip plane (1.5 x frustum corner)."""
+        tan = np.tan(np.deg2rad(self._model.cam_fovy[self._camera_id]) / 2)
+        return 1.5 * self._model.vis.map.znear * self._model.stat.extent * np.sqrt(1 + tan * tan * (1 + (self.width / self.height) ** 2))
+
+    def _surface_within(self, pos, distance, data):
+        """Whether any geom surface (all groups, static included) lies within distance of pos, by rays in all directions; a
+        ray from inside a geom reports its exit, so a point inside a geom or a small closed cavity counts too."""
+        n = len(_SPHERE_DIRECTIONS)
+        geom, dist = np.full(n, -1, dtype=np.int32), np.zeros(n)
+        mujoco.mj_multiRay(self._model, data, np.asarray(pos, dtype=float), _SPHERE_DIRECTIONS.ravel(), None, 1, -1, geom, dist, None, n, distance)
+        return bool(((geom >= 0) & (dist >= 0) & (dist < distance)).any())
 
     def close(self):
         if self._renderer is not None:

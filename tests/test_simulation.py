@@ -3,6 +3,7 @@ import base64
 import io
 from pathlib import Path
 
+import mujoco
 import numpy as np
 from PIL import Image
 import pytest
@@ -237,3 +238,45 @@ def test_panda_named_control_reset_and_private_proprioception(tmp_path):
         assert 'rgb' in sim.observe(full=True)
     finally:
         sim.close()
+
+
+def test_movable_camera_reaims_without_physics_and_is_opt_in():
+    scene = ROOT / 'environments/blocks/scene.xml'
+    sim = Simulation(scene, {'width': 64, 'height': 48, 'movable_camera': True})
+    before = sim.observe()
+    state, ticks, time = sim._data.qpos.copy(), sim.total_ticks, sim._data.time
+    moved = sim.action({'op': 'camera', 'pos': [0, -1.5, 1.2], 'lookat': [0, 0, .4]})
+    pose = np.array(moved['calibration']['world_from_camera'])
+    forward = -pose[:3, 2]
+    assert np.allclose(pose[:3, 3], [0, -1.5, 1.2]) and np.allclose(forward, np.array([0, 1.5, -.8]) / np.linalg.norm([0, 1.5, -.8]))
+    assert pose[2, 1] > 0 and moved['rgb'] != before['rgb']  # camera up has +z; the view changed
+    assert np.array_equal(state, sim._data.qpos) and sim.total_ticks == ticks and sim._data.time == time
+    sim.action({'op': 'reset'})
+    assert np.allclose(np.array(sim.observe()['calibration']['world_from_camera'])[:3, 3], [0, -1.5, 1.2])  # persists
+    for bad in ({'pos': [0, 0, 9], 'lookat': [0, 0, 0]}, {'pos': [0, 0, 1], 'lookat': [0, 0, 1.01]}, {'pos': [0, 0], 'lookat': [0, 0, 0]}):
+        with pytest.raises(ValueError):
+            sim.action({'op': 'camera', **bad})
+    with pytest.raises(ValueError, match='movable_camera'):
+        Simulation(scene, {'width': 64, 'height': 48}).action({'op': 'camera', 'pos': [0, -1, 1], 'lookat': [0, 0, 0]})
+
+
+def test_movable_camera_cannot_clip_into_a_sealed_box():
+    # A camera whose near plane could cut a wall, or one inside a geom or the box cavity, would see the hidden contents.
+    sim = Simulation(ROOT / 'environments/panda_small/box_marble_equal/scene.xml', {'robot': 'panda', 'width': 64, 'height': 48, 'movable_camera': True})
+    box, lookat = sim._data.xpos[sim._model.body('box').id].copy(), [-.3, -.22, .42]
+    sim.action({'op': 'camera', 'pos': (box + [.15, 0, .1]).tolist(), 'lookat': lookat})  # 12 cm from the wall, 12 cm above the table: allowed
+    for offset in ([.0285 + .01, 0, 0], [.027, 0, 0], [0, 0, 0]):  # 1 cm outside the wall, inside the wall, inside the cavity
+        with pytest.raises(ValueError, match='every surface'):
+            sim.action({'op': 'camera', 'pos': (box + offset).tolist(), 'lookat': lookat})
+    # Objects carried to a camera aimed at a clear spot cover its lens: black image and zero depth, no view inside.
+    sim = Simulation(ROOT / 'environments/panda_small/box_marble_equal/scene.xml',
+                     {'robot': 'panda', 'width': 64, 'height': 48, 'movable_camera': True, 'depth': True})
+    pos = (box + [.15, 0, .1]).tolist()
+    seen = sim.action({'op': 'camera', 'pos': pos, 'lookat': lookat})
+    assert np.asarray(Image.open(io.BytesIO(base64.b64decode(seen['rgb'])))).any()
+    free = sim._model.body('box').jntadr[0]
+    sim._data.qpos[sim._model.jnt_qposadr[free]:sim._model.jnt_qposadr[free] + 3] = np.asarray(pos) - [.0285 + .01, 0, 0]
+    mujoco.mj_forward(sim._model, sim._data)
+    covered = sim.observe()
+    for key in ('rgb', 'depth'):
+        assert not np.asarray(Image.open(io.BytesIO(base64.b64decode(covered[key])))).any(), key

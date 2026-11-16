@@ -346,3 +346,45 @@ class Sam3dRelayOCITests(unittest.TestCase):
         calls = [event for _, event in read_audit(output) if event.get("kind") == "sam3d_call"]
         self.assertEqual([(call["ok"], call["seed"]) for call in calls], [(True, 7)])
         self.assertFalse(list(spool.rglob("*.json")))
+
+
+CAMERA_AGENT = r'''
+import numpy as np
+from pathlib import Path
+from sim2sim.client import Client
+client = Client()
+assert "camera" in client.task["actions"] and client.task["public_tool_config"]["movable_camera"] is True
+project = Path("/workspace/project")
+project.mkdir()
+(project / "scene.xml").write_text("""<mujoco><worldbody><light pos="0 0 3"/><camera name="fixed" pos="1 -1 1" xyaxes="0.7 0.7 0 -0.4 0.4 0.8"/>
+<geom name="floor" type="plane" size="2 2 0.1"/><body name="object" pos="0 0 0.1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body></worldbody></mujoco>""")
+client.load_reconstruction(project)
+for world in ("reference", "reconstruction"):
+    observation = client.request("camera", world=world, pos=[0, -1.4, 1.1], lookat=[0, 0, 0.1])["observation"]
+    pose = np.array(observation["calibration"]["world_from_camera"])
+    assert np.allclose(pose[:3, 3], [0, -1.4, 1.1], atol=1e-6) and observation["total_ticks"] == 0, (world, pose, observation["total_ticks"])
+client.submit(project)
+client.finish()
+'''
+
+
+@unittest.skipUnless(os.environ.get("SIM2SIM_OCI_TEST") == "1", "requires explicit rootless OCI integration opt-in")
+class MovableCameraOCITests(unittest.TestCase):
+    """simulation.movable_camera: the agent re-aims both worlds' observation cameras through the strict controller."""
+    def test_camera_action_in_both_worlds_without_ticks(self):
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/movable-camera" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(root / "environments/blocks/scene.xml")},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                              "command": ["python", "-c", CAMERA_AGENT], "memory": "1g", "cpus": 1, "pids": 64},
+                  "output_dir": str(output), "budget": {"active_seconds": 180, "physics_ticks": 100, "submissions": 1},
+                  "simulation": {"camera": "fixed", "width": 160, "height": 120, "rgb": True, "calibration": True, "movable_camera": True},
+                  "evaluation": {"source_dir": str(root / "environments/blocks"), "camera": "fixed", "width": 80, "height": 60,
+                                 "timeout_seconds": 120}}
+        result = run(config)
+        self.assertEqual((result["total_ticks"], result["submissions"]), (0, 1))
+        events = [json.loads(line) for line in (output / "events.jsonl").read_text().splitlines()]
+        cameras = [event for event in events if event.get("op") == "camera"]
+        self.assertEqual(len(cameras), 2)
+        self.assertTrue(all(event.get("ok", True) for event in events))
