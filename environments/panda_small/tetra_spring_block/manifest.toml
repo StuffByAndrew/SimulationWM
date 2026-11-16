@@ -1,0 +1,18 @@
+name = "panda_small_tetra_spring_block"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["cluster", "spring_base", "spring_top", "block"]
+
+object_bodies = ["cluster", "spring_base", "spring_top", "block"]
+object_geoms = ["sphere_1kg", "sphere_2kg", "sphere_4kg", "sphere_8kg", "spring_base_plate", "spring_top_plate", "block"]
+
+[correspondence]
+cluster = "cluster"
+spring_base = "spring_base"
+spring_top = "spring_top"
+block = "block"
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261031

@@ -187,3 +187,34 @@ and pedestal stayed inside the global image with at least 6.26% normalized
 frame margin. Researcher-only global/wrist previews and the full measurements
 are in `experiments/validation/panda-small/`; wrist previews for proprio levels
 are private validation artifacts, not enabled public observations.
+
+## Sealed-box Franka levels
+
+`experiments/validation/box-scenes.py` writes three `environments/panda_small/` levels
+(2026-11-13): `box_marble_heavy`, `box_marble_equal` and `box_cylinder`. A closed
+opaque box (outer 57 × 82 × 42 mm, 4 mm walls, interior 49 × 74 × 34 mm) rests on
+the table at (0, −0.22) m and is gripped across its 57 mm side. The outside, the
+shell friction (`1.5 0.01 0.0001`, condim 4) and the 80 g total object mass are
+identical in all three; only the hidden contents and the shell/content mass split
+differ:
+
+| Level | Hidden body | Inner / shell mass |
+| --- | --- | --- |
+| `box_marble_heavy` | sphere, 19 mm diameter | 68 g / 12 g (5.7×) |
+| `box_marble_equal` | same sphere | 40 g / 40 g |
+| `box_cylinder` | cylinder, 19 mm diameter, 48.4 mm long along x (0.6 mm end clearance): rolls along y only | 55 g / 25 g (2.2×) |
+
+The hidden body touches only invisible liner slabs behind the walls (friction 0.3),
+never the robot, table or visible shell. The fixture gripper squeezes only about
+1.4 N per finger, so the objects are light and the scenes use elliptic friction
+cones with `impratio = 10`; with the default pyramidal cone the heavy-marble box crept
+out of the grip while shaken. Contacts use `solref = 0.004 1` (the stiffest stable
+value at the 2 ms step); throw impacts press the hidden body up to about 2–3.6 mm
+into the liners, so the walls are 4 mm thick.
+
+Four private arm probes, identical in all three manifests: `throw_forward`,
+`throw_side`, `toss_up` (pick, lift, swing, open the gripper mid-swing, hold while
+the box lands) and `tilt_shake` (wrist tilts about y, shakes along x and y, set down,
+release). `experiments/validation/box-check.py` checks every source probe (grasp
+held, release speed, landing, inner motion, determinism) and the composite-COM
+comparison between all level pairs.

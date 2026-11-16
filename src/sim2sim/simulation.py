@@ -117,7 +117,8 @@ class Simulation:
             ET.SubElement(world, "camera", **attributes)
         names = self.config.get("graspable_bodies")
         if names is None:
-            names = [b.get("name") for b in world.iter("body")
+            # Every worldbody: an included robot file placed first contributes its own, and MuJoCo merges them.
+            names = [b.get("name") for w in root.iter("worldbody") for b in w.iter("body")
                      if b.get("name") and (b.find("joint") is not None or b.find("freejoint") is not None)]
         # Panda agents use arm actions only; the researcher inspector may opt in
         # to point grasps on explicitly listed non-robot bodies.

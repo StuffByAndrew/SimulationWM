@@ -1,0 +1,26 @@
+name = "tunnel_spring"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["stick"]
+
+object_bodies = ["stick"]
+object_geoms = ["knob", "handle", "rod", "guide_collar", "guide_mid", "tip"]
+
+[correspondence]
+stick = "stick"
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261109
+
+# Private force-displacement probe (metric `force_profile`): grasp the knob top behind the post through its camera pixel (as an agent
+# grasps; robust to a candidate built in a shifted frame), push the stick through the gap and the full stroke twice slowly (latch
+# branches), then once 10x faster (damping).
+[force_profile]
+grasp_pixel = [129, 143]
+grasp_radius_px = 3
+path = [[0.0000000, 0.0000000, 0.0000000], [0.0000000, 0.0610000, 0.0000000]]
+strokes = [[0.0610000, 0.0100000], [0.0000000, 0.0100000], [0.0610000, 0.0100000], [0.0000000, 0.0100000], [0.0610000, 0.1000000], [0.0000000, 0.1000000]]
+sample_ticks = 25
+settle_ticks = 250
