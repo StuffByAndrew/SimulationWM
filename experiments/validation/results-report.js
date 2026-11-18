@@ -165,7 +165,7 @@ function convergence(host, b) {
     if (!ss.some(s => s.pts.some(p => p[1] != null))) continue;
     const ratio = kind(k) === "ratio";
     lineChart(div(grid), { title: label(k) + (ratio ? " ÷ true" : ""), series: ss, log: true, ratio, truth: ratio ? 1 : null, xmax: b.xmax, at120: true,
-      floor: ratio || k.endsWith("_mm") || k.endsWith("_n") ? 0.01 : 0, fmtv: v => fmtKey(k, v) });
+      floor: ratio || k.endsWith("_mm") || k.endsWith("_n") ? 0.01 : k.startsWith("abs:") ? 1e-3 : 0, fmtv: v => fmtKey(k, v) });
   }
   card.appendChild(html(`<p class="note">One point per submission at its submission time; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 (mm or N). The dotted vertical line is the 120-minute mark.</p>`));
 }
@@ -276,6 +276,8 @@ function viewer(host) {
   (function loop() { resize(); controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
 }
 
+const media = (src, alt, autoplay) => src.endsWith(".mp4")  // a figure or clip in figs/: video or still
+  ? `<video controls loop muted playsinline ${autoplay ? "autoplay" : 'preload="none"'} src="figs/${src}"></video>` : `<img loading="lazy" src="figs/${src}" alt="${esc(alt)}">`;
 // ---------- page assembly ----------
 const BLOCKS = {
   html: (h, b, key) => h.appendChild(html(`<div data-edit="${key}">${b.html}</div>`)),
@@ -286,8 +288,13 @@ const BLOCKS = {
     `<table><tr>${b.head.map(x => `<th>${x}</th>`).join("")}</tr>${b.rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join("")}</tr>`).join("")}</table>` + (b.note ? `<p class="note">${b.note}</p>` : ""); },
   quotes: (h, b) => { const c = div(h, "card"); c.innerHTML = `<b>${b.title}</b>` + b.items.map(e => `<div class="quote">“${e.text}”<span class="src">${runLink(e.run, e.name)} · minute ${e.minute}</span></div>`).join(""); },
   bars: (h, b) => hbars(div(h, "card"), b),
-  images: (h, b) => { const g = div(h, b.items.length > 1 ? "grid2" : ""); for (const x of b.items)  // researcher figures copied to figs/ (spec FIGURES)
-    g.appendChild(html(`<figure class="card fig"><img loading="lazy" src="figs/${x.src}" alt="${esc(x.label)}"><figcaption>${x.run ? runLink(x.run, x.label) : x.label}</figcaption></figure>`)); },
+  images: (h, b) => { const g = div(h, b.items.length > 1 ? "grid2" : ""); for (const x of b.items)  // researcher figures and videos copied to figs/ (spec FIGURES)
+    g.appendChild(html(`<figure class="card fig">${media(x.src, x.label)}<figcaption>${x.run ? runLink(x.run, x.label) : x.label}</figcaption></figure>`)); },
+  clips: (h, b) => {  // many videos or stills: one player and a selector
+    const c = div(h, "card"); c.innerHTML = (b.title ? `<h3 style="margin-top:0">${b.title}</h3>` : "") +
+      `<div class="vctl"><select>${b.items.map((x, i) => `<option value="${i}">${esc(x.label)}</option>`).join("")}</select><a class="openrun">open this run</a></div><div class="clip"></div>`;
+    const sel = c.querySelector("select"), show = () => { const x = b.items[+sel.value]; c.querySelector(".clip").innerHTML = media(x.src, x.label, true); c.querySelector(".openrun").href = runHref(x.run); };
+    sel.onchange = show; show(); },
   viewer: (h, b) => { const c = div(h, "card"); c.innerHTML = `<h3 style="margin-top:0">${b.title}</h3><div class="viewer" data-group="${b.group}"></div>`; },
   videos: (h, b) => { const g = div(h, "grid2"); for (const r of b.runs) { const v = R.videos.find(x => x.run === r);
     g.appendChild(html(`<div class="card vid"><video controls loop muted playsinline preload="metadata" src="videos/${v.video}"></video><p><b>${runLink(r)}</b></p><p class="muted">the same ${v.actions} actions in both (${v.actions_listed.join(", ")}) · agent's scene from its load #${v.load}</p></div>`)); }

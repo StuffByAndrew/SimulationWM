@@ -12,8 +12,9 @@ TYPES = {0: "plane", 1: "hfield", 2: "sphere", 3: "capsule", 4: "ellipsoid", 5: 
 
 
 def robot_bodies(root):
+    """Bodies of the public robot fixture (robot/*.xml: the Panda or the Shadow hand); they are instruments, not objects."""
     names = set()
-    for path in Path(root).rglob("panda.xml"):
+    for path in Path(root).rglob("robot/*.xml"):
         names |= {b.get("name") for b in ET.parse(path).iter("body")}
     return names
 

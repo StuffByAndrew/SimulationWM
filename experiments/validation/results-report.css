@@ -72,3 +72,4 @@ details.long summary{cursor:pointer;list-style:none}details.long summary .pre{di
 .mark{margin:10px 0;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--third) 14%,transparent);font-size:13px}
 .hide-tool .msg.tool,.hide-img img.obs{display:none}
 .fig{margin:0}.fig img{width:100%;height:auto;display:block;border-radius:4px;background:#fff}.fig figcaption{font-size:13px;margin-top:6px}
+.fig video,.clip video,.clip img{width:100%;height:auto;display:block;border-radius:4px;background:#000}

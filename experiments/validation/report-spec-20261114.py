@@ -18,6 +18,8 @@ RA = MAIN / "validation" / "rerun-analysis"
 NETRUNS = Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs")
 REF = {"boat": "w10-boat-base-20261105-001", "assembly": "w10-assembly-base-20261105-001"}  # baselines from the previous report
 WORK2 = MAIN / "reports" / "report-work-20261118"  # runs finished 2026-11-14..18 (waves 19-22 and replicates)
+WITH_MEDIA = True  # evaluation videos, cloth stills and hand overlays (render-eval-videos.py, re-extracted models)
+WITH_SCALE = False  # spring-as-a-scale tables (spring-scale-usage.py)
 SUMMARIES = (MAIN / "validation" / "results-w11-18.json", MAIN / "validation" / "results-w19.json", MAIN / "validation" / "results-w20-22.json",
              MAIN / "validation" / "results-w19-003.json", (MAIN / "validation" / "results-wave10.json", set(REF.values())))
 INVALID = set()  # invalid attempts (wave 19 -001, marble-equal -002) are not in NAMES; Appendix A1 describes them
@@ -125,7 +127,7 @@ for lv, runs in CLOTH.items():
 ORDER = list(NAMES)
 VIEWER = {"spring-k": SPRING_RUNS[("k", "movable")] + SPRING_RUNS[("k", "fixed")],
           "spring-block": SPRING_RUNS[("block", "movable")] + SPRING_RUNS[("block", "fixed")],
-          "box": list(BOX.values())}
+          "box": list(BOX.values()), **({"hand": list(HAND.values())} if WITH_MEDIA else {})}
 COMPARISONS = {}
 FIGURES = {}
 for lv in LEVELS:  # final force profiles (plot-force-profiles.py: every submission of a run)
@@ -145,6 +147,13 @@ for lv, level in BOX_LEVEL.items():
     FIGURES[f"com-solid-{level}.png"] = str(next((MAIN / "validation" / "wave18-analysis" / "baseline" / level).glob("artifacts/*/arm_probe_000/com.png")))
 BASELINE = json.loads((MAIN / "validation" / "wave18-analysis" / "baseline" / "box-baseline.json").read_text())  # solid uniform box, same exterior and mass
 
+EV = WORK2 / "eval-videos"  # render-eval-videos.py: side-by-side evaluation videos and cloth stills, one clips.json per run
+RENDERED = (list(BOX.values()) + list(TUNNEL.values()) + list(HINTED.values()) + [CUT_SHORT] + LIGHT["spring-out"][0] + LIGHT["spring-out"][1]
+            + [OUT["latch"]] + [r for runs in CLOTH.values() for r in runs])
+CLIPS = {r: json.loads((EV / r / "clips.json").read_text()) for r in RENDERED} if WITH_MEDIA else {}
+FIGURES.update({f"clips/{c['file']}": str(EV / c["file"]) for cs in CLIPS.values() for c in cs})
+SCALE = {x["run"]: x for x in json.loads((WORK2 / "spring-scale.json").read_text())} if WITH_SCALE else {}  # spring-scale-usage.py
+
 # ---------------- metrics ----------------
 SPRING_KEYS = ["r:mass:cluster", "r:mass:spring_base", "r:mass:spring_top", "r:stiffness"]
 METRICS = {"r:mass:cluster": ("sphere cluster mass", "ratio"), "r:mass:spring_base": ("bottom plate mass", "ratio"), "r:mass:spring_top": ("top plate mass", "ratio"),
@@ -152,7 +161,7 @@ METRICS = {"r:mass:cluster": ("sphere cluster mass", "ratio"), "r:mass:spring_ba
            "mech_rel": ("mechanism force error (÷ true force)", "err"), "fp_push_n": ("slow-push force error (N)", "err"),
            "fp_retract_n": ("slow-retract force error (N)", "err"), "fp_fast_n": ("fast-cycle force error (N)", "err"),
            "traj_mm": ("composite COM path error, mean of 4 throws (mm)", "err"), "r:mass:cube": ("cube mass", "ratio"),
-           "fp_rel": ("force-profile error (÷ true force)", "err"), "hand_traj_mm": ("object COM path error, squeeze and tilt (mm)", "err"),
+           "fp_rel": ("force-profile error (÷ true force)", "err"), "abs:damping": ("damping, true value 0 (N·s/m)", "err"), "hand_traj_mm": ("object COM path error, squeeze and tilt (mm)", "err"),
            "tactile_n": ("touch-sensor error (N)", "err"), "rest_chamfer_mm": ("cloth shape at rest, Chamfer (mm)", "err"),
            "drop_chamfer_mm": ("cloth shape during 5 drops, Chamfer (mm)", "err"), "stiff_rel": ("lift-force error over a 4×4 grid (÷ true)", "err"),
            **{f"traj:{p}_mm": (f"COM path error, {PROBE_NAME[p]} (mm)", "err") for p in PROBES}}
@@ -162,7 +171,12 @@ def estimates(run, source, m, default):
     """Spring levels: mass on each source body (every positive-mass candidate body goes to the nearest source body by COM, so a split model
     still sums correctly) and the stiffest slide joint. Tunnel and box levels: none (their evaluator metrics are in extra_metrics)."""
     names = [b["name"] for b in source["bodies"]]
-    if run.startswith(("w16", "w17", "w18", "w19", "w21", "w22")) or "-out" in run or "-msd-" in run:
+    if "-msd-" in run:  # the block's slide joint: mass it carries, stiffness and damping (the three constants of the mechanism)
+        slides = [j for j in m["joints"] if j["type"] == 2]
+        assert slides, (run, "no slide joint")
+        j = max(slides, key=lambda j: j["stiffness"])
+        return {"mass": next(b["subtree_mass"] for b in m["bodies"] if b["name"] == j["body"]), "stiffness": j["stiffness"], "damping": j["damping"]}
+    if run.startswith(("w16", "w17", "w18", "w19", "w21", "w22")) or "-out" in run:
         return {}
     if "spring_base" not in names:
         return default(source, m)
@@ -366,11 +380,37 @@ def sections(ctx):
         return blk(type="html", html=f"<p class='caption'><b>{kind} {'A' if appendix else ''}{counters[(kind, appendix)]}.</b> {text}</p>")
 
     lead = lambda text: blk(type="html", html=f"<p>{text}</p>")
+    media = lambda make: make() if WITH_MEDIA else []
+    scale_on = lambda make: make() if WITH_SCALE else []
+    clip_items = lambda runs, fam=None: [dict(src=f"clips/{c['file']}", label=f"{' · '.join(NAMES[c['run']])} · {c['clip']}", run=c["run"])
+                                         for r in runs for c in CLIPS[r] if fam is None or c["family"] == fam]
+    mn = lambda t: "never" if t is None else f"min {t / 60:.0f}"
+
+    def scale_rows(runs):
+        """Did the agent seat the spring in the hole and weigh things on it (in the hidden scene), and in what order?"""
+        rows = []
+        for r in runs:
+            sc, fw = SCALE[r], SCALE[r]["first_wall_s"]
+            obj = "cluster" if "cluster" in sc["targets"] else "cube"
+            block = fw.get("block_weighed") if "block" in sc["targets"] else None
+            order = "—" if "block" not in sc["targets"] else ("block first: calibrated k, then weighed the object" if block is not None and fw.get(f"{obj}_weighed") is not None and block < fw[f"{obj}_weighed"]
+                                                           else "weighed the object only" if fw.get(f"{obj}_weighed") is not None and block is None
+                                                           else "used the block only" if block is not None and fw.get(f"{obj}_weighed") is None
+                                                           else "object first" if block is not None else "neither")
+            note = next((n for n in sc["notes"] if "hole" in n["text"].lower()), None) or next(iter(sc["notes"]), None)
+            rows.append([lnk(r, " · ".join(NAMES[r])), hl(mn(fw.get("spring_in_hole")), fw.get("spring_in_hole") is not None),
+                         hl(mn(fw.get(f"{obj}_weighed")), fw.get(f"{obj}_weighed") is not None), mn(block) if "block" in sc["targets"] else "—", order,
+                         x(f(r, f"r:mass:{obj}")), f"<span class='small'>min {note['min']}: “{note['text'][:220]}{'…' if len(note['text']) > 220 else ''}”</span>" if note else "—"])
+        return rows
+    scale_head = ["run", "spring put in the hole", "object weighed on it", "block weighed on it", "order", "final object mass ÷ true", "first note about the hole or weighing"]
+    seated = lambda runs: sum(SCALE[r]["first_wall_s"].get("spring_in_hole") is not None for r in runs)
+    weighed = lambda runs: sum(any(k.endswith("_weighed") and not k.startswith("block") for k in SCALE[r]["first_wall_s"]) for r in runs)
     fmt_k = lambda k, v: "—" if v is None else x(v) if k.startswith("r:") else mm(v) if k.endswith("_mm") else pct(v) if k.endswith("_rel") else f"{v:.3g}"
     first_le = lambda r, k, v: next((u["t"] for u in R[r]["subs"] if u["m"].get(k) is not None and u["m"][k] <= v), None)
     minute = lambda t: "never" if t is None else f"min {t:.0f}"
     med = lambda vals: float(np.median([v for v in vals if v is not None]))
     sec = []
+    FRANKA = [r for runs in SPRING_RUNS.values() for r in runs] + list(SPRING_VARIANTS.values())
 
     # ---------------- 1 · spring levels and the movable camera ----------------
     within = lambda r, k, tol=0.05: f(r, k) is not None and abs(f(r, k) - 1) <= tol
@@ -419,7 +459,14 @@ def sections(ctx):
                 cap("Table", L("<b>Two variants, one run each (movable camera).</b> Square plates that fit the hole at any angle, and a plug of unstated mass "
                                "standing in the hole. No agent put the spring into the hole, and none resolved the 1:2:4:8 sphere masses of the cluster (all "
                                "modeled equal spheres, which is the remaining COM error).")),
-                blk(type="table", head=["level", "Chamfer", "COM error", "cluster mass", "plate masses", "plug mass"], rows=var_rows)]))
+                blk(type="table", head=["level", "Chamfer", "COM error", "cluster mass", "plate masses", "plug mass"], rows=var_rows),
+                *scale_on(lambda: [cap("Table", L("<b>Did the agent use the spring as a scale?</b> The level is built for it: seat the spring in the hole (its top plate "
+                               "then sits flush with the table), set the cluster on it, and read the compression, m = k·x/g; with the block mass stated "
+                               "instead of k, weigh the block first to get k. From every 10th recorded state of the hidden scene: when the spring first "
+                               f"sat in the hole and when an object first rested on it there. {seated(FRANKA)} of {len(FRANKA)} Franka runs seated the "
+                               f"spring and {weighed(FRANKA)} weighed the cluster on it; their masses came from other evidence (plate oscillation with the "
+                               "known k, and the arm's joint sag under load).")),
+                blk(type="table", head=scale_head, rows=scale_rows(FRANKA))])]))
     sam_calls = {r: sum(n for k, n in R[r]["actions"].items() if k.startswith("sam3d|")) for d in GEO.values() for k, r in d.items() if k.startswith("sam")}
     sec.append(dict(id="sam3d", nav="SAM-3D", tag="one run per condition",
         title="2 · Geometry scenes: neither a movable camera nor a 3D shape-recovery tool changes shape accuracy; the tool is used only when required",
@@ -471,6 +518,10 @@ def sections(ctx):
                                 "from early to late; left two panels slow push/retract cycles, right the fast cycle).")),
                 blk(type="images", items=[dict(src=f"fp-{r}.png", label=" · ".join(NAMES[r]), run=r) for lv, su in (("damper", "grasp"), ("nonlinear", "grasp-seq"))
                                           for r in (TUNNEL[(lv, su)], HINTED[(lv, su)])]),
+                *media(lambda: [cap("Figure", L("<b>The scored force probe on each final model.</b> Left: hidden scene; right: the agent's model, zoomed on the stick. "
+                                "Yellow arrow: the force the probe's handle applies at the grasp point (4 mm per N). Below: resistance against the push "
+                                "along the tunnel, filling in as the probe runs (black: truth; orange: model).")),
+                blk(type="clips", title=None, items=clip_items(list(TUNNEL.values()) + list(HINTED.values()), "tunnel"))]),
                 cap("Figure", L("<b>Time course of the mechanism error, without and with the hint.</b> One point per submission.")),
                 conv([[TUNNEL[(lv, "grasp")], f"{LEVEL_NAME[lv]}, no hint"] for lv in ("damper", "spring")] +
                      [[HINTED[(lv, "grasp")], f"{LEVEL_NAME[lv]}, hint", {"color": c}] for lv, c in (("damper", "--third"), ("spring", "--fourth"))],
@@ -502,6 +553,10 @@ def sections(ctx):
                     quote(BOX[("heavy", "hint")], "hollow six-wall box with a freely moving internal sphere")]),
                 cap("Figure", "<b>Time course of the mean COM path error</b> (the solid box scores " + ", ".join(f"{base[lv]:.0f} mm ({BOX_NAME[lv].split(', ')[1]})" for lv in BOX_LEVEL) + ")."),
                 conv([[r, " · ".join(NAMES[r])] for r in BOX.values()], ["traj_mm"], title="Composite COM path error", xmax=380),
+                *media(lambda: [cap("Figure", L("<b>The four scripted throws, hidden scene (left) against the agent's final model (right)</b>, re-simulated exactly as "
+                                "scored, with the box walls drawn see-through so the contents show. The camera follows the hidden scene's box, and "
+                                "the model is filmed along the same camera path.")),
+                blk(type="clips", title=None, items=clip_items(BOX.values(), "box"))]),
                 cap("Figure", "<b>Box reconstructions in 3D</b>: the hidden body is visible here (solid = truth, wireframe = reconstruction)."),
                 blk(type="viewer", group="box", title="Sealed boxes")]))
 
@@ -520,6 +575,8 @@ def sections(ctx):
                 cap("Table", L("<b>Final force-profile error</b> (RMS difference over the evaluator's whole insertion and push/retract probe, ÷ RMS true "
                                "resistance; green = under 5%), and the first submission within 1%.")),
                 blk(type="table", head=["level", "force error", "within 1% at", "submissions", "minutes"], rows=out_rows),
+                *media(lambda: [cap("Figure", "<b>The scored probe</b> (insertion, then push and pull strokes) on each final model, as in section 3."),
+                blk(type="clips", title=None, items=clip_items(LIGHT["spring-out"][0] + LIGHT["spring-out"][1] + [OUT["latch"]], "tunnel"))]),
                 conv([[r, NAMES[r][0]] for r in OUT.values()], ["fp_rel", "chamfer_mm"], title="Time course", xmax=360)]))
 
     msd_rows = [[lnk(r, NAMES[r][0]), fpcell(r), exact_at(r, "fp_rel", 0.01), mm(f(r, "chamfer_mm")), f"{R[r]['wall_min']:.0f}"] for r in MSD.values()]
@@ -532,8 +589,16 @@ def sections(ctx):
                        "damper, so only pulling and releasing the block tells them apart. Point grasp with force reading, movable camera.")),
                 cap("Table", L("<b>Final force-profile error</b> (slow and fast pull cycles; green = under 5%) and the first submission within 1%.")),
                 blk(type="table", head=["level", "force error", "within 1% at", "Chamfer", "minutes"], rows=msd_rows),
-                conv([[r, NAMES[r][0]] for r in MSD.values()], ["fp_rel"], title="Time course", xmax=360)]))
+                cap("Table", L("<b>The three constants at every submission</b> (mass the slide joint carries, its stiffness and its damping, read from "
+                               "the compiled submission; green = exact). True values: 0.5 kg, 32 N/m, and 0.8 N·s/m with the damper (0 without). Every "
+                               "final model is one body on one slide joint with exactly these constants.")),
+                blk(type="table", head=["level", "submission", "minute", "mass (kg)", "stiffness (N/m)", "damping (N·s/m)"],
+                    rows=[[lnk(r, NAMES[r][0]) if i == 0 else "", str(i + 1), f"{u['t']:.0f}"] +
+                          [hl(f"{u['est'][k]:.4g}", abs(u['est'][k] - R[r]['truth'][k]) < 1e-6) if u["est"] else "rejected" for k in ("mass", "stiffness", "damping")]
+                          for r in MSD.values() for i, u in enumerate(R[r]["subs"])]),
+                conv([[r, NAMES[r][0]] for r in MSD.values()], ["fp_rel", "r:mass", "r:stiffness", "r:damping", "abs:damping"], title="Time course", xmax=360)]))
 
+    PG = list(POINT.values()) + [r for fam in ("tetra", "cube") for runs in LIGHT[fam] for r in runs if r not in POINT.values()]
     p_keys = lambda r: ["r:mass:cluster" if "tetra" in r else "r:mass:cube", "r:mass:spring_base", "r:mass:spring_top"]
     p_rows = [[lnk(r, NAMES[r][0]), mm(f(r, "chamfer_mm")), mm(f(r, "com_mm"))] + [hl(x(f(r, k)), within(r, k)) for k in p_keys(r)] +
               [hl(x(f(r, "r:stiffness")), within(r, "r:stiffness")) if "block" in r else "stated"] for r in POINT.values()]
@@ -545,7 +610,12 @@ def sections(ctx):
                        "(no damping). Weighing an object means setting it on the spring and measuring the compression in the camera or depth image.")),
                 cap("Table", L("<b>Final submissions</b> (green = within 5%). Masses are estimate ÷ true.")),
                 blk(type="table", head=["level", "Chamfer", "COM error", "object mass", "bottom plate", "top plate", "stiffness"], rows=p_rows),
-                conv([[r, NAMES[r][0]] for r in POINT.values()], ["chamfer_mm", "r:mass:cluster", "r:mass:cube"], title="Time course", xmax=360)]))
+                conv([[r, NAMES[r][0]] for r in POINT.values()], ["chamfer_mm", "r:mass:cluster", "r:mass:cube"], title="Time course", xmax=360),
+                *scale_on(lambda: [cap("Table", L("<b>Did the agent use the spring as a scale?</b> As the table in section 1, for every point-grasp run (with and without the true "
+                               f"lighting, both runs). {seated(PG)} of {len(PG)} runs seated the spring in the hole and {weighed(PG)} weighed the object "
+                               "on it in the hidden scene. On the block levels the order column says whether the agent first weighed the known block "
+                               "to establish k and then the unknown object.")),
+                blk(type="table", head=scale_head, rows=scale_rows(PG))])]))
 
     key = {"spring-out": "fp_rel", "tetra": "r:mass:cluster", "cube": "r:mass:cube", "msd": "fp_rel", "cloth": "stiff_rel"}
     lo_hi = lambda runs: f"{100 * min(app(r) for r in runs):.0f}–{100 * max(app(r) for r in runs):.0f}%"
@@ -586,7 +656,10 @@ def sections(ctx):
                        "velocities, efforts and fingertip and palm touch grids; no camera. Scored on shape, COM, and two scripted probes (squeeze, tilt).")),
                 cap("Table", "<b>Final submissions.</b> Path error and touch-sensor error are the evaluator's squeeze and tilt probes, averaged."),
                 blk(type="table", head=["object", "Chamfer", "COM error", "mass ÷ true", "object path error", "touch-sensor error (N)"], rows=h_rows),
-                conv([[r, " · ".join(NAMES[r])] for r in HAND.values()], ["chamfer_mm", "com_mm", "r:mass"], title="Time course", xmax=360)]))
+                conv([[r, " · ".join(NAMES[r])] for r in HAND.values()], ["chamfer_mm", "com_mm", "r:mass"], title="Time course", xmax=360),
+                *media(lambda: [cap("Figure", L("<b>Each held object in 3D</b>: true shape (solid) and the agent's reconstruction (wireframe), the hand left out; pick a "
+                                "run and drag the slider through its submissions.")),
+                blk(type="viewer", group="hand", title="Shadow hand objects")])]))
 
     c_rows = [[lnk(r, NAMES[r][0]) if rep_n(r) == 1 else "", lnk(r, f"run {rep_n(r)}"), mm(f(r, "rest_chamfer_mm")), mm(f(r, "drop_chamfer_mm")),
                hl(pct(f(r, "stiff_rel")), f(r, "stiff_rel") is not None and f(r, "stiff_rel") < 0.05), f"{R[r]['wall_min']:.0f}"]
@@ -603,6 +676,15 @@ def sections(ctx):
                        "lifting the cloth at 16 grid points, by five drops onto a bar or cone, and by shape at rest.")),
                 cap("Table", L("<b>Final submissions</b> (green = lift force within 5%).")),
                 blk(type="table", head=["level", "run", "shape at rest", "shape in drops", "lift-force error", "minutes"], rows=c_rows),
+                *media(lambda: [cap("Figure", L("<b>Cloth levels, truth against the agent's final model.</b> Per level: the trusted-camera image at rest; the "
+                                "bending-stiffness field (each cloth region coloured by the median magnitude of MuJoCo's compiled bending "
+                                "coefficients, one log scale for both; relative units); the evaluator's lift force at 16 grid points (truth, model, "
+                                "difference); and the evaluator's drops onto a bar, side by side."))])] +
+               media(lambda: [b for lv, runs in CLOTH.items() for b in (
+                   blk(type="html", html=f"<h3>{CLOTH_NAME[lv].capitalize()}</h3>"),
+                   blk(type="images", items=[dict(src=f"clips/{c['file']}", label=f"{c['clip']}: truth (left) vs model (right), run 1", run=runs[0])
+                                             for c in CLIPS[runs[0]] if c["family"] == "cloth-still"]),
+                   blk(type="clips", title=None, items=clip_items(runs, "cloth")))]) + [
                 conv([[runs[0], CLOTH_NAME[lv]] for lv, runs in CLOTH.items()], ["stiff_rel", "drop_chamfer_mm"], title="Time course (first runs)", xmax=360)]))
 
     # ---------------- 11 · strategies ----------------

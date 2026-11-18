@@ -114,7 +114,8 @@ def submission(source, model, hist, truth, est_fn=estimates):
     else:  # compiled COM of the object bodies; must equal the evaluator's wherever it reports one
         m["com_mm"] = 1000 * math.dist(model["com"], source["com"])
         assert rec.get("center_of_mass_error_m") is None or abs(rec["center_of_mass_error_m"] * 1000 - m["com_mm"]) < 0.01
-    m.update({f"r:{k}": None if v is None else v / truth[k] for k, v in est.items()})
+    # estimate ÷ true; a parameter that is zero in the truth (e.g. an undamped spring's damping) keeps its absolute value as abs:<name>
+    m.update({(f"r:{k}" if truth[k] else f"abs:{k}"): None if v is None else v / truth[k] if truth[k] else v for k, v in est.items()})
     spheres = [k for k in est if k.startswith("sphere:")]
     if spheres:
         m["sphere_err"] = max(abs(est[k] / truth[k] - 1) for k in spheres)
@@ -298,6 +299,7 @@ def data(spec_path, work, out):
     if hasattr(S, "FIGURES"):  # optional spec field: {published name: researcher PNG}, served as figs/<name>
         (out / "figs").mkdir()
         for name, src in S.FIGURES.items():
+            (out / "figs" / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(src, out / "figs" / name)
     for f in ("three.min.js", "OrbitControls.js"):
         shutil.copy(Path(S.VENDOR) / f, out / "vendor" / f)
