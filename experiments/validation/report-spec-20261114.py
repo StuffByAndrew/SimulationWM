@@ -17,15 +17,17 @@ PLAIN = MAIN / "reports" / "report-work-plain"
 RA = MAIN / "validation" / "rerun-analysis"
 NETRUNS = Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs")
 REF = {"boat": "w10-boat-base-20261105-001", "assembly": "w10-assembly-base-20261105-001"}  # baselines from the previous report
-SUMMARIES = (MAIN / "validation" / "results-w11-18.json", MAIN / "validation" / "results-w19.json", (MAIN / "validation" / "results-wave10.json", set(REF.values())))
+WORK2 = MAIN / "reports" / "report-work-20261118"  # runs finished 2026-11-14..18 (waves 19-22 and replicates)
+SUMMARIES = (MAIN / "validation" / "results-w11-18.json", MAIN / "validation" / "results-w19.json", MAIN / "validation" / "results-w20-22.json",
+             MAIN / "validation" / "results-w19-003.json", (MAIN / "validation" / "results-wave10.json", set(REF.values())))
 INVALID = set()  # invalid attempts (wave 19 -001, marble-equal -002) are not in NAMES; Appendix A1 describes them
 MODELS = (RA / "models-H.json", RA / "models-I.json", RA / "models-J.json", RA / "models-K.json", RA / "models-L.json", RA / "models-M.json",
-          MAIN / "validation" / "rerun-analysis-plain" / "models-F.json", MAIN / "validation" / "rerun-analysis-plain" / "models-G.json", WORK / "models-w16-19.json")
+          MAIN / "validation" / "rerun-analysis-plain" / "models-F.json", MAIN / "validation" / "rerun-analysis-plain" / "models-G.json", WORK / "models-w16-19.json", WORK2 / "models.json")
 CHECKPOINTS = (RA / "checkpoints-H.json", RA / "checkpoints-I.json", RA / "checkpoints-J.json", RA / "checkpoints-K.json", RA / "checkpoints-L.json",
                RA / "checkpoints-M.json", MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-F.json",
-               MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-G.json", WORK / "checkpoints-w16-19.json")
-TRACES = (WORK / "traces", PLAIN / "traces")
-CHAT = (WORK / "chat", PLAIN / "chat")
+               MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-G.json", WORK / "checkpoints-w16-19.json", WORK2 / "checkpoints.json")
+TRACES = (WORK / "traces", WORK2 / "traces", PLAIN / "traces")
+CHAT = (WORK / "chat", WORK2 / "chat", PLAIN / "chat")
 EDITS = WORK / "edits.json"
 VENDOR = Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/report-work-20261103/vendor")
 CONTINUATIONS = {}
@@ -54,13 +56,39 @@ HINTED = {("curved", "grasp"): "w17-curved-grasp-hint-20261110-001", ("curved", 
           ("nonlinear", "grasp-seq"): "w17-nonlinear-grasp-seq-hint-20261110-001", ("spring", "grasp"): "w17-spring-grasp-hint-20261110-001"}
 CUT_SHORT = "w17-nonlinear-grasp-hint-20261110-001"  # orchestrator error: its hold was never reviewed; rerun as -002
 BOX = {("heavy", "no hint"): "w18-marble-heavy-20261113-001", ("equal", "no hint"): "w18-marble-equal-20261113-001",
-       ("cylinder", "no hint"): "w18-cylinder-20261113-001", ("heavy", "hint"): "w19-marble-heavy-hint-20261114-002"}
+       ("cylinder", "no hint"): "w18-cylinder-20261113-001", ("heavy", "hint"): "w19-marble-heavy-hint-20261114-002",
+       ("equal", "hint"): "w19-marble-equal-hint-20261114-003"}
 BOX_LEVEL = {"heavy": "box_marble_heavy", "equal": "box_marble_equal", "cylinder": "box_cylinder"}
 BOX_NAME = {"heavy": "Sealed box, heavy ball", "equal": "Sealed box, light ball", "cylinder": "Sealed box, cylinder"}
 PROBES = ["throw_forward", "throw_side", "toss_up", "tilt_shake"]
 PROBE_NAME = {"throw_forward": "throw forward", "throw_side": "throw sideways", "toss_up": "toss up", "tilt_shake": "tilt and shake"}
 LEVEL_NAME = {"spring": "spring", "damper": "spring + damper", "nonlinear": "nonlinear spring", "latch": "push-push latch", "curved": "curved tunnel, spring"}
 
+W20 = lambda n: f"w20-{n}-20261116-001"
+OUT = {"spring": W20("spring-out"), "latch": W20("latch-out")}  # tunnels with the stick starting outside
+MSD = {("spring", "visible"): "w20-msd-spring-visible-20261116-002", ("spring", "hidden"): W20("msd-spring-hidden"),
+       ("damper", "visible"): W20("msd-damper-visible"), ("damper", "hidden"): W20("msd-damper-hidden")}
+POINT = {("tetra", "k"): W20("tetra-spring"), ("tetra", "block"): W20("tetra-spring-block"), ("cube", "k"): W20("cube-spring"), ("cube", "block"): W20("cube-spring-block")}
+LIGHT = {  # family: ([runs without the true lighting], [runs with it]); first runs were extended to 6 h, replicates stopped at their cost limit
+    "spring-out": ([OUT["spring"], "w20-spring-out-r2-20261118-001"], [W20("spring-out-lit"), "w20-spring-out-lit-r2-20261116-001"]),
+    "tetra": ([POINT[("tetra", "k")], "w20-tetra-spring-r2-20261117-001"], [W20("tetra-spring-lit"), "w20-tetra-spring-lit-r2-20261117-001"]),
+    "cube": ([POINT[("cube", "k")], "w20-cube-spring-r2-20261117-001"], [W20("cube-spring-lit"), "w20-cube-spring-lit-r2-20261117-001"]),
+    "msd": ([MSD[("spring", "visible")], "w20-msd-spring-visible-r2-20261116-001"], [W20("msd-spring-visible-lit"), "w20-msd-spring-visible-lit-r2-20261118-001"]),
+    "cloth": (["w22-cloth-base-20261116-001", "w22-cloth-base-r2-20261116-001"], ["w22-cloth-base-lit-20261116-001", "w22-cloth-base-lit-r2-20261116-001"])}
+LIGHT_NAME = {"spring-out": "Tunnel from outside: spring", "tetra": "Cluster on a spring, stiffness stated", "cube": "Cube on a spring, stiffness stated",
+              "msd": "1D mass, visible spring", "cloth": "Cloth: uniform"}
+HAND = {"prism": "w21-hand-prism-20261116-001", "prism-offset-com": "w21-hand-prism-offset-com-20261116-001", "smooth-mesh": "w21-hand-smooth-mesh-20261116-001",
+        "spiky": "w21-hand-spiky-20261116-001", "spiky r2": "w21-hand-spiky-r2-20261116-001"}
+HAND_NAME = {"prism": "prism", "prism-offset-com": "prism, off-centre COM", "smooth-mesh": "smooth convex shape", "spiky": "two cones", "spiky r2": "two cones"}
+CLOTH_LEVELS = ["base", "quadrants", "quadrants-colored", "quadrants-diagonal-colors", "holes", "center-hole-stiff-rim", "center-hole-soft-rim"]
+CLOTH_NAME = {"base": "uniform", "quadrants": "four stiffness quadrants", "quadrants-colored": "quadrants, each coloured", "quadrants-diagonal-colors":
+              "quadrants, colours on the diagonals (misleading)", "holes": "holes and cuts", "center-hole-stiff-rim": "centre hole, stiff rim",
+              "center-hole-soft-rim": "centre hole, soft rim"}
+CLOTH = {lv: [f"w22-cloth-{lv}-20261116-001"] + ([f"w22-cloth-{lv}-r2-20261116-001"] if lv in ("base", "quadrants", "quadrants-colored", "quadrants-diagonal-colors") else [])
+         for lv in CLOTH_LEVELS}
+LOST = ["w18-cylinder-r2-20261116-001", "w19-marble-equal-hint-r2-20261116-001", "w19-marble-heavy-hint-r2-20261116-001", "w20-cube-spring-r2-20261116-001",
+        "w20-cube-spring-lit-r2-20261116-001", "w20-msd-spring-visible-lit-r2-20261116-001", "w20-spring-out-r2-20261116-001", "w20-tetra-spring-r2-20261116-001",
+        "w20-tetra-spring-lit-r2-20261116-001", "w21-hand-prism-r2-20261116-001", "w21-hand-prism-offset-com-r2-20261116-001", "w21-hand-smooth-mesh-r2-20261116-001"]
 rep_n = lambda r: int(m.group(1)) if (m := re.search(r"-r(\d)-\d{8}-\d{3}$", r)) else 1
 NAMES = {}
 for (lv, cam), runs in SPRING_RUNS.items():
@@ -80,6 +108,20 @@ for (lv, su), r in HINTED.items():
 NAMES[CUT_SHORT] = ("Tunnel: nonlinear spring", "point grasp, hint (cut short)")
 for (lv, h), r in BOX.items():
     NAMES[r] = (BOX_NAME[lv], h)
+for lv, r in OUT.items():
+    NAMES[r] = (f"Tunnel from outside: {LEVEL_NAME[lv]}", "point grasp")
+for (k, v), r in MSD.items():
+    NAMES[r] = (f"1D mass, {v} {'spring' if k == 'spring' else 'spring + damper'}", "point grasp")
+for (o, k), r in POINT.items():
+    NAMES[r] = (f"{'Cluster' if o == 'tetra' else 'Cube'} on a spring, {'stiffness stated' if k == 'k' else 'block mass stated'}", "point grasp, no force reading")
+for fam, (unlit, lit) in LIGHT.items():
+    for r in unlit + lit:
+        NAMES[r] = (LIGHT_NAME[fam], ("true lighting given" if r in lit else "lighting not given") + f", run {rep_n(r)}")
+for lv, r in HAND.items():
+    NAMES[r] = (f"Shadow hand: {HAND_NAME[lv]}", f"touch only, run {rep_n(r)}")
+for lv, runs in CLOTH.items():
+    for r in runs:
+        NAMES.setdefault(r, (f"Cloth: {CLOTH_NAME[lv]}", f"run {rep_n(r)}"))
 ORDER = list(NAMES)
 VIEWER = {"spring-k": SPRING_RUNS[("k", "movable")] + SPRING_RUNS[("k", "fixed")],
           "spring-block": SPRING_RUNS[("block", "movable")] + SPRING_RUNS[("block", "fixed")],
@@ -109,7 +151,10 @@ METRICS = {"r:mass:cluster": ("sphere cluster mass", "ratio"), "r:mass:spring_ba
            "r:mass:block": ("block mass", "ratio"), "r:mass:plug": ("plug mass", "ratio"), "r:stiffness": ("spring stiffness", "ratio"),
            "mech_rel": ("mechanism force error (÷ true force)", "err"), "fp_push_n": ("slow-push force error (N)", "err"),
            "fp_retract_n": ("slow-retract force error (N)", "err"), "fp_fast_n": ("fast-cycle force error (N)", "err"),
-           "traj_mm": ("composite COM path error, mean of 4 throws (mm)", "err"),
+           "traj_mm": ("composite COM path error, mean of 4 throws (mm)", "err"), "r:mass:cube": ("cube mass", "ratio"),
+           "fp_rel": ("force-profile error (÷ true force)", "err"), "hand_traj_mm": ("object COM path error, squeeze and tilt (mm)", "err"),
+           "tactile_n": ("touch-sensor error (N)", "err"), "rest_chamfer_mm": ("cloth shape at rest, Chamfer (mm)", "err"),
+           "drop_chamfer_mm": ("cloth shape during 5 drops, Chamfer (mm)", "err"), "stiff_rel": ("lift-force error over a 4×4 grid (÷ true)", "err"),
            **{f"traj:{p}_mm": (f"COM path error, {PROBE_NAME[p]} (mm)", "err") for p in PROBES}}
 
 
@@ -117,7 +162,7 @@ def estimates(run, source, m, default):
     """Spring levels: mass on each source body (every positive-mass candidate body goes to the nearest source body by COM, so a split model
     still sums correctly) and the stiffest slide joint. Tunnel and box levels: none (their evaluator metrics are in extra_metrics)."""
     names = [b["name"] for b in source["bodies"]]
-    if run.startswith(("w16", "w17", "w18", "w19")):
+    if run.startswith(("w16", "w17", "w18", "w19", "w21", "w22")) or "-out" in run or "-msd-" in run:
         return {}
     if "spring_base" not in names:
         return default(source, m)
@@ -149,11 +194,31 @@ _FP = {}
 
 
 def extra_metrics(run, i, hist):
+    if hist["status"] == "failed":  # rejected by the evaluator: a gap, as the builder records it
+        return {}
     if run.startswith(("w16", "w17")):
         if run not in _FP:
             _FP[run] = json.loads((NETRUNS / run / "force-profile-rescore.json").read_text())["versions"]
         assert len(_FP[run]) >= i + 1, run
         return _fp_errors(_FP[run][f"version-{i + 1:03d}"])
+    if run.startswith(("w20", "w21", "w22")):
+        ev = json.loads((NETRUNS / run / f"version-{i + 1:03d}" / "evaluation.json").read_text())
+        assert ev["version"] == hist["version"], (run, i)
+        sc = ev["scores"]
+        if "force_profile" in sc:  # tunnels from outside, 1D spring-mass: whole-probe RMS error ÷ RMS true resistance
+            fp = sc["force_profile"]
+            return {"fp_rel": None if fp["status"] != "ok" else fp["rms_resistance_error_n"] / float(np.sqrt(np.mean(np.asarray(fp["source"]["resistance_n"]) ** 2)))}
+        if "arm_probes" in sc:  # Shadow hand: squeeze and tilt probes
+            probes = [p for p in sc["arm_probes"] if p["status"] == "ok"]
+            assert len(probes) == len(sc["arm_probes"]) == 2, (run, i)
+            return {"hand_traj_mm": 1000 * float(np.mean([p["object_com"]["trajectory_mean_error_m"] for p in probes])),
+                    "r:mass": probes[0]["object_com"]["candidate_mass_kg"] / probes[0]["object_com"]["source_mass_kg"],
+                    "tactile_n": float(np.mean([p["tactile_mae_n"] for p in probes]))}
+        if "cloth" in sc:
+            c = sc["cloth"]
+            return {} if c["status"] != "ok" else {"rest_chamfer_mm": 1000 * c["rest_chamfer_m"], "drop_chamfer_mm": 1000 * c["drop_mean_chamfer_m"],
+                                                   "stiff_rel": c["stiffness_map"]["lift_force_relative_error"]}
+        return {}
     if run.startswith(("w18", "w19")):
         ev = json.loads((NETRUNS / run / f"version-{i + 1:03d}" / "evaluation.json").read_text())
         assert ev["version"] == hist["version"], (run, i)
@@ -180,10 +245,11 @@ def quote(run, text):
     return dict(text=hits[0]["text"], run=run, name=" · ".join(NAMES[run]), minute=round(hits[0]["wall_elapsed"] / 60))
 
 
-META = dict(title="Hidden mechanisms, hidden contents and a movable camera: sim2sim results, 6–14 November 2026",
-            subtitle=L("Runs finished 2026-11-06 to 2026-11-14 · {n} runs (two are baselines repeated from the previous report) · each run is one "
+META = dict(title="Hidden mechanisms, hidden contents, touch and cloth: sim2sim results, 6–18 November 2026",
+            subtitle=L("Runs finished 2026-11-06 to 2026-11-18 · {n} runs (two are baselines repeated from the previous report) · each run is one "
                        "<code>gpt-6-astra</code> agent (medium reasoning) working alone in an isolated container, up to 4 h (spring and geometry levels) or 6 h "
-                       "(tunnel and box levels). <b>Mostly one run per condition</b>; the spring-level camera comparison has three runs per condition."),
+                       "(tunnel, box and later levels). <b>Mostly one run per condition</b>; the spring-level camera comparison has three runs per condition, "
+                       "the lighting comparison two."),
             intro=L(
                 "<h2 style='border:0;margin-top:20px'>The experiment</h2>"
                 "<p>Each run hides a MuJoCo scene and asks an LLM agent to rebuild it as a MuJoCo scene file whose geometry and physics match. The agent "
@@ -211,7 +277,18 @@ META = dict(title="Hidden mechanisms, hidden contents and a movable camera: sim2
                 "rolls (<b>heavy ball</b>: 68 g ball in a 12 g shell; <b>light ball</b>: 40 g in a 40 g shell), or a 55 g cylinder that rolls along one "
                 "axis. The exterior is identical in all three</td>"
                 "<td>path of the composite COM (box + contents) during four scripted throws by the arm, against a solid box with the same exterior and "
-                "mass</td></tr></table></div>"
+                "mass</td></tr>"
+                "<tr><td>Tunnel from outside</td><td>The tunnel spring and latch, with the stick starting 240 mm outside in an open trough</td>"
+                "<td>force profile</td></tr>"
+                "<tr><td>1D mass on a spring</td><td>A 0.5 kg block on a frictionless slide, held by a 32 N/m spring, with or without a damper "
+                "(0.8 N·s/m). Visible: a drawn coil and dashpot. Hidden: a closed stage, identical whatever is inside</td><td>force profile</td></tr>"
+                "<tr><td>Object on a spring, point grasp</td><td>The spring level of the first row without the Franka, with the sphere cluster or a "
+                "48 g cube, an ideal spring, and no force reading; stiffness or block mass stated</td><td>shape, COM, each part's mass, stiffness</td></tr>"
+                "<tr><td>Shadow hand</td><td>A dexterous hand, palm up, holding an unseen object (prism, prism with off-centre COM, smooth convex "
+                "shape, two cones). No camera: joint readings and touch grids only</td><td>shape, COM, mass, squeeze and tilt probes</td></tr>"
+                "<tr><td>Cloth</td><td>A square cloth whose bending stiffness is uniform, or differs by quadrant (plain, coloured, misleadingly "
+                "coloured), or around holes, cuts or a centre hole with a stiff or soft rim</td><td>lift force at 16 points, five drops, shape at "
+                "rest</td></tr></table></div>"
                 "<h3>Conditions</h3><div class='card scroll'><table class='intro'>"
                 "<tr><th>condition</th><th>what it means</th></tr>"
                 "<tr><td>point grasp</td><td>The agent pins any visible point of an object to an ideal handle, moves it, and reads the force on the handle</td></tr>"
@@ -224,6 +301,8 @@ META = dict(title="Hidden mechanisms, hidden contents and a movable camera: sim2
                 "the box: \"hidden contents that can move inside it\") without saying what</td></tr>"
                 "<tr><td>SAM-3D</td><td>An action that sends an image and a mask of one part to a 3D shape-recovery model (SAM-3D on a GPU) and returns a mesh. "
                 "Offered; offered with a sentence on when it helps; or required before modeling each part</td></tr>"
+                "<tr><td>true lighting given</td><td>The task includes the hidden scene's exact light elements, so the agent need not fit lighting "
+                "to match images</td></tr>"
                 "</table><p class='note'>All runs use the stop-when-done prompt of the previous report (finish when nothing about the reconstruction differs "
                 "from the hidden scene). Each run has an API cost limit the agent never sees; tunnel and box runs pause at that limit for review and were "
                 "either resumed (if the agent was still making progress on the hidden mechanism) or stopped (Methods).</p></div>"))
@@ -287,6 +366,7 @@ def sections(ctx):
         return blk(type="html", html=f"<p class='caption'><b>{kind} {'A' if appendix else ''}{counters[(kind, appendix)]}.</b> {text}</p>")
 
     lead = lambda text: blk(type="html", html=f"<p>{text}</p>")
+    fmt_k = lambda k, v: "—" if v is None else x(v) if k.startswith("r:") else mm(v) if k.endswith("_mm") else pct(v) if k.endswith("_rel") else f"{v:.3g}"
     first_le = lambda r, k, v: next((u["t"] for u in R[r]["subs"] if u["m"].get(k) is not None and u["m"][k] <= v), None)
     minute = lambda t: "never" if t is None else f"min {t:.0f}"
     med = lambda vals: float(np.median([v for v in vals if v is not None]))
@@ -402,11 +482,12 @@ def sections(ctx):
     for (lv, h), r in BOX.items():
         brow.append([lnk(r, BOX_NAME[lv]), h] + [hl(mm(f(r, f"traj:{p}_mm")), f(r, f"traj:{p}_mm") < 1000 * BASELINE[BOX_LEVEL[lv]][p]["trajectory_mean_error_m"])
                                                 for p in PROBES] + [f"<b>{mm(f(r, 'traj_mm'))}</b>", mm(base[lv]), x(f(r, "r:mass"))])
-    sec.append(dict(id="box", nav="Sealed box", tag="one run per condition · a fourth run is still in progress",
+    sec.append(dict(id="box", nav="Sealed box", tag="one run per condition",
         title="4 · Contents sealed in a box: inferred only from how the load shifts, and only when the contents slide or the task says they exist",
         q=None, answer=L("Without a hint only the cylinder agent found the contents (a sliding body, from load-centre shifts in tilted grasps). Both ball agents "
-                         "fitted contact and friction around a rigid box instead, and their models move worse than a plain solid box. With the hint, the "
-                         "heavy-ball agent modeled a free sphere inside a hollow shell and became the best ball model."),
+                         "fitted contact and friction around a rigid box instead, and their models move worse than a plain solid box. With the hint, both "
+                         "ball agents modeled a free sphere of the right mass inside a hollow shell, from loads alone (the camera can no longer see "
+                         "inside), and beat the solid box on most throws."),
         blocks=[cap("Table", L("<b>Composite COM path error per throw</b> (mm, final submission; green = better than a solid uniform box with the same "
                                "exterior and mass, the \"nothing inside\" model). Total mass was exact in every final model.")),
                 blk(type="table", head=["level", "task", *[PROBE_NAME[p] for p in PROBES], "mean", "solid box", "mass ÷ true"], rows=brow),
@@ -424,8 +505,108 @@ def sections(ctx):
                 cap("Figure", "<b>Box reconstructions in 3D</b>: the hidden body is visible here (solid = truth, wireframe = reconstruction)."),
                 blk(type="viewer", group="box", title="Sealed boxes")]))
 
-    # ---------------- 5 · strategies ----------------
-    sec.append(dict(id="strategy", nav="Strategies", tag=None, title="5 · How the agents work",
+    # ---------------- 5-10 · levels of 2026-11-16 ----------------
+    at = lambda r, k, t=120: next((u["m"].get(k) for u in reversed(R[r]["subs"]) if u["t"] <= t and u["m"].get(k) is not None), None)
+    exact_at = lambda r, k, tol: minute(first_le(r, k, tol))
+    app = lambda r: R[r]["taxonomy"]["appearance"] / max(1, R[r]["taxonomy"]["notes"])
+    fpcell = lambda r: hl(pct(f(r, "fp_rel")), f(r, "fp_rel") is not None and f(r, "fp_rel") < 0.05)
+    out_rows = [[lnk(r, NAMES[r][0]), fpcell(r), exact_at(r, "fp_rel", 0.01), str(R[r]["submissions"]), f"{R[r]['wall_min']:.0f}"] for r in OUT.values()]
+    sec.append(dict(id="tunnel-out", nav="Tunnel from outside", tag="one run per level",
+        title="5 · Tunnels with the stick starting outside: the mechanism is found and modeled exactly",
+        q=None, answer=L(f"With the stick lying outside the tunnel, so that any agent must insert it, the spring was modeled to "
+                         f"{pct(f(OUT['spring'], 'fp_rel'))} force error and the latch to {pct(f(OUT['latch'], 'fp_rel'))}, without any hint."),
+        blocks=[lead(L("Same mechanisms as section 3 (spring, push-push latch), but the stick starts 240 mm outside, in an open trough. Inserting it "
+                       "is the obvious first experiment, so every run reaches the plunger. Point grasp with force reading, fixed camera, sequence tool.")),
+                cap("Table", L("<b>Final force-profile error</b> (RMS difference over the evaluator's whole insertion and push/retract probe, ÷ RMS true "
+                               "resistance; green = under 5%), and the first submission within 1%.")),
+                blk(type="table", head=["level", "force error", "within 1% at", "submissions", "minutes"], rows=out_rows),
+                conv([[r, NAMES[r][0]] for r in OUT.values()], ["fp_rel", "chamfer_mm"], title="Time course", xmax=360)]))
+
+    msd_rows = [[lnk(r, NAMES[r][0]), fpcell(r), exact_at(r, "fp_rel", 0.01), mm(f(r, "chamfer_mm")), f"{R[r]['wall_min']:.0f}"] for r in MSD.values()]
+    sec.append(dict(id="msd", nav="1D spring-mass", tag="one run per level",
+        title="6 · A mass on a spring, visible or hidden: identified exactly either way",
+        q=None, answer=L("A 0.5 kg block on an ideal spring (32 N/m), with or without a damper, was identified to "
+                         + ", ".join(f"{pct(f(r, 'fp_rel'))}" for r in MSD.values()) + " force error (visible spring, hidden spring, visible "
+                         "damper, hidden damper). Hiding the mechanism inside a closed stage made no difference."),
+        blocks=[lead(L("The visible levels show a coil (and a dashpot); the hidden levels are a closed linear stage, pixel-identical with and without the "
+                       "damper, so only pulling and releasing the block tells them apart. Point grasp with force reading, movable camera.")),
+                cap("Table", L("<b>Final force-profile error</b> (slow and fast pull cycles; green = under 5%) and the first submission within 1%.")),
+                blk(type="table", head=["level", "force error", "within 1% at", "Chamfer", "minutes"], rows=msd_rows),
+                conv([[r, NAMES[r][0]] for r in MSD.values()], ["fp_rel"], title="Time course", xmax=360)]))
+
+    p_keys = lambda r: ["r:mass:cluster" if "tetra" in r else "r:mass:cube", "r:mass:spring_base", "r:mass:spring_top"]
+    p_rows = [[lnk(r, NAMES[r][0]), mm(f(r, "chamfer_mm")), mm(f(r, "com_mm"))] + [hl(x(f(r, k)), within(r, k)) for k in p_keys(r)] +
+              [hl(x(f(r, "r:stiffness")), within(r, "r:stiffness")) if "block" in r else "stated"] for r in POINT.values()]
+    sec.append(dict(id="point-spring", nav="Spring, point grasp", tag="one run per level (two for the stiffness-stated levels, section 8)",
+        title="7 · An object on a spring without force sensing: weighed exactly from the stated stiffness or block mass",
+        q=None, answer=L("Without a force reading, the stated stiffness (or block mass) is the only scale. Final object mass ÷ true: " +
+                         ", ".join(f"{NAMES[r][0].lower()} {x(f(r, p_keys(r)[0]))}" for r in POINT.values()) + "."),
+        blocks=[lead(L("The spring levels of section 1 without the Franka: the agent grasps points directly but reads no force. The spring is ideal "
+                       "(no damping). Weighing an object means setting it on the spring and measuring the compression in the camera or depth image.")),
+                cap("Table", L("<b>Final submissions</b> (green = within 5%). Masses are estimate ÷ true.")),
+                blk(type="table", head=["level", "Chamfer", "COM error", "object mass", "bottom plate", "top plate", "stiffness"], rows=p_rows),
+                conv([[r, NAMES[r][0]] for r in POINT.values()], ["chamfer_mm", "r:mass:cluster", "r:mass:cube"], title="Time course", xmax=360)]))
+
+    key = {"spring-out": "fp_rel", "tetra": "r:mass:cluster", "cube": "r:mass:cube", "msd": "fp_rel", "cloth": "stiff_rel"}
+    lo_hi = lambda runs: f"{100 * min(app(r) for r in runs):.0f}–{100 * max(app(r) for r in runs):.0f}%"
+    assert all(max(app(r) for r in lit) <= min(app(r) for r in unlit) + 0.01 for unlit, lit in LIGHT.values())  # the answer's claim
+    l_rows = []
+    for fam, (unlit, lit) in LIGHT.items():
+        k = key[fam]
+        for lab, runs in (("not given", unlit), ("given", lit)):
+            l_rows.append([LIGHT_NAME[fam] if lab == "not given" else "", f"lighting {lab}", METRICS[k][0],
+                           " / ".join(lnk(r, fmt_k(k, f(r, k))) for r in runs), " / ".join(fmt_k(k, at(r, k)) for r in runs),
+                           " / ".join(f"{100 * app(r):.0f}%" for r in runs), " / ".join(f"{R[r]['wall_min']:.0f}" for r in runs)])
+    sec.append(dict(id="lighting", nav="Lighting", tag="two runs per condition",
+        title="8 · Giving the agent the true lighting: less appearance work, same physics",
+        q=None, answer=L("In every one of the five levels, both runs given the true lighting wrote a smaller share of progress notes about appearance "
+                         "and lighting than both runs without it (" + "; ".join(f"{LIGHT_NAME[fam]}: {lo_hi(lit)} vs {lo_hi(unlit)}"
+                                                                               for fam, (unlit, lit) in LIGHT.items()) + "). The final physical scores "
+                         "were the same within the run-to-run range. One tunnel replicate without lighting had not found the mechanism when it "
+                         "stopped at its cost limit (2.5 h); with two runs per condition that is not evidence of an effect."),
+        blocks=[lead(L("Agents spend much of a run matching shading and shadows, which is not physics. In the lit twins the task gives the exact light "
+                       "elements and headlight of the hidden scene. First runs were extended to about 6 h; the replicates stopped at their cost "
+                       "limit (2–4 h), so the 120-minute column is the fairer comparison.")),
+                cap("Table", L("<b>Key physical score with and without the true lighting</b> (run 1 / run 2): final submission, at 120 minutes, share of "
+                               "progress notes about appearance or lighting, and minutes used.")),
+                blk(type="table", head=["level", "condition", "score", "final", "at 120 min", "appearance notes", "minutes"], rows=l_rows)] +
+               [conv([[unlit, "lighting not given"], [lit, "lighting given"]], [key[fam], "drop_chamfer_mm" if fam == "cloth" else "chamfer_mm"],
+                     title=LIGHT_NAME[fam], xmax=360) for fam, (unlit, lit) in LIGHT.items()]))
+
+    h_rows = [[lnk(r, " · ".join(NAMES[r])), mm(f(r, "chamfer_mm")), mm(f(r, "com_mm")), x(f(r, "r:mass")), mm(f(r, "hand_traj_mm")), fmt_k("tactile_n", f(r, "tactile_n"))]
+              for r in HAND.values()]
+    sec.append(dict(id="hand", nav="Shadow hand", tag="one run per object (two for the cones)",
+        title="9 · A dexterous hand with touch only: shape within millimetres and mass within 13%, from contact alone",
+        q=None, answer=L(f"Without any image, agents recovered the held object's shape to {mm(min(f(r, 'chamfer_mm') for r in HAND.values()))}–"
+                         f"{mm(max(f(r, 'chamfer_mm') for r in HAND.values()))} Chamfer and its mass to "
+                         f"{x(min(f(r, 'r:mass') for r in HAND.values()))}–{x(max(f(r, 'r:mass') for r in HAND.values()))}. The two runs on the "
+                         f"two-cone object differed widely (Chamfer {mm(f(HAND['spiky'], 'chamfer_mm'))} vs {mm(f(HAND['spiky r2'], 'chamfer_mm'))}), so "
+                         "single runs here are trends. There is no reference model yet for the probe path error."),
+        blocks=[lead(L("A Shadow Dexterous Hand, palm up, holds an object it cannot see. The agent sets 20 actuator targets and reads joint angles, "
+                       "velocities, efforts and fingertip and palm touch grids; no camera. Scored on shape, COM, and two scripted probes (squeeze, tilt).")),
+                cap("Table", "<b>Final submissions.</b> Path error and touch-sensor error are the evaluator's squeeze and tilt probes, averaged."),
+                blk(type="table", head=["object", "Chamfer", "COM error", "mass ÷ true", "object path error", "touch-sensor error (N)"], rows=h_rows),
+                conv([[r, " · ".join(NAMES[r])] for r in HAND.values()], ["chamfer_mm", "com_mm", "r:mass"], title="Time course", xmax=360)]))
+
+    c_rows = [[lnk(r, NAMES[r][0]) if rep_n(r) == 1 else "", lnk(r, f"run {rep_n(r)}"), mm(f(r, "rest_chamfer_mm")), mm(f(r, "drop_chamfer_mm")),
+               hl(pct(f(r, "stiff_rel")), f(r, "stiff_rel") is not None and f(r, "stiff_rel") < 0.05), f"{R[r]['wall_min']:.0f}"]
+              for runs in CLOTH.values() for r in runs]
+    sec.append(dict(id="cloth", nav="Cloth", tag="one or two runs per level",
+        title="10 · Cloth with regions of different stiffness: stiffness maps recovered, misleading colours did not mislead",
+        q=None, answer=L(f"The lift force at 16 points was within 5% in {sum(f(r, 'stiff_rel') < 0.05 for runs in CLOTH.values() for r in runs)} of "
+                         f"{sum(len(runs) for runs in CLOTH.values())} runs, including both runs whose quadrant colours were placed on the diagonals to "
+                         "mislead. The hardest level was holes and cuts: shape during drops "
+                         f"{mm(f(CLOTH['holes'][0], 'drop_chamfer_mm'))}, against about 2 mm elsewhere."),
+        blocks=[lead(L("A square cloth (a MuJoCo 2D flex) lies on the table. Levels differ in where the cloth is stiff: uniform; four quadrants of "
+                       "very different bending stiffness; the same with each quadrant coloured, or coloured misleadingly along the diagonals; holes "
+                       "and cuts; a centre hole with a stiff or soft rim. Point grasp with force reading, RGB + depth, movable camera. Scored by "
+                       "lifting the cloth at 16 grid points, by five drops onto a bar or cone, and by shape at rest.")),
+                cap("Table", L("<b>Final submissions</b> (green = lift force within 5%).")),
+                blk(type="table", head=["level", "run", "shape at rest", "shape in drops", "lift-force error", "minutes"], rows=c_rows),
+                conv([[runs[0], CLOTH_NAME[lv]] for lv, runs in CLOTH.items()], ["stiff_rel", "drop_chamfer_mm"], title="Time course (first runs)", xmax=360)]))
+
+    # ---------------- 11 · strategies ----------------
+    sec.append(dict(id="strategy", nav="Strategies", tag=None, title="11 · How the agents work",
         q=None, answer=None, blocks=[lead("Every bash command and progress note, classified with the keyword rules of the previous report."), blk(type="strategy")]))
 
     # ---------------- appendix ----------------
@@ -434,7 +615,11 @@ def sections(ctx):
                        "against the box, and its near clip plane cut through the 4 mm wall: \"The cavity view reveals a spherical internal weight\". The "
                        "camera now refuses positions closer than its near-plane reach to any surface. The relaunched light-ball run then carried the box "
                        "until the camera sat inside the cavity; now any surface inside the camera's clearance blacks out the image. Its third attempt "
-                       "was still running when this report was built. No unhinted box run did either.")),
+                       "is the one reported. No unhinted box run did either.")),
+                lead(L("Twelve replicates launched on 2026-11-16 stopped producing events a few minutes in, on nodes running three strict jobs at "
+                       "once, and never finished; they are not reported (" + ", ".join(f"<code>{r}</code>" for r in LOST) + "). Several were "
+                       "relaunched on 2026-11-17/18; three of those were still running when this report was built (a box and two hand replicates). "
+                       "<code>w20-msd-spring-visible-20261116-001</code> was invalid (the controller hung after a code merge) and was relaunched as -002.")),
                 lead(L(f"The hinted nonlinear tunnel run {lnk(CUT_SHORT, 'with the point grasp')} paused at its cost limit and was never reviewed "
                        f"(orchestrator error), so it stopped at {R[CUT_SHORT]['wall_min']:.0f} min; its rerun is the one in the tunnel table (section 3)."))]))
     sec.append(dict(id="effort", nav="A2", appendix=True, tag=None, title="A2 · Time and cost", q=None, answer=None,
