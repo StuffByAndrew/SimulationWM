@@ -19,7 +19,7 @@ NETRUNS = Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs")
 REF = {"boat": "w10-boat-base-20261105-001", "assembly": "w10-assembly-base-20261105-001"}  # baselines from the previous report
 WORK2 = MAIN / "reports" / "report-work-20261118"  # runs finished 2026-11-14..18 (waves 19-22 and replicates)
 WITH_MEDIA = True  # evaluation videos, cloth stills and hand overlays (render-eval-videos.py, re-extracted models)
-WITH_SCALE = False  # spring-as-a-scale tables (spring-scale-usage.py)
+WITH_SCALE = True  # spring-as-a-scale tables (spring-scale-usage.py)
 SUMMARIES = (MAIN / "validation" / "results-w11-18.json", MAIN / "validation" / "results-w19.json", MAIN / "validation" / "results-w20-22.json",
              MAIN / "validation" / "results-w19-003.json", (MAIN / "validation" / "results-wave10.json", set(REF.values())))
 INVALID = set()  # invalid attempts (wave 19 -001, marble-equal -002) are not in NAMES; Appendix A1 describes them
@@ -152,7 +152,7 @@ RENDERED = (list(BOX.values()) + list(TUNNEL.values()) + list(HINTED.values()) +
             + [OUT["latch"]] + [r for runs in CLOTH.values() for r in runs])
 CLIPS = {r: json.loads((EV / r / "clips.json").read_text()) for r in RENDERED} if WITH_MEDIA else {}
 FIGURES.update({f"clips/{c['file']}": str(EV / c["file"]) for cs in CLIPS.values() for c in cs})
-SCALE = {x["run"]: x for x in json.loads((WORK2 / "spring-scale.json").read_text())} if WITH_SCALE else {}  # spring-scale-usage.py
+SCALE = {x["run"]: x for f in sorted((WORK2 / "spring-scale").glob("*.json")) for x in json.loads(f.read_text())} if WITH_SCALE else {}  # spring-scale-usage.py
 
 # ---------------- metrics ----------------
 SPRING_KEYS = ["r:mass:cluster", "r:mass:spring_base", "r:mass:spring_top", "r:stiffness"]
@@ -392,17 +392,19 @@ def sections(ctx):
         for r in runs:
             sc, fw = SCALE[r], SCALE[r]["first_wall_s"]
             obj = "cluster" if "cluster" in sc["targets"] else "cube"
-            block = fw.get("block_weighed") if "block" in sc["targets"] else None
-            order = "—" if "block" not in sc["targets"] else ("block first: calibrated k, then weighed the object" if block is not None and fw.get(f"{obj}_weighed") is not None and block < fw[f"{obj}_weighed"]
-                                                           else "weighed the object only" if fw.get(f"{obj}_weighed") is not None and block is None
-                                                           else "used the block only" if block is not None and fw.get(f"{obj}_weighed") is None
-                                                           else "object first" if block is not None else "neither")
+            block, ob = (fw.get("block_weighed_upright") if "block" in sc["targets"] else None), fw.get(f"{obj}_weighed_upright")
+            order = "—" if "block" not in sc["targets"] else ("block first: calibrated k, then weighed the object" if block is not None and ob is not None and block < ob
+                                                           else "object first, then the block" if block is not None and ob is not None
+                                                           else "weighed the object only" if ob is not None else "weighed the block only" if block is not None else "neither")
             note = next((n for n in sc["notes"] if "hole" in n["text"].lower()), None) or next(iter(sc["notes"]), None)
             rows.append([lnk(r, " · ".join(NAMES[r])), hl(mn(fw.get("spring_in_hole")), fw.get("spring_in_hole") is not None),
-                         hl(mn(fw.get(f"{obj}_weighed")), fw.get(f"{obj}_weighed") is not None), mn(block) if "block" in sc["targets"] else "—", order,
+                         hl(mn(fw.get(f"{obj}_weighed")), fw.get(f"{obj}_weighed") is not None), hl(mn(ob), ob is not None),
+                         mn(block) if "block" in sc["targets"] else "—", order,
                          x(f(r, f"r:mass:{obj}")), f"<span class='small'>min {note['min']}: “{note['text'][:220]}{'…' if len(note['text']) > 220 else ''}”</span>" if note else "—"])
         return rows
-    scale_head = ["run", "spring put in the hole", "object weighed on it", "block weighed on it", "order", "final object mass ÷ true", "first note about the hole or weighing"]
+    scale_head = ["run", "spring put in the hole", "object weighed on it in the hole", "object on the upright spring (anywhere)",
+                  "block on the upright spring", "order (block levels)", "final object mass ÷ true", "first note about the hole or weighing"]
+    upright = lambda runs: sum(any(k.endswith("_weighed_upright") and not k.startswith("block") for k in SCALE[r]["first_wall_s"]) for r in runs)
     seated = lambda runs: sum(SCALE[r]["first_wall_s"].get("spring_in_hole") is not None for r in runs)
     weighed = lambda runs: sum(any(k.endswith("_weighed") and not k.startswith("block") for k in SCALE[r]["first_wall_s"]) for r in runs)
     fmt_k = lambda k, v: "—" if v is None else x(v) if k.startswith("r:") else mm(v) if k.endswith("_mm") else pct(v) if k.endswith("_rel") else f"{v:.3g}"
@@ -463,9 +465,9 @@ def sections(ctx):
                 *scale_on(lambda: [cap("Table", L("<b>Did the agent use the spring as a scale?</b> The level is built for it: seat the spring in the hole (its top plate "
                                "then sits flush with the table), set the cluster on it, and read the compression, m = k·x/g; with the block mass stated "
                                "instead of k, weigh the block first to get k. From every 10th recorded state of the hidden scene: when the spring first "
-                               f"sat in the hole and when an object first rested on it there. {seated(FRANKA)} of {len(FRANKA)} Franka runs seated the "
-                               f"spring and {weighed(FRANKA)} weighed the cluster on it; their masses came from other evidence (plate oscillation with the "
-                               "known k, and the arm's joint sag under load).")),
+                               f"sat in the hole, when the cluster first rested on it there, and when it first rested on the spring standing upright "
+                               f"anywhere. {seated(FRANKA)} of {len(FRANKA)} Franka runs seated the spring in the hole, {weighed(FRANKA)} weighed the "
+                               f"cluster on it there and {upright(FRANKA)} set the cluster on the upright spring anywhere.")),
                 blk(type="table", head=scale_head, rows=scale_rows(FRANKA))])]))
     sam_calls = {r: sum(n for k, n in R[r]["actions"].items() if k.startswith("sam3d|")) for d in GEO.values() for k, r in d.items() if k.startswith("sam")}
     sec.append(dict(id="sam3d", nav="SAM-3D", tag="one run per condition",
@@ -603,7 +605,7 @@ def sections(ctx):
     p_rows = [[lnk(r, NAMES[r][0]), mm(f(r, "chamfer_mm")), mm(f(r, "com_mm"))] + [hl(x(f(r, k)), within(r, k)) for k in p_keys(r)] +
               [hl(x(f(r, "r:stiffness")), within(r, "r:stiffness")) if "block" in r else "stated"] for r in POINT.values()]
     sec.append(dict(id="point-spring", nav="Spring, point grasp", tag="one run per level (two for the stiffness-stated levels, section 8)",
-        title="7 · An object on a spring without force sensing: weighed exactly from the stated stiffness or block mass",
+        title=f"7 · An object on a spring without force sensing: masses within 5%, but the spring was used as a scale in the hole in only {weighed(PG)} of {len(PG)} runs",
         q=None, answer=L("Without a force reading, the stated stiffness (or block mass) is the only scale. Final object mass ÷ true: " +
                          ", ".join(f"{NAMES[r][0].lower()} {x(f(r, p_keys(r)[0]))}" for r in POINT.values()) + "."),
         blocks=[lead(L("The spring levels of section 1 without the Franka: the agent grasps points directly but reads no force. The spring is ideal "
@@ -612,9 +614,9 @@ def sections(ctx):
                 blk(type="table", head=["level", "Chamfer", "COM error", "object mass", "bottom plate", "top plate", "stiffness"], rows=p_rows),
                 conv([[r, NAMES[r][0]] for r in POINT.values()], ["chamfer_mm", "r:mass:cluster", "r:mass:cube"], title="Time course", xmax=360),
                 *scale_on(lambda: [cap("Table", L("<b>Did the agent use the spring as a scale?</b> As the table in section 1, for every point-grasp run (with and without the true "
-                               f"lighting, both runs). {seated(PG)} of {len(PG)} runs seated the spring in the hole and {weighed(PG)} weighed the object "
-                               "on it in the hidden scene. On the block levels the order column says whether the agent first weighed the known block "
-                               "to establish k and then the unknown object.")),
+                               f"lighting, both runs). {seated(PG)} of {len(PG)} runs seated the spring in the hole, {weighed(PG)} weighed the object on it "
+                               f"there and {upright(PG)} set the object on the upright spring anywhere. On the block levels the order column says whether "
+                               "the agent first weighed the known block to establish k and then the unknown object.")),
                 blk(type="table", head=scale_head, rows=scale_rows(PG))])]))
 
     key = {"spring-out": "fp_rel", "tetra": "r:mass:cluster", "cube": "r:mass:cube", "msd": "fp_rel", "cloth": "stiff_rel"}

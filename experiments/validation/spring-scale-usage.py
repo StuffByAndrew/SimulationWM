@@ -3,10 +3,12 @@
 usage (compute node; reads every recorded reference tick state): .venv/bin/python experiments/validation/spring-scale-usage.py OUT.json RUN_DIR...
 
 For every 10th recorded state of the reference world the hidden scene is posed (qpos, mj_forward) and checked for:
-- spring_in_hole: the bottom plate sits more than 8 cm below where it rests at reset (it starts lying on the table top, and only
-  the 9 cm hole lets it drop that far);
+- spring_in_hole: the bottom plate is within 8 cm (horizontally) of the hole's centre (the mean of the ring geoms around it) and
+  more than 4 cm below where it rests at reset, lying on the table top;
+- spring_upright: the plates' axis is within 25 degrees of vertical, top plate above;
 - <body>_on_spring: a contact between the body (cluster or cube, block, plug) and the top plate;
-- <body>_weighed: that contact while the spring is in the hole (the weighing the scene was built for: compression = m g / k).
+- <body>_weighed: that contact while the spring is in the hole (the weighing the scene was built for: compression = m g / k);
+- <body>_weighed_upright: that contact while the spring stands upright anywhere (in the hole or on the table).
 Per run: first wall time (s) and number of sampled states for each, plus the agent's progress notes that mention the hole or
 weighing. Agents may also have weighed things in their own local simulator; that is not counted here.
 """
@@ -36,6 +38,9 @@ def scan(run):
     mujoco.mj_resetData(model, data)
     mujoco.mj_forward(model, data)
     rest_z = float(data.xpos[base][2])
+    rings = [g for g in range(model.ngeom) if model.geom(g).name.startswith("table_ring_")]
+    assert len(rings) >= 8, (run.name, "hole ring geoms")
+    hole = data.geom_xpos[rings][:, :2].mean(axis=0)
     first, count, n, tick = {}, {}, 0, 0
     audit = run / "audit"
     blob = lambda sha: json.loads((audit / "blobs" / sha).read_bytes())
@@ -53,12 +58,15 @@ def scan(run):
         data.qpos[:] = qpos
         mujoco.mj_forward(model, data)
         n += 1
-        flags = {"spring_in_hole": data.xpos[base][2] < rest_z - 0.08}
+        axis = data.xpos[top] - data.xpos[base]
+        flags = {"spring_in_hole": bool(np.linalg.norm(data.xpos[base][:2] - hole) < 0.08 and data.xpos[base][2] < rest_z - 0.04),
+                 "spring_upright": bool(axis[2] > np.cos(np.deg2rad(25)) * np.linalg.norm(axis))}
         touching = {model.geom_bodyid[c.geom1] for c in data.contact[:data.ncon] if model.geom_bodyid[c.geom2] == top} | \
                    {model.geom_bodyid[c.geom2] for c in data.contact[:data.ncon] if model.geom_bodyid[c.geom1] == top}
         for name, b in targets.items():
             flags[f"{name}_on_spring"] = b in touching
             flags[f"{name}_weighed"] = b in touching and flags["spring_in_hole"]
+            flags[f"{name}_weighed_upright"] = b in touching and flags["spring_upright"]
         for k, v in flags.items():
             if v:
                 count[k] = count.get(k, 0) + 1
