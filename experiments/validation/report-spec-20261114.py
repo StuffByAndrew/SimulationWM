@@ -12,24 +12,27 @@ import numpy as np
 
 VAL = Path(__file__).resolve().parent
 MAIN = Path("/n/home00/aejxie/sim2sim/experiments")  # ignored researcher data lives in the main checkout
-WORK = MAIN / "reports" / "report-work-20261114"
-PLAIN = MAIN / "reports" / "report-work-plain"
+LABREPORTS = Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/reports")  # superseded work folders moved here 2026-11-20
+WORK = LABREPORTS / "report-work-20261114"
+PLAIN = LABREPORTS / "report-work-plain"
 RA = MAIN / "validation" / "rerun-analysis"
 NETRUNS = Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs")
 REF = {"boat": "w10-boat-base-20261105-001", "assembly": "w10-assembly-base-20261105-001"}  # baselines from the previous report
 WORK2 = MAIN / "reports" / "report-work-20261118"  # runs finished 2026-11-14..18 (waves 19-22 and replicates)
+WORK3 = MAIN / "reports" / "report-work-20261120"  # Gemini runs (2026-11-19/20) and astra replicates finished 2026-11-18
 WITH_MEDIA = True  # evaluation videos, cloth stills and hand overlays (render-eval-videos.py, re-extracted models)
 WITH_SCALE = True  # spring-as-a-scale tables (spring-scale-usage.py)
 SUMMARIES = (MAIN / "validation" / "results-w11-18.json", MAIN / "validation" / "results-w19.json", MAIN / "validation" / "results-w20-22.json",
+             *(MAIN / "validation" / f"results-{n}.json" for n in ("gemini-neon", "gemini-hydrogen", "gemini-neon-set1", "gemini-hydrogen-set1", "rep-1117-1118")),
              MAIN / "validation" / "results-w19-003.json", (MAIN / "validation" / "results-wave10.json", set(REF.values())))
 INVALID = set()  # invalid attempts (wave 19 -001, marble-equal -002) are not in NAMES; Appendix A1 describes them
 MODELS = (RA / "models-H.json", RA / "models-I.json", RA / "models-J.json", RA / "models-K.json", RA / "models-L.json", RA / "models-M.json",
-          MAIN / "validation" / "rerun-analysis-plain" / "models-F.json", MAIN / "validation" / "rerun-analysis-plain" / "models-G.json", WORK / "models-w16-19.json", WORK2 / "models.json")
+          MAIN / "validation" / "rerun-analysis-plain" / "models-F.json", MAIN / "validation" / "rerun-analysis-plain" / "models-G.json", WORK / "models-w16-19.json", WORK2 / "models.json", WORK3 / "models.json")
 CHECKPOINTS = (RA / "checkpoints-H.json", RA / "checkpoints-I.json", RA / "checkpoints-J.json", RA / "checkpoints-K.json", RA / "checkpoints-L.json",
                RA / "checkpoints-M.json", MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-F.json",
-               MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-G.json", WORK / "checkpoints-w16-19.json", WORK2 / "checkpoints.json")
-TRACES = (WORK / "traces", WORK2 / "traces", PLAIN / "traces")
-CHAT = (WORK / "chat", WORK2 / "chat", PLAIN / "chat")
+               MAIN / "validation" / "rerun-analysis-plain" / "checkpoints-G.json", WORK / "checkpoints-w16-19.json", WORK2 / "checkpoints.json", WORK3 / "checkpoints.json")
+TRACES = (WORK / "traces", WORK2 / "traces", WORK3 / "traces", PLAIN / "traces")
+CHAT = (WORK / "chat", WORK2 / "chat", WORK3 / "chat", PLAIN / "chat")
 EDITS = WORK / "edits.json"
 VENDOR = Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/report-work-20261103/vendor")
 CONTINUATIONS = {}
@@ -59,7 +62,8 @@ HINTED = {("curved", "grasp"): "w17-curved-grasp-hint-20261110-001", ("curved", 
 CUT_SHORT = "w17-nonlinear-grasp-hint-20261110-001"  # orchestrator error: its hold was never reviewed; rerun as -002
 BOX = {("heavy", "no hint"): "w18-marble-heavy-20261113-001", ("equal", "no hint"): "w18-marble-equal-20261113-001",
        ("cylinder", "no hint"): "w18-cylinder-20261113-001", ("heavy", "hint"): "w19-marble-heavy-hint-20261114-002",
-       ("equal", "hint"): "w19-marble-equal-hint-20261114-003"}
+       ("equal", "hint"): "w19-marble-equal-hint-20261114-003", ("heavy", "hint, run 2"): "w19-marble-heavy-hint-r2-20261118-001",
+       ("equal", "hint, run 2"): "w19-marble-equal-hint-r2-20261118-001"}
 BOX_LEVEL = {"heavy": "box_marble_heavy", "equal": "box_marble_equal", "cylinder": "box_cylinder"}
 BOX_NAME = {"heavy": "Sealed box, heavy ball", "equal": "Sealed box, light ball", "cylinder": "Sealed box, cylinder"}
 PROBES = ["throw_forward", "throw_side", "toss_up", "tilt_shake"]
@@ -80,8 +84,10 @@ LIGHT = {  # family: ([runs without the true lighting], [runs with it]); first r
 LIGHT_NAME = {"spring-out": "Tunnel from outside: spring", "tetra": "Cluster on a spring, stiffness stated", "cube": "Cube on a spring, stiffness stated",
               "msd": "1D mass, visible spring", "cloth": "Cloth: uniform"}
 HAND = {"prism": "w21-hand-prism-20261116-001", "prism-offset-com": "w21-hand-prism-offset-com-20261116-001", "smooth-mesh": "w21-hand-smooth-mesh-20261116-001",
-        "spiky": "w21-hand-spiky-20261116-001", "spiky r2": "w21-hand-spiky-r2-20261116-001"}
-HAND_NAME = {"prism": "prism", "prism-offset-com": "prism, off-centre COM", "smooth-mesh": "smooth convex shape", "spiky": "two cones", "spiky r2": "two cones"}
+        "spiky": "w21-hand-spiky-20261116-001", "spiky r2": "w21-hand-spiky-r2-20261116-001", "prism r2": "w21-hand-prism-r2-20261117-001",
+        "prism-offset-com r2": "w21-hand-prism-offset-com-r2-20261117-001", "smooth-mesh r2": "w21-hand-smooth-mesh-r2-20261118-001"}
+HAND_NAME = {"prism": "prism", "prism-offset-com": "prism, off-centre COM", "smooth-mesh": "smooth convex shape", "spiky": "two cones", "spiky r2": "two cones",
+             "prism r2": "prism", "prism-offset-com r2": "prism, off-centre COM", "smooth-mesh r2": "smooth convex shape"}
 CLOTH_LEVELS = ["base", "quadrants", "quadrants-colored", "quadrants-diagonal-colors", "holes", "center-hole-stiff-rim", "center-hole-soft-rim"]
 CLOTH_NAME = {"base": "uniform", "quadrants": "four stiffness quadrants", "quadrants-colored": "quadrants, each coloured", "quadrants-diagonal-colors":
               "quadrants, colours on the diagonals (misleading)", "holes": "holes and cuts", "center-hole-stiff-rim": "centre hole, stiff rim",
@@ -91,6 +97,19 @@ CLOTH = {lv: [f"w22-cloth-{lv}-20261116-001"] + ([f"w22-cloth-{lv}-r2-20261116-0
 LOST = ["w18-cylinder-r2-20261116-001", "w19-marble-equal-hint-r2-20261116-001", "w19-marble-heavy-hint-r2-20261116-001", "w20-cube-spring-r2-20261116-001",
         "w20-cube-spring-lit-r2-20261116-001", "w20-msd-spring-visible-lit-r2-20261116-001", "w20-spring-out-r2-20261116-001", "w20-tetra-spring-r2-20261116-001",
         "w20-tetra-spring-lit-r2-20261116-001", "w21-hand-prism-r2-20261116-001", "w21-hand-prism-offset-com-r2-20261116-001", "w21-hand-smooth-mesh-r2-20261116-001"]
+GEM_LEVELS = {  # level: (scene name in this report, astra runs, primary error key)
+    "w22-cloth-holes": ("Cloth: holes and cuts", ["w22-cloth-holes-20261116-001"], "stiff_rel"),
+    "w11-tetra-spring-k": ("Spring level, stiffness stated", ["w11-tetra-spring-k-20261106-001", "w11-tetra-spring-k-r2-20261107-001", "w11-tetra-spring-k-r3-20261107-001"], "com_mm"),
+    "w21-hand-smooth-mesh": ("Shadow hand: smooth convex shape", ["w21-hand-smooth-mesh-20261116-001", "w21-hand-smooth-mesh-r2-20261118-001"], "chamfer_mm"),
+    "w19-marble-heavy-hint": ("Sealed box, heavy ball", ["w19-marble-heavy-hint-20261114-002", "w19-marble-heavy-hint-r2-20261118-001"], "traj_mm"),
+    "w20-latch-out": ("Tunnel from outside: push-push latch", ["w20-latch-out-20261116-001"], "fp_rel")}
+GEM_MODELS = {"neon": "Gemini 4 Neon", "hydrogen": "Gemini 4 Hydrogen"}
+GEM_LABEL = {"stiff_rel": "lift-force error over a 4×4 grid", "com_mm": "COM error (mm)", "chamfer_mm": "Chamfer (mm)",
+             "traj_mm": "composite COM path error, 4 throws (mm)", "fp_rel": "force-profile error"}
+GEM = {(lv, m): [f"{lv}-{m}-{d}-001" for d in ("20261119", "20261120")] for lv in GEM_LEVELS for m in GEM_MODELS}  # set 1, set 2 (provider-outage hold)
+GEM_DONE = {k: [r for r in runs if json.loads((NETRUNS / r / "status.json").read_text())["status"] == "completed"] for k, runs in GEM.items()}
+GEM_FAILED = [r for k, runs in GEM.items() for r in runs if r not in GEM_DONE[k]]  # died of Google-side timeouts: infrastructure failures
+MC = json.loads((MAIN / "validation" / "model-compare-20261120.json").read_text())  # model-compare-20261119.py: matched points, finish reasons
 rep_n = lambda r: int(m.group(1)) if (m := re.search(r"-r(\d)-\d{8}-\d{3}$", r)) else 1
 NAMES = {}
 for (lv, cam), runs in SPRING_RUNS.items():
@@ -110,6 +129,9 @@ for (lv, su), r in HINTED.items():
 NAMES[CUT_SHORT] = ("Tunnel: nonlinear spring", "point grasp, hint (cut short)")
 for (lv, h), r in BOX.items():
     NAMES[r] = (BOX_NAME[lv], h)
+for (lv, m), runs in GEM_DONE.items():
+    for r in runs:
+        NAMES[r] = (GEM_LEVELS[lv][0], f"{GEM_MODELS[m]}, run {1 if '20261119' in r else 2}")
 for lv, r in OUT.items():
     NAMES[r] = (f"Tunnel from outside: {LEVEL_NAME[lv]}", "point grasp")
 for (k, v), r in MSD.items():
@@ -147,12 +169,15 @@ for lv, level in BOX_LEVEL.items():
     FIGURES[f"com-solid-{level}.png"] = str(next((MAIN / "validation" / "wave18-analysis" / "baseline" / level).glob("artifacts/*/arm_probe_000/com.png")))
 BASELINE = json.loads((MAIN / "validation" / "wave18-analysis" / "baseline" / "box-baseline.json").read_text())  # solid uniform box, same exterior and mass
 
-EV = WORK2 / "eval-videos"  # render-eval-videos.py: side-by-side evaluation videos and cloth stills, one clips.json per run
+EVS = (WORK2 / "eval-videos", WORK3 / "eval-videos")  # render-eval-videos.py: side-by-side evaluation videos and cloth stills, one clips.json per run
 RENDERED = (list(BOX.values()) + list(TUNNEL.values()) + list(HINTED.values()) + [CUT_SHORT] + LIGHT["spring-out"][0] + LIGHT["spring-out"][1]
-            + [OUT["latch"]] + [r for runs in CLOTH.values() for r in runs])
-CLIPS = {r: json.loads((EV / r / "clips.json").read_text()) for r in RENDERED} if WITH_MEDIA else {}
-FIGURES.update({f"clips/{c['file']}": str(EV / c["file"]) for cs in CLIPS.values() for c in cs})
-SCALE = {x["run"]: x for f in sorted((WORK2 / "spring-scale").glob("*.json")) for x in json.loads(f.read_text())} if WITH_SCALE else {}  # spring-scale-usage.py
+            + [OUT["latch"]] + [r for runs in CLOTH.values() for r in runs]
+            + [r for (lv, m), runs in GEM_DONE.items() if lv in ("w22-cloth-holes", "w19-marble-heavy-hint", "w20-latch-out") for r in runs
+               if r != "w20-latch-out-neon-20261120-001"])  # that run never had a scored submission (no scene.xml), so there is nothing to replay
+EV = {r: next(d for d in EVS if (d / r / "clips.json").is_file()) for r in RENDERED} if WITH_MEDIA else {}
+CLIPS = {r: json.loads((EV[r] / r / "clips.json").read_text()) for r in RENDERED} if WITH_MEDIA else {}
+FIGURES.update({f"clips/{c['file']}": str(EV[c["run"]] / c["file"]) for cs in CLIPS.values() for c in cs})
+SCALE = {x["run"]: x for d in (WORK2, WORK3) for f in sorted((d / "spring-scale").glob("*.json")) for x in json.loads(f.read_text())} if WITH_SCALE else {}  # spring-scale-usage.py
 
 # ---------------- metrics ----------------
 SPRING_KEYS = ["r:mass:cluster", "r:mass:spring_base", "r:mass:spring_top", "r:stiffness"]
@@ -259,9 +284,9 @@ def quote(run, text):
     return dict(text=hits[0]["text"], run=run, name=" · ".join(NAMES[run]), minute=round(hits[0]["wall_elapsed"] / 60))
 
 
-META = dict(title="Hidden mechanisms, hidden contents, touch and cloth: sim2sim results, 6–18 November 2026",
-            subtitle=L("Runs finished 2026-11-06 to 2026-11-18 · {n} runs (two are baselines repeated from the previous report) · each run is one "
-                       "<code>gpt-6-astra</code> agent (medium reasoning) working alone in an isolated container, up to 4 h (spring and geometry levels) or 6 h "
+META = dict(title="Hidden mechanisms, hidden contents, touch and cloth: sim2sim results, 6–20 November 2026",
+            subtitle=L("Runs finished 2026-11-06 to 2026-11-20 · {n} runs (two are baselines repeated from the previous report) · each run is one "
+                       "<code>gpt-6-astra</code> agent (medium reasoning; section 11 compares Gemini 4 Neon and Hydrogen) working alone in an isolated container, up to 4 h (spring and geometry levels) or 6 h "
                        "(tunnel, box and later levels). <b>Mostly one run per condition</b>; the spring-level camera comparison has three runs per condition, "
                        "the lighting comparison two."),
             intro=L(
@@ -689,8 +714,79 @@ def sections(ctx):
                    blk(type="clips", title=None, items=clip_items(runs, "cloth")))]) + [
                 conv([[runs[0], CLOTH_NAME[lv]] for lv, runs in CLOTH.items()], ["stiff_rel", "drop_chamfer_mm"], title="Time course (first runs)", xmax=360)]))
 
-    # ---------------- 11 · strategies ----------------
-    sec.append(dict(id="strategy", nav="Strategies", tag=None, title="11 · How the agents work",
+    # ---------------- 11 · Gemini vs astra ----------------
+    effort = {r: json.loads((NETRUNS / r / "config-private.json").read_text())["inference"].get("reasoning_effort")
+              for lv, (_, astra, _) in GEM_LEVELS.items() for r in astra + [x for m in GEM_MODELS for x in GEM_DONE[(lv, m)]]}
+    assert set(effort.values()) == {"medium"}, effort  # same reasoning level for every compared run (Gemini: thinkingLevel = medium)
+    point = lambda r, k, cut: next((u["m"].get(k) for u in reversed(R[r]["subs"]) if cut(u) and u["m"].get(k) is not None), None)
+    avg = lambda vals: None if not [v for v in vals if v is not None] else float(np.mean([v for v in vals if v is not None]))
+    by_model = lambda lv: [("gpt-6-astra", GEM_LEVELS[lv][1])] + [(GEM_MODELS[m], GEM_DONE[(lv, m)]) for m in GEM_MODELS]
+    g_rows, ratios = [], {m: [] for m in GEM_MODELS}
+    for lv, (scene, astra, key) in GEM_LEVELS.items():
+        tmin, tmtok = MC[lv]["matched_wall_min"], MC[lv]["matched_mtok"]
+        a = avg([f(r, key) for r in astra])
+        for name, runs in by_model(lv):
+            fin = [R[r]["subs"][-1]["m"].get(key) for r in runs]
+            row = [f"{scene}<div class='muted small'>{GEM_LABEL[key]}</div>" if name == "gpt-6-astra" else "", name,
+                   " / ".join(lnk(r, fmt_k(key, v)) for r, v in zip(runs, fin)) or "—",
+                   " / ".join(fmt_k(key, point(r, key, lambda u: u["t"] <= tmin)) for r in runs) or "—",
+                   " / ".join(fmt_k(key, point(r, key, lambda u: u["mtok"] <= tmtok)) for r in runs) or "—"]
+            if name != "gpt-6-astra":
+                m = next(k for k, v in GEM_MODELS.items() if v == name)
+                g = avg(fin)
+                ratios[m].append(None if g is None or a is None else g / a)
+                row.append(hl(f"×{g / a:.2g}", g < a) if g is not None and a else "—")
+            else:
+                row.append("")
+            g_rows.append(row)
+    geo = {m: float(np.exp(np.mean(np.log([x for x in v if x is not None])))) for m, v in ratios.items()}
+    wins = {m: sum(x is not None and x < 1 for x in v) for m, v in ratios.items()}
+    q_rows = []
+    for name, runs in (("gpt-6-astra", sorted({r for _, astra, _ in GEM_LEVELS.values() for r in astra})),) + tuple(
+            (GEM_MODELS[m], [r for lv in GEM_LEVELS for r in GEM_DONE[(lv, m)]]) for m in GEM_MODELS):
+        mc = [x for lv in GEM_LEVELS for x in MC[lv]["runs"] if x["run"] in runs]
+        assert len(mc) == len(runs), (name, len(mc), len(runs))
+        calls = sum(sum(x["finish_reasons"].values()) for x in mc)
+        count = lambda *ks: sum(x["finish_reasons"].get(k, 0) for x in mc for k in ks)
+        q_rows.append([name, str(len(runs)), str(calls), f"{100 * count('MALFORMED_FUNCTION_CALL', 'MALFORMED_RESPONSE') / calls:.1f}%",
+                       f"{100 * count('MAX_TOKENS') / calls:.1f}%", str(sum(x["call_timeouts"] for x in mc)),
+                       f"{sum(x['provider_held_min'] for x in mc):.0f}", f"{60 * calls / sum(x['wall_min'] for x in mc):.0f}",
+                       f"{np.mean([x['final_mtok'] for x in mc]):.1f}"])
+    gem_w11 = [r for m in GEM_MODELS for r in GEM_DONE[("w11-tetra-spring-k", m)]]
+    sec.append(dict(id="gemini", nav="Gemini vs astra", tag="one or two runs per model per level",
+        title=f"11 · Gemini 4 Neon and Hydrogen against gpt-6-astra: {'worse' if min(geo.values()) > 1 else 'better' if max(geo.values()) < 1 else 'mixed'} on average "
+              f"(final error Neon ×{geo['neon']:.2g}, Hydrogen ×{geo['hydrogen']:.2g} astra's)",
+        q=None, answer=L(f"On five hard levels, the average final error of Gemini 4 Neon was ×{geo['neon']:.2g} astra's (geometric mean over levels) and Gemini 4 "
+                         f"Hydrogen's ×{geo['hydrogen']:.2g}; Neon was better than astra on {wins['neon']} of {len(GEM_LEVELS)} levels and Hydrogen on "
+                         f"{wins['hydrogen']}. Both Gemini models did better on: {', '.join(GEM_LEVELS[lv][0].lower() for i, lv in enumerate(GEM_LEVELS) if all(ratios[m][i] is not None and ratios[m][i] < 1 for m in GEM_MODELS)) or 'none'}; "
+                         f"astra did better on: {', '.join(GEM_LEVELS[lv][0].lower() for i, lv in enumerate(GEM_LEVELS) if all(ratios[m][i] is not None and ratios[m][i] > 1 for m in GEM_MODELS)) or 'none'}. "
+                         "Gemini also made fewer than half astra's calls per hour, and 4–8% of its replies were malformed tool calls (Table below). Every compared run used the same medium reasoning level (astra <code>reasoning_effort</code>, Gemini "
+                         "<code>thinkingLevel</code>), the same harness, task, tools, image and wall budget. With one or two runs per model, differences "
+                         "smaller than astra's own run-to-run spread (up to ×4 on the marble box) are noise."),
+        blocks=[lead(L("Each Gemini config equals its astra original except the model route and the cost lines; Google's API was reached directly. Set 1 "
+                       "ran without protection against Google-side outages, and five of its ten runs died of call timeouts (infrastructure failures, "
+                       "not results: " + ", ".join(f"<code>{r}</code>" for r in GEM_FAILED) + "). Set 2 held outages outside the run clock and all "
+                       "ten completed. Final errors use each run's last scored submission; matched points use the comparison's equal run-clock "
+                       "minutes and equal cumulative tokens (each provider's own token count).")),
+                cap("Table", L("<b>Primary error per level</b> (lower is better; run 1 / run 2 for each model). Last column: the model's mean final error ÷ "
+                               "astra's mean (green = better than astra). At equal minutes Gemini had made fewer calls, so the equal-token column is "
+                               "the fairer one for effort.")),
+                blk(type="table", head=["level", "model", "final", "at equal minutes", "at equal tokens", "mean ÷ astra"], rows=g_rows),
+                cap("Table", L("<b>How the models used their calls</b> (completed runs). Malformed = replies with a malformed tool call or response; output "
+                               "limit = replies that hit the 16,384-token output cap (Gemini counts thinking towards it); held = minutes of Google-side "
+                               "outage held outside the run clock.")),
+                blk(type="table", head=["model", "runs", "model calls", "malformed", "hit output limit", "call timeouts", "outage held (min)",
+                                        "calls per hour", "tokens per run (M)"], rows=q_rows),
+                *[conv([[GEM_LEVELS[lv][1] if len(GEM_LEVELS[lv][1]) > 1 else GEM_LEVELS[lv][1][0], "gpt-6-astra"]] +
+                       [[r, NAMES[r][1], {"color": c, "dash": "6 3" if m == "hydrogen" else ""}] for m, c in (("neon", "--abl"), ("hydrogen", "--third"))
+                        for r in GEM_DONE[(lv, m)]], [GEM_LEVELS[lv][2]], title=GEM_LEVELS[lv][0], xmax=360) for lv in GEM_LEVELS],
+                *scale_on(lambda: [cap("Table", L("<b>Spring weighing by the Gemini runs</b>, as in the table of section 1.")),
+                                   blk(type="table", head=scale_head, rows=scale_rows(gem_w11))]),
+                *media(lambda: [cap("Figure", "<b>The scored tests on the Gemini runs' final models</b> (box throws, latch probe, cloth drops), as in sections 4, 5 and 10."),
+                                blk(type="clips", title=None, items=clip_items([r for r in RENDERED if r in NAMES and ("-neon-" in r or "-hydrogen-" in r)]))])]))
+
+    # ---------------- 12 · strategies ----------------
+    sec.append(dict(id="strategy", nav="Strategies", tag=None, title="12 · How the agents work",
         q=None, answer=None, blocks=[lead("Every bash command and progress note, classified with the keyword rules of the previous report."), blk(type="strategy")]))
 
     # ---------------- appendix ----------------

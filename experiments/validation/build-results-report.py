@@ -101,6 +101,7 @@ def mass_parts(source, m):
 def submission(source, model, hist, truth, est_fn=estimates):
     if hist["status"] == "failed":  # rejected by the evaluator (e.g. a modified robot fixture): a scored gap, with the evaluator's reason
         return dict(m={}, est={}, rejected=hist["unavailable_reason"])
+    assert "missing" not in model, "a submission without its entry scene must be one the evaluator rejected"
     assert hist["status"] == "ok", hist["status"]
     rec, hinge = hist.get("reconstruction") or {}, next(iter((hist.get("hinges") or {}).values()), None) or {}
     est = est_fn(source, model)
@@ -259,7 +260,8 @@ def data(spec_path, work, out):
         runs[run] = dict(scene=S.NAMES[run][0], condition=S.NAMES[run][1], factor=row["factor"], wall_min=row["wall_min"], budget_used=row["budget_used"],
                          cost_usd=row["cost_usd"], reason=row["reason"], budget_stop=row["budget_stop"], submissions=row["submissions"],
                          final_mtok=cps[run]["final_tokens"] / 1e6, truth=truth, subs=subs, actions=stats["actions"], calls=stats["calls"],
-                         call_seconds=stats["seconds"], taxonomy=tax, parts=dict(source=mass_parts(model["source"], model["source"]), final=mass_parts(model["source"], model["submissions"][-1])), tools=stats["tools"], flags=flags, replies=stats["replies"])
+                         call_seconds=stats["seconds"], taxonomy=tax, parts=dict(source=mass_parts(model["source"], model["source"]),
+                                                                           final=None if "missing" in model["submissions"][-1] else mass_parts(model["source"], model["submissions"][-1])), tools=stats["tools"], flags=flags, replies=stats["replies"])
     comparisons = {}
     for cid, c in S.COMPARISONS.items():
         members = c["base"] + [c["abl"]]
@@ -306,7 +308,8 @@ def data(spec_path, work, out):
     chats = (S.CHAT,) if isinstance(S.CHAT, (str, Path)) else S.CHAT  # one directory or several
     for run in S.NAMES:  # per-run pages: the full conversation and the images the model received (report-chat-extract.py)
         src = next(Path(d) / run for d in chats if (Path(d) / run / "chat.js").is_file())
-        shutil.copytree(src, out / "runs" / run, copy_function=os.link)  # hard links: same bytes, no 450 MB copy
+        same_fs = os.stat(src).st_dev == os.stat(out).st_dev  # hard links need one filesystem (some chat pages live on lab storage)
+        shutil.copytree(src, out / "runs" / run, copy_function=os.link if same_fs else shutil.copy2)
     (out / "data.js").write_text("window.R=" + json.dumps(R, separators=(",", ":")) + ";")
     (out / "taxonomy-labels.json").write_text(json.dumps(dict(rules=dict(notes=TAX.NOTE_RULES, appearance=TAX.APPEARANCE, scripts=TAX.SCRIPT_RULES),
                                                              validation=validation, labels=labels_out), indent=1))

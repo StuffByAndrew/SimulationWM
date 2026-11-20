@@ -111,7 +111,9 @@ def one(run_dir):
     for z in sorted(run_dir.glob("submission-*.zip")):
         with tempfile.TemporaryDirectory() as tmp:
             safe_unzip(z, tmp)
-            out["submissions"].append(dict(file=z.name, **extract(Path(tmp) / "scene.xml", tmp)))
+            scene = Path(tmp) / "scene.xml"
+            # no entry scene: nothing to compile (the evaluator rejects such a submission too); recorded as a gap, not skipped
+            out["submissions"].append(dict(file=z.name, **extract(scene, tmp)) if scene.is_file() else dict(file=z.name, missing="scene.xml"))
     return out
 
 
