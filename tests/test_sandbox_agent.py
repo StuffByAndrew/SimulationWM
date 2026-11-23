@@ -365,7 +365,7 @@ def test_harness_realtime_predictor_task_frames_and_controller_channel(tmp_path)
     # Pausable bash: the channel serves only while the command runs and closes with it.
     paused = agent.Agent(controller, workspace=tmp_path, bash_mode="pausable", now=time.time)
     paused.deadline = time.time() + 3600
-    script.write_text("import json, time\nfrom sim2sim.client import Channel\nc = Channel(%r)\nprint(c.request('observe')['ok'], flush=True)\n"
+    script.write_text("import json, time\nfrom sim2sim.client import Channel\nc = Channel(%r)\nprint(c.request('observe', world='reference')['ok'], flush=True)\n"
                       "time.sleep(100)\n" % str(tmp_path / "controller.sock"))
     before = len(controller.requests)
     out = paused.bash_start("PYTHONPATH=%s python3 %s" % (Path(agent.__file__).resolve().parents[1] / "src", script), 2)
