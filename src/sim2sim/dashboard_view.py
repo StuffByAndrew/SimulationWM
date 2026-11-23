@@ -128,7 +128,7 @@ function matches(item,skip){if(comparison&&!(item.comparisons||[]).includes(comp
 if(dateFrom||dateTo){const day=runDate(item).slice(0,10);if(!day||(dateFrom&&day<dateFrom)||(dateTo&&day>dateTo))return false;}const text=search.trim().toLowerCase();if(text&&!(item.name+' '+item.directory+' '+(item.factor||'')).toLowerCase().includes(text))return false;
 for(const [category,values] of Object.entries(filters))if(category!==skip&&values.size&&!(item.tags?.[category]||[]).some(value=>values.has(value)))return false;return true;}
 // Level families: variations of one level share a Scene sublist (one chip selects the family, ▸ lists its levels).
-const FAMILIES=[['Cloth',/^cloth_/],['Object in hand',/^hand_/],['Tunnel mechanism',/^tunnel_/],['Mass–spring–damper',/^msd_/],['Spring scale',/^(tetra|cube)_spring/],['Box contents',/^box_/],['Blocks',/^(blocks|fixed_cube)/]];
+const FAMILIES=[['Cloth',/^cloth_/],['Object in hand',/^hand_/],['Tunnel mechanism',/^tunnel_/],['Mass–spring–damper',/^msd_/],['Spring scale',/^(tetra|cube)_spring/],['Box contents',/^box_/],['Blocks',/^(blocks|fixed_cube)/],['Positioning fixture',/^fixture_/]];
 let openFamilies=new Set();
 function family(scene){return FAMILIES.find(([,pattern])=>pattern.test(scene))?.[0]||scene;}
 function chip(text,pressed,onClick){const button=document.createElement('button');button.type='button';button.className='chip';button.textContent=text;button.setAttribute('aria-pressed',String(!!pressed));button.addEventListener('click',onClick);return button;}
