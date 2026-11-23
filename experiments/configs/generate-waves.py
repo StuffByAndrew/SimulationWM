@@ -433,6 +433,31 @@ RUNS26 = {f"w24-die-{arm}-{model.removeprefix('gemini-4-')}{'-fps100' if rate ==
           for model in ("gemini-4-neon", "gemini-4-hydrogen") for rate in (25, 100)
           for arm, env, label in (("grasp", "die_biased", "point grasp without force sensing"), ("franka", "panda_small/die_biased", "Franka with joint efforts"))}
 WAVES["wave24-20261123"] = ("Wave 24", "gemini-20261123", 1e6, RUNS26)
+# Wave 25 (analyst session's touch-harness wave; user 2026-11-23: "Yes, but on Neon"; the controls also repeat the original hand
+# levels on Neon): the four w21 touch-only hand levels with the local reconstruction-world copy (tools.local_controller) and
+# pausable bash (no command time limit; code is paused while the model thinks), against the exact w21 config on Neon.
+NEON = {"model": "gemini-4-neon", "provider_hold": 14400, "cost": 1e6, "pool_usd": 1e6}
+RUNS27 = {f"w25-{level.replace('_', '-')}{suffix}": ("shadow_hand/" + level, f"Shadow hand, touch only, {label}; gemini-4-neon", {**HAND, **NEON, **o})
+          for level in HAND_LEVELS for suffix, label, o in (
+              ("", "sequence tool + local controller copy, pausable bash", {"tools": ("sequence", "local_controller"), "pausable": True}),
+              ("-control", "sequence tool (w21 harness)", {}))}
+WAVES["wave25-20261123"] = ("Wave 25", "gemini-20261123", 1e6, RUNS27)
+# Wave 26 (user, 2026-11-23): low-rank identification instead of MuJoCo reconstruction. Cube + ideal spring + block of stated mass,
+# point grasp without force sensing (w20-cube-spring-block's harness and observations); the agent submits parameters.json (cube mass,
+# spring stiffness, cube COM and inertia), scored by metric `lowrank` (manifest [lowrank]). Twin: the w20 full-MJCF config on Neon.
+TASK_LOWRANK = ("Identify the physical parameters of this scene that matter, using the permitted observations and interactions. Instead "
+                "of a MuJoCo scene, submit a ZIP containing parameters.json at its root, a JSON object with exactly these keys: \"mass\": "
+                "the cube's mass in kg; \"stiffness\": the spring's stiffness in N/m; \"com\": the cube's centre of mass as [x, y, z] "
+                "world coordinates in m, in the scene's initial state; \"inertia\": the cube's 3x3 inertia tensor in kg m^2 about its "
+                "centre of mass, in world axes, in the scene's initial state. Hidden tests compare these values with the reference "
+                "world's. Resubmit whenever your estimates improve, and call finish when you believe they cannot be improved further.")
+LOWRANK_CONSTRAINTS = ["Submit a ZIP whose parameters.json holds exactly the keys mass, stiffness, com and inertia, as numbers in SI units."]
+CUBE_MJCF = RUNS22["w20-cube-spring-block"]
+RUNS28 = {"w26-cube-spring-block-lowrank": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; parameter answer",
+                                             {**CUBE_MJCF[2], **NEON, "task": TASK_LOWRANK + IDEAL_BLOCK, "metrics": ["lowrank"], "extra": "",
+                                              "entrypoint": "parameters.json", "candidate_changes": False, "constraints": LOWRANK_CONSTRAINTS}),
+          "w26-cube-spring-block-mjcf": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; full MJCF (w20 config)", {**CUBE_MJCF[2], **NEON})}
+WAVES["wave26-20261123"] = ("Wave 26", "gemini-20261123", 1e6, RUNS28)
 
 
 def q(value):
@@ -441,7 +466,8 @@ def q(value):
 
 # Google's native API reports no cost; the host prices tokens at these list prices (USD per 1M tokens: input, cached input,
 # output incl. thinking), from https://aistudio.google.com/docs/pricing (Standard tier), read 2026-11-19.
-GEMINI_PRICES = {"gemini-4-neon": (3.0, 0.15, 15.0), "gemini-4-hydrogen": (1.5, 0.075, 7.5)}
+GEMINI_PRICES = {"gemini-4-neon": (3.0, 0.15, 15.0), "gemini-4-hydrogen": (1.5, 0.075, 7.5),
+                 "gemini-4-carbon": (3.0, 0.15, 15.0)}  # Carbon: Neon's prices as a placeholder (accounting only; spend is unlimited)
 
 
 def route(model):
@@ -491,7 +517,7 @@ scene = "{source_dir}/{entry}scene.xml"
 [sandbox]
 image = "localhost/sim2sim:latest"
 evaluator_image = "localhost/sim2sim:latest"
-command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
+command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"{', "--bash-mode", "pausable"' if o.get("pausable") else ""}]
 process_limit_backend = "slurm_step"
 memory = "8g"
 cpus = 4
@@ -615,3 +641,14 @@ for directory, pool, extra in (("gemini-20261119", "gemini-20261119", {}), ("gem
                                                                                    "hold": 129600, **extra}
             (out / f"{run_id}-{model.removeprefix('gemini-4-')}.toml").write_text(config(wave, pool, cap, env, factor, overrides))
     print(out.name, sorted(p.name for p in out.glob("*.toml")))
+# 2026-11-23 (user: Neon is the default; evaluate Carbon on the same five hard levels in parallel): the gemini-20261120 recipe
+# (provider holds, accounting-only caps) with gemini-4-carbon.
+out = Path(__file__).parent / "gemini-carbon-20261123"
+out.mkdir(exist_ok=True)
+for wave_dir, run_id in HARD:
+    wave, _, _, runs = WAVES[wave_dir]
+    env, factor, overrides = runs[run_id]
+    overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": "gemini-4-carbon", "cost": 1e6, "pool_usd": 1e6,
+                                                                           "hold": 129600, "provider_hold": 14400}
+    (out / f"{run_id}-carbon.toml").write_text(config(wave, "gemini-carbon-20261123", 1e6, env, factor, overrides))
+print(out.name, sorted(p.name for p in out.glob("*.toml")))

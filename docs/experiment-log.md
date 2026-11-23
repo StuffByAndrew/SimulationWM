@@ -6,6 +6,28 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-23 18:40 UTC — Neon/Carbon batch launched: Carbon on the hard five, waves 23–26 (24 runs, queued)
+- **Model policy (user):** `gemini-4-neon` is the default; Carbon is evaluated in parallel on the same five hard levels.
+  All runs: provider holds (`provider_hold_seconds` 14400), accounting-only caps, netscratch root, sapphire, 40 CPUs per job
+  (at most two jobs per node), bad nodes excluded. Jobs: `experiments/validation/jobs-20261123.txt`.
+- **Carbon** (`experiments/configs/gemini-carbon-20261123/`, pool `gemini-carbon-20261123`): the gemini-20261120 recipe with
+  `gemini-4-carbon` (Neon's prices as an accounting placeholder). Sources byte-identical to the Neon runs' (the w11/w19
+  copies also hold the new sibling `panda_small` levels; scenes identical). Sapphire jobs `63147154`, `63147204`, `63147208` were cancelled while pending (3,600-job queue) and resubmitted on `test` one per node (`spread-test-20261123.sh`): `63157947`, `63158114`, `63159055` (nodes holy8a24402, 24502, 24302).
+  The model id works: the first call (job `63157947`) succeeded and echoes `gemini-4-carbon`.
+- **Wave 25** (analyst session's touch harness; user: "Yes, but on Neon"): the four w21 hand levels with
+  `tools.local_controller` and `--bash-mode pausable`, each paired in one job with its control, the exact w21 config on
+  Neon (these controls also repeat the original hand levels on Neon). Sources identical within each pair. Jobs
+  `63147232`, `63147235`, `63147277`, `63147299`.
+- **Wave 23** fixture (rigid, rubber, bimodal) and **wave 24** die (grasp/franka × 25/100 frames/s), Neon only; one die
+  run per job. Jobs `63147301`, `63147304`, `63147306`, `63147309`, `63147313`, `63147314`. Image `42f70708fdcc` for
+  everything above.
+- **Wave 26** (user: low-rank model instead of MuJoCo): `cube_spring_block` (point grasp, no force sensing, block mass
+  stated) with a `parameters.json` answer (cube mass, spring stiffness, cube COM and world inertia in the initial state),
+  scored by the new `lowrank` metric (docs/evaluation.md), against the w20 full-MJCF config, both on Neon, n=2 each.
+  New submission kind `parameters` with the predictor texts' estimate substitutions (`examples/sandbox_agent.py`).
+  Tests: job `63148030` (36 passed). Image `d9cc983d1fc8…` (job `63148354`, `experiments/images/trusted-image-lowrank.json`;
+  the default record still names `42f70708fdcc`). Moved from sapphire (`63149095`, `63149127`, cancelled) to `test`: `63158508`, `63158733` (one lowrank + one MJCF run each).
+
 ## 2026-11-23 18:45 UTC — Fixture and die branches merged into main; new trusted image (no runs)
 - **Merged** `worktree-fixture-level` (wave 23 positioning fixture) and `worktree-die-level` (biased die, now
   **wave 24**: `experiments/configs/wave24-20261123/`, run ids `w24-die-*`, configs now `entrypoint = "predict.py"`).

@@ -516,7 +516,7 @@ unchanged. Staged file hashes are recorded as a `public_fixture` audit event.
   One IK or plan CLI call takes about 0.3–0.4 s including model load.
 - `local_controller`: `tools/local_controller/localsim.py` for `robot = "shadow_hand"` (base image): a local copy of the
   reconstruction world for the agent's own project and tactile cell positions for any hand pose; see
-  [protocol](protocol.md). Pair it with the harness flag `--bash-mode pausable` for the touch harness (wave 23).
+  [protocol](protocol.md). Pair it with the harness flag `--bash-mode pausable` for the touch harness (wave 25).
 
 Both conditions of a pair must use the same image, so start both with the tools
 record. `SIM2SIM_TRUSTED_IMAGE_RECORD` defaults to `trusted-image.json`, so runs

@@ -8,16 +8,28 @@ Keep this list current: strike items when a log entry covers them.
 ## Standing constraints
 - Strict OCI sandbox only for comparable results. Development-mode runs are not
   comparable: no filesystem boundary and a different harness.
-- Exactly `gpt-6-astra`, medium reasoning.
+- Model: `gemini-4-neon` is the default since 2026-11-23 (AGENTS.md "Gemini models"); `gpt-6-astra` only if Gemini rate
+  limits would be hit. Medium reasoning.
 - One run per condition, except replicates to n=3 for the key findings (user, 2026-11-05).
 - Slurm `test` or `sapphire` (CPU) only, never GPU partitions. Pack 2–3 runs per `scripts/experiment-strict.slurm` job.
 - Cost: one pool per ET day, $1000 since 2026-11-06 (user; $700 from 2026-11-04, $500 before) (`cost_pool = "sim2sim-YYYYMMDD"`), and per-run caps (usually $44). Agents never see
   spend. The orchestrator picks and launches the next wave without asking, within the day's pool.
 - Only the declared factor may differ between paired runs. Since wave 6 the task is `TASK_CONVERGE` (finish when nothing
   differs); compare new-prompt runs only with new-prompt baselines.
-- Run on home (hot storage, `--root experiments`); keep ≥10 GB free.
+- Run on netscratch (`SIM2SIM_EXPERIMENTS_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments`); the lab root
+  is over its quota (2026-11-23).
 
-## Wave 24 biased die (user, 2026-11-23): planned, not launched
+## 2026-11-23 batch (launched; see the log)
+- [ ] Review holds (4 h checkpoint: resume to 6 h while the agent works on the physics or mechanism) for waves 23–26 and
+  the Carbon batch; jobs in `experiments/validation/jobs-20261123.txt`.
+- [ ] Carbon vs Neon/Hydrogen/astra on the five hard levels (`model-compare-20261119.py`, add the Carbon set); record the
+  best overall model in AGENTS.md "Gemini models" and make it the default.
+- [ ] Wave 25: touch harness (local controller + pausable bash) vs the w21 harness, on Neon; report to the analyst session.
+- [ ] Wave 26: low-rank answer vs full MJCF on cube_spring_block (n=2 each): parameter errors vs wall minutes and tokens;
+  extract the MJCF runs' cube mass/COM/inertia and spring stiffness from their submissions for the same errors.
+- [ ] Hydrogen configs of waves 23/24 exist but were not launched (Neon is the default).
+
+## Wave 24 biased die (user, 2026-11-23): launched on Neon only (4 runs)
 - [ ] Configs `experiments/configs/wave24-20261123/` (8 runs): {point grasp without wrench, Franka with joint efforts} ×
   {25 frames/s baseline, 100 frames/s control} × {gemini-4-neon, gemini-4-hydrogen}.
   - Every run: real time, RGB-D, movable camera, `sequence` + `channel` tools, die metric.
@@ -265,7 +277,7 @@ Keep this list current: strike items when a log entry covers them.
   - Find out what state on a node causes it (stale pause process or lock?).
 
 
-## Wave 23 positioning fixture (user, 2026-11-23): planned, not launched
+## Wave 23 positioning fixture (user, 2026-11-23): launched on Neon only (3 runs)
 - [ ] Launch `experiments/configs/wave23-20261123/` (6 runs: `fixture_rigid`, `fixture_rubber`, `fixture_bimodal` ×
   `gemini-4-neon`, `gemini-4-hydrogen`; Franka with joint torques, RGB-D, movable camera, sequence tool; 6 h visible wall,
   4 h checkpoint hold, `provider_hold_seconds = 14400`, accounting-only caps, pool `gemini-20261123`). Levels:
