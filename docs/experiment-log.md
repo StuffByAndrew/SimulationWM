@@ -6,6 +6,332 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-20 11:30 UTC — Both Gemini batches ended
+- **`gemini-20261120`** (with the provider hold): all 10 `completed`, last at 11:25 UTC.
+  - Run-clock minutes: w11 neon 217, hydrogen 135; cloth neon 201, hydrogen 256; marble 357/356; hand 354/355; latch neon
+    149, hydrogen 349.
+  - Provider holds absorbed the outages. For example, latch-hydrogen held about 77 min in its first 90 run-clock minutes.
+  - No run hit its Slurm limit.
+- **`gemini-20261119`** (no hold), 5 completed: latch-hydrogen 171 min, cloth-neon 182, w11-neon 228, marble-neon 354,
+  latch-neon 354.
+  - 5 failed on provider timeouts: hand-hydrogen 92 min and hand-neon 154 (both with no submission), w11-hydrogen 95,
+    marble-hydrogen 293 (no submission) and cloth-hydrogen 353 (5 submissions).
+  - Their scored checkpoints are kept as truncated in the comparison.
+- **Spend** (host-priced; no cap): set 1 $252, set 2 $441; this includes the $2 reserve charged per timed-out call.
+- **Comparison:** `experiments/validation/model-compare-20261119.py` → `model-compare-20261120.json`; page built by
+  `model-compare-page.py` (text in `model-compare-meta.json`) → `experiments/reports/gemini-vs-astra-20261120.html`, published as
+  https://claude.ai/artifact/Upe4QRrUr9Zn2o3iDmizzW.
+
+## 2026-11-20 01:45 UTC — Google latency spike killed two Hydrogen runs; provider hold added; second Gemini batch launched
+- **Failure:** at about 01:20 UTC every Hydrogen run timed out at the 300 s call limit together.
+  - `w21-hand-smooth-mesh-hydrogen-20261119-001` hit the harness's 4 consecutive failures and ended `failed` at 92 min,
+    with no submission. It is an infrastructure failure, not a model result.
+  - Raw probes of one tiny request took 2–107 s on Hydrogen and 2 s to more than 290 s on Neon. All returned HTTP 200, so
+    this is queueing at Google, not rate limiting.
+- **Fix:** `[inference] provider_hold_seconds` (runtime.py, test `test_provider_outage_is_held_outside_the_run`).
+  - It covers `ProviderUnavailable`: a provider-limited timeout, HTTP 429/5xx after the in-call retries, or a transport error.
+  - The failed attempt's time is credited back. The backoff (15 s, doubling to 300 s) runs with the containers paused and
+    the clocks stopped, then the identical request is retried.
+  - The agent never sees the outage. A successful call's latency still counts, as astra's did. Audit event `provider_hold`.
+- **Batch `gemini-20261120`:** the same 10 configs with `provider_hold_seconds = 14400` and accounting-only caps ($1e6).
+  - Sources are identical to the astra originals, as before.
+  - Jobs on sapphire (12 h / 10 h limits, excluding busy and bad nodes): `62236891`–`94`, `62236907`
+    (`experiments/validation/gemini-20261120-jobs.txt`).
+  - `w11-tetra-spring-k-hydrogen-20261119-001` also ended `failed` (01:27 UTC, 95 min) for the same reason. The 8 surviving
+    `-20261119` runs continue without the hold, as outage-exposed attempts.
+  - `w21-hand-smooth-mesh-neon-20261119-001` also ended `failed` (02:26 UTC, 154 min), after provider timeouts as well.
+  - All 10 `-20261120` runs were running by 02:05 UTC.
+- **Tests:** runtime + sandbox-agent tests passed, except 3 timing-sensitive tests that failed once on sapphire (job
+  `62236240`). Those 3 passed on rerun, together with the hold tests (`62236522`, 5 passed).
+
+## 2026-11-20 00:30 UTC — Gemini 4 Neon and Hydrogen vs gpt-6-astra on five hard levels (launched)
+- **Question:** how do `gemini-4-neon` and `gemini-4-hydrogen` compare with the existing strict astra runs, at matched wall
+  minutes and matched cumulative tokens?
+- **Code:** `[inference] api = "gemini"` makes the host broker call Google's native `generateContent` with `GEMINI_API_KEY`
+  (docs/protocol.md).
+  - The transcript, labelled tool-turn transport, harness, image (`964c615842a1`), task, tools, observations and
+    `max_output_tokens` (16384) are identical to astra's. `reasoning_effort = "medium"` becomes `thinkingLevel`.
+  - Google reports no cost, so the host prices tokens at AI Studio Standard list prices (USD per 1M tokens, input /
+    cached / output incl. thinking): Neon 3.00 / 0.15 / 15.00, Hydrogen 1.50 / 0.075 / 7.50.
+  - Transient 429/5xx responses are retried host-side within the call deadline. Neon returned 503 "high demand" during
+    the smoke test.
+- **Configs:** `experiments/configs/gemini-20261119/`, built by generate-waves.py.
+  - Each config equals its astra original except the model/route, the cost lines and no 4 h checkpoint hold. Each run gets
+    its original's full wall time: 6 h, or 4 h for w11.
+  - Caps: Neon $40, Hydrogen $20 per run, about astra's largest extended spend in tokens. Pool `gemini-20261119` is $200.
+  - 2026-11-20 00:25 UTC, user: Gemini spend is unlimited; the key is rate-limited (200 RPM, 2M TPM, 100K RPD).
+    - The orchestrator watcher answers any hold with resume at $1e6 caps (`experiments/validation/gemini-20261119-holds.log`).
+    - A hold pauses containers and clocks, so this equals uncapped. The comparison stays at matched minutes/tokens (AGENTS.md).
+  - First 30 min: per model ~4 RPM and ~150K TPM, far under the limits.
+    - Some calls ended `MALFORMED_FUNCTION_CALL` (hand-neon 6 of 14; others 0–2), `MALFORMED_RESPONSE` (≤ 1) or
+      `MAX_TOKENS` (≤ 4). These replies carry no tool call, so the harness sends its usual "No tool was called" nudge.
+    - hand-neon had two 300 s call timeouts, retried by the harness (each charged a $2 reserve).
+- **Prepared on netscratch:** sources are byte-identical to the astra originals. For w11 the only difference is newer
+  sibling scene directories in the private `panda_small` folder.
+- **Levels and astra baselines:**
+
+  | level | astra baseline runs |
+  |---|---|
+  | w22-cloth-holes | `-20261116-001` |
+  | w11-tetra-spring-k (Panda spring weighing) | `-20261106-001`, `-r2-20261107-001`, `-r3-20261107-001` (image `9bf221a1c5bc`, all stopped at $44) |
+  | w21-hand-smooth-mesh | `-20261116-001`, `-r2-20261118-001` |
+  | w19-marble-heavy-hint | `-20261114-002`, `-r2-20261118-001` |
+  | w20-latch-out | `-20261116-001` |
+
+- **Jobs** (test, two runs per job, ≤ 2 jobs per node): `experiments/validation/gemini-20261119-jobs.txt`, `62209660`,
+  `-62`, `-63`, `-92`, `-94`. All 10 loaded the image and made Gemini calls within 2 min.
+- **Tests:** suite job `62206530` had 309 passed and 3 failed. The 3 failures then passed in job `62208776` (76 passed).
+  One was a test that treated `api` as an unknown setting. The other two came from running in a worktree.
+
+## 2026-11-18 23:30 UTC — 2026-11-18 closed at $184.31; replicates complete except the cylinder
+- **Finished:**
+  - marble-equal-hint-r2-20261118-001: `finish` at 5.9 h, 6 submissions.
+  - hand-smooth-mesh-r2-20261118-001: extended at 4 h, `finish` at 5.9 h, 7 submissions.
+- **Spend 2026-11-18:** $35.03 (pool 17 after the boundary) + $149.28 (pool 18) = $184.31.
+- **Replicate status after the 2026-11-16 hang losses:**
+  - Lighting pairs, second replicates done: tetra (lit and unlit), cube (lit and unlit), msd-spring-visible (lit and
+    unlit), spring-out (lit and unlit), cloth-base (lit and unlit).
+  - Done: hinted marbles (heavy and equal), cloth colour cues (3), all 4 hand levels.
+  - Still to redo: w18-cylinder-r2, on the next day with budget.
+
+## 2026-11-18 17:35 UTC — Today's replicates done; a third node hung at podman init; fail-fast timeouts added
+- **Finished:**
+  - msd-spring-visible-lit-r2: `finish` at 2.0 h.
+  - spring-out-r2: stopped at its $44 hold, 2.5 h.
+  - hand-prism-r2 and hand-prism-offset-com-r2: extended at the 4 h checkpoint, stopped at 5.6–5.7 h when pool
+    `sim2sim-20261117` reached its $200 cap.
+  - marble-heavy-hint-r2: `finish` at 6 h, 7 submissions.
+- **Spend 2026-11-18:** $130.17 by 17:20 UTC (post-boundary pool 17 $35.03 + pool 18 $95.14).
+- **Filling the day** under the pool-18 cap of $161: marble-equal-hint-r2 and hand-smooth-mesh-r2.
+  - The first job (`61866106`, test, holy8a26401) printed nothing for 6 min, stuck at the first podman call (the
+    node-wide init `flock`). Cancelled.
+  - Resubmitted as `61867881`, excluding holy8a26401, holy8a26105 and holy8a24208; it loaded the image at once on
+    holy8a24301.
+- **`scripts/podman-job.sh` now fails fast:** `timeout`s on the init `flock` (240 s) and `podman info` (120 s), and on
+  `podman load` (900 s). Each prints the hostname, so a bad node shows up in minutes instead of 10–12 h.
+
+## 2026-11-18 11:35 UTC — Strict jobs hung at image load on two sapphire nodes; relaunched on `test`
+- **Failure:** the hand-replicate job hung before `trusted_image_id` (i.e. in `podman-job.sh` / `load_trusted_image`)
+  until its time limit, twice: `61498406` on holy8a24208 (12 h) and `61675078` on holy8a26105 (10 h).
+  - Both runs stayed `prepared`, at no cost.
+  - An `srun --overlap` into the second job also hung.
+- **Probe** `experiments/validation/image-load-probe.sh` (job `61799796`, test, holy8a24101): fine. The node-wide init
+  lock was absent, sha256 took 5 s and `podman load` 8 s. So the hang is node- or state-dependent, possibly debris
+  from the jobs killed on 2026-11-17.
+- **Workaround:** run on `test` and check `trusted_image_id` within minutes of launch.
+- **Relaunched:**
+  - `61799979` (test, holy8a24301, 3 runs, 30 CPUs): hand-prism-r2 and hand-prism-offset-com-r2 (`-20261117`, pool
+    `sim2sim-20261117`, ≤ $39 left), plus w19-marble-heavy-hint-r2-20261118-001.
+  - `61799980` (test, holy8a24102): w20-spring-out-r2 and w20-msd-spring-visible-lit-r2 (`-20261118-001`), which
+    complete those lighting pairs.
+  - Both loaded the image.
+  - Pool `sim2sim-20261118` is capped at $161, so the 2026-11-18 total across both pools stays ≤ $200.
+- **Spend so far:** 2026-11-17 total $161.03; 2026-11-18 $0 before these runs.
+
+## 2026-11-17 13:30 UTC — Tetra and cube lighting replicates done ($44 each, no extension); two hand replicates fill the day
+- **Done:** tetra-spring, tetra-spring-lit, cube-spring and cube-spring-lit (`-r2-20261117-001`), each stopped at its $44
+  hold at about 2.2–2.7 h. No extension under the $200 day. No hang: two jobs on two nodes.
+- **Spend:** pool `sim2sim-20261117` at $161.03; the 2026-11-16 pool spent $0 after the boundary.
+- **Filling the day:** the touch-only hand runs cost about $8–15 per 6 h. hand-prism-r2 and hand-prism-offset-com-r2
+  (`-20261117-001`, job `61498406`) use the remaining ≤ $39. The pool cap of $200 is hard.
+
+## 2026-11-17 10:45 UTC — 12 of 20 replicates hung (three strict jobs per node); 4 relaunched within the $200 day
+- **Outcome:** 8 replicates completed (msd-spring-visible-r2, spring-out-lit-r2, hand-spiky-r2, cloth base and base-lit,
+  quadrants, quadrants-colored, diagonal-colors). The other 12 stopped producing events 2–16 min in (22:10–22:24 UTC).
+  Their jobs were killed at the time limit with the runs still marked `running`.
+- **Where each run stopped:** after saving the first `load_reconstruction` checkpoint, i.e. when the controller pauses
+  the containers and starts the candidate-change evaluator step. The evaluator step never appears in `sacct`, and no
+  `candidate-change-0001` folder exists.
+  - The wall watchdog killed the agent steps at 6 h, but the controller never wrote a termination.
+- **Pattern, exact so far:**
+  - every job on nodes running three strict jobs (six runs) hung: holy8a24302 (`61246660/62/63`, test) and holy8a24106
+    (`61246696/97/98`, sapphire);
+  - every job on nodes with two jobs (four runs) completed: holy8a24401, holy8a24108.
+  - Suspects: the shared per-UID `RLIMIT_NPROC` (AGENTS.md) or rootless Podman contention across jobs on one node.
+- **Lost:** w18-cylinder, w19 marble heavy and equal, cube-spring and -lit, msd-spring-visible-lit, spring-out,
+  tetra-spring and -lit, hand prism, offset-com and smooth (all `-r2-20261116`). They spent almost nothing, since the
+  hang came before further inference.
+- **Relaunched within the 2026-11-17 cap:** `rep-20261117` = tetra-spring, tetra-spring-lit, cube-spring and
+  cube-spring-lit (`-r2-20261117-001`).
+  - Pool `sim2sim-20261117`, cap $200; 2026-11-16 pool spend since the boundary is $0.
+  - Two jobs only (`61455403`, `61455417`). Each run stops at its $44 hold, with no extension today.
+- **TODO:** keep at most two strict jobs per node until the cause is fixed, and make the controller time out on a
+  stalled step launch.
+
+## 2026-11-17 05:00 UTC — Day boundary: 2026-11-16 closed at $1414.50; $200 hard cap enforced for 2026-11-17
+- **Pool `sim2sim-20261116`:** settled spend $1414.50 at 05:00 UTC. About $585 of the $2000 day went unused because the
+  replicate jobs waited on fairshare priority for 0.5–2.5 h.
+- **Reserve `zz-orchestrator-reserve-20261117.json` = $385.50:** sized on settled cost, so the pool (cost + in-flight +
+  reserve) reaches its $2000 cap once 2026-11-17 spend reaches $200, including any in-flight reservations. Runs then
+  hold ("pool exhausted") and are stopped. Exclude `zz-orchestrator-*` from spend analyses.
+- **Reviews of the 20 replicates so far:**
+  - Stopped at 4 h: msd-spring-visible-r2 (61% appearance notes, final checks), spring-out-lit-r2 (mechanism exact,
+    now the table), cloth-quadrants-diagonal-colors-r2 (shadow tuning).
+  - Extended: spring-out-lit-r2 at its cap (2.5 h), cloth-base-lit-r2, hand-spiky-r2 and cloth-quadrants-r2 at 4 h.
+
+## 2026-11-16 21:30 UTC — 20 second replicates launched to use the $2000 day; $200/day hard cap from 2026-11-17
+- **User:** use the expanded budget fully today, with repeats where needed. From 2026-11-17, a hard $200 per ET day.
+- **Replicates** (`experiments/configs/rep-20261116/`, `-r2`): identical to the originals except pool `sim2sim-20261116`
+  with a $2000 cap.
+  - Lighting pairs (10): spring-out, tetra-spring, cube-spring, msd-spring-visible and cloth-base, each with its `-lit`
+    twin.
+  - Box levels whose agents found the contents (3): w19 marble heavy and equal hint, w18 cylinder.
+  - Cloth colour cues (3): quadrants, colored, diagonal colors.
+  - Touch-only hand (4).
+- **Jobs:** 10 jobs, 2 runs each (`experiments/validation/rep-20261116-jobs.txt`). They were pending on fairshare
+  priority, so 5 were moved to `test` (12 h limit, that partition's 5-job cap).
+- **Pool** `sim2sim-20261116` stood at about $1090 at launch.
+- **Day boundary:**
+  - At 05:00 UTC, `experiments/validation/day-boundary-reserve.py` adds
+    `cost-ledger/sim2sim-20261116/zz-orchestrator-reserve-20261117.json`, sized so the pool exhausts after $200 more.
+    Every run then holds, and the cap is never raised past that.
+  - It is scheduled as a background job of the orchestrator session. If that session is gone, write the file by hand.
+  - Spend analyses must exclude `zz-orchestrator-*` files.
+
+## 2026-11-16 20:10 UTC — w20-msd-spring-visible-001 invalid (controller hang caused by the hand merge); relaunched -002
+- **Run `-001`** stopped producing events at 882 s wall (07:01 UTC), after noting "the mechanics are now well
+  identified: a 0.5 kg undamped carriage".
+- **Cause:** the controller spawns a child for each inference call, and the child re-imports `sim2sim.runtime` from disk.
+  It did so in the seconds between applying the hand patch (`runtime.py` imports `sim2sim.robots`) and copying
+  `robots.py`, so the child died with `ModuleNotFoundError`. The controller then hung for 13 h and the wall watchdog
+  never fired. Job `61027263` was cancelled.
+- **Fix:** `scripts/experiment-strict.slurm` freezes `src/sim2sim` into a job-private temp dir on `PYTHONPATH`, so later
+  edits cannot reach a running controller. Root-cause hardening is in the TODO.
+- **Relaunched** as `-002` (job `61223326`) on the current image `964c615842a1`. Its lit twin ran on `cb84098cc84e`; the
+  images differ only in robot, cloth and contract code, which this level does not use.
+
+## 2026-11-16 14:05 UTC — Waves 20–22 hold reviews so far; early lighting-ablation signal
+- **Rule:** at a $44 spend hold or the 4 h checkpoint, extend (cap $120, pool $2000) while the agent works on physics or
+  the hidden mechanism; stop when it is on appearance, lighting or final validation.
+- **Stopped:**
+  - w20-msd-damper-visible (2.7 h): mechanics exact, impact traces within 2e-9 N; then rendering.
+  - w20-tetra-spring (2.7 h): lighting; it only planned to weigh the cluster.
+  - w20-tetra-spring-block (3.0 h): lighting; never used the block.
+  - w20-tetra-spring-lit (3.4 h): had weighed the cluster on the spring; then spring strand shape.
+  - w22-cloth-quadrants (3.8 h): four-patch model, residuals at floating-point level.
+  - w22-cloth-base (4.25 h): 56% of notes on lighting, headlight fitting at the hold.
+- **Extended:**
+  - w20-spring-out and -lit:
+    - both found a 0.15 kg plunger and 200 N/m, exact;
+    - both were extended twice: at the cap, then at 4 h.
+  - w20-latch-out (cap, then 4 h): spring and hard stop; probing state dependence.
+  - w20-cube-spring and -lit (cap, then 4 h): cube 48 g (true 48.1), plate 8 g (true 8), extension stop 30 mm (true).
+  - w20-cube-spring-block (cap, then 4 h): calibrated k with the block; plate 11.93 g (true 12).
+  - All four w21-hand runs at 4 h: still fitting shape; $8–10 each.
+  - w22: diagonal colors (cap, then 4 h; eight bending regions), both centre-hole levels (the stiff-rim run found
+    "stiffness concentrated near the opening"), quadrants colored, holes (only 8% of notes on appearance).
+- **Lighting ablation, early signal from progress notes (scoring to follow):**
+  - **Cloth base:** the unlit run had 56% lighting/appearance notes and was stopped at 4.25 h on the headlight. The lit
+    run finished by itself at 3.2 h with 16% such notes, reporting exact force and image matches in every test.
+  - **Tetra spring:** the unlit run never weighed the cluster (lighting at its hold). The lit run weighed it, and lasted
+    longer on physics (3.4 h).
+  - **Spring-out:** no difference so far; both found the mechanism exactly.
+
+## 2026-11-16 UTC — Wave 21 (Shadow hand, touch only) launched; cloth levels merged (wave 22 pending image)
+- **Dex hand** (built in worktree `agent-a0d08f5326e924483`, merged into main):
+  - The Shadow Dexterous Hand E3M5 (right) from MuJoCo Menagerie at pinned commit `71f066ad`, vendored at
+    `environments/shadow_hand/robot/`, palm up.
+  - New `src/sim2sim/robots.py` registry; `robot = "shadow_hand"`; `hand_target` with 20 actuator targets.
+  - Proprioception: 24 joint positions and velocities, 20 efforts.
+  - Tactile: 3×3 grids on each fingertip and a 4×3 grid on the palm.
+  - Levels:
+    - `hand_prism`: 64×44×30 mm, 42 g;
+    - `hand_prism_offset_com`: COM offset (8.9, 4.5, 0) mm;
+    - `hand_smooth_mesh`: convex, radius of curvature ≥ 15 mm;
+    - `hand_spiky`: two cones.
+  - Metrics: chamfer, center_of_mass and dynamics (squeeze and tilt probes, new tactile error). Chamfer and COM now
+    accept convex mesh geoms.
+  - Model constraint: primitives plus inline convex meshes, fixture unchanged.
+  - Check job `61031422`; full suite 308 passed (the inspector expiry assertion fails only in jobs longer than 10 min,
+    and passes in a short job).
+  - Also fixed: Panda tactile and proprioception contract text had been nested under `reference_interaction = false`,
+    so earlier Panda runs never received it.
+  - Image `09065bb09510` (build `61032468`, inspection clean); OCI 4 passed, 1 skipped (`61033082`).
+  - **Wave 21:** the 4 hand levels with plain `TASK_CONVERGE` plus the reset sentence, `sequence` tool, no images, 6 h
+    with the 4 h checkpoint. Jobs `61033320`, `61033322`.
+- **Cloth** (built in worktree `agent-a23eddd4c60eb1534`, merged into main):
+  - "RoboSim studio" = RoboSimStudio (arXiv 2610.18835): its simplest default cloth `rss.sheet` is a particle grid cut
+    into triangles. It is reproduced as a MuJoCo 2D flex: vertex bodies on 3 slide joints, a stiff edge equality for
+    stretch, `elastic2d="bend"` for bending; one flex per stiffness region, with seams that act as hinges.
+  - Point grasps attach to flex vertices.
+  - New `src/sim2sim/cloth.py` metric `cloth`:
+    - a 4×4 lift stiffness map;
+    - 3 bar drops and 2 cone drops, with per-frame Chamfer and side-by-side mp4s;
+    - rest Chamfer.
+  - Levels: base, quadrants (E0/4/16/64), quadrants with quadrant colours, quadrants with diagonal colours, holes and
+    cuts, centre hole with a stiff rim, centre hole with a soft rim. Check jobs `61032288`–`61032295`.
+  - Merge: conflicts in `simulation.py` (graspable-body selection, robot init) resolved by hand.
+  - Full suite 310 passed (the same expiry assertion as above; a short job passes it).
+  - **Wave 22 launched** (7 levels plus `cloth-base-lit`, point grasp with wrench, RGBD, movable camera, `sequence`,
+    cloth model constraint, evaluation timeout 600 s) on image `964c615842a1` (build `61059506`, inspection clean, OCI
+    4 passed / 1 skipped `61060611`).
+    - Jobs: `61061435` (base-lit, base), `61061438` (soft rim, stiff rim), `61061446` (holes, quadrants-colored),
+      `61061447` (quadrants-diagonal-colors, quadrants).
+    - Pool $447 at launch.
+- **Hold:** w20-spring-out was held at $40 (2.4 h). It had found the spring-loaded stop with an estimated 0.15 kg moving
+  mass (true plunger mass 0.15 kg); resumed to a $120 cap, pool $2000. Pool `sim2sim-20261116` stood at $421.
+
+## 2026-11-16 UTC — Wave 20 part 2 launched (point-grasp tetra/cube + ideal spring); budget $2000/day for 11-16, 11-17
+- **Levels** `{tetra,cube}_spring{,_block}` (`tetra-spring-scenes.py` point-grasp outputs, check job `61030423`):
+  - the panda_small tetra-spring layout without the robot;
+  - spring k = 21.7 N/m with damping exactly 0, and stiffer contacts (`solref .004 1`), so free oscillation loses only
+    2–3% in 10 s;
+  - cube: 5 cm, 0.0481 kg; cluster 0.0572 kg; block 0.0235 kg;
+  - weighing on the spring matches m·g/k to 0.03 mm.
+  - Metrics: chamfer, center_of_mass, density, image_mse, `dynamics` (lift-swing-drop and spring-hang probes) and
+    `expert` (scripted weighing). The evaluation timeout is 600 s (new generator option `eval_timeout`).
+- **Prompts:**
+  - `TASK_CONVERGE`, plus that the cluster's (or the unknown-mass cube's) inertial properties are important to identify;
+  - the spring is ideal (Hooke's law only, no damping), with k stated in the spring levels and the block mass stated
+    instead in the block levels;
+  - `-lit` twins of tetra-spring and cube-spring add the ground-truth lighting.
+- **Conditions:** point grasp without force sensing, RGB + depth, movable camera, `sequence`; 6 h with the 4 h checkpoint.
+- **Jobs:**
+  - `61031382`: tetra-spring, tetra-spring-lit;
+  - `61031384`: tetra-spring-block, cube-spring;
+  - `61031386`: cube-spring-lit, cube-spring-block.
+- **Budget (user):** $2000 per ET day on 2026-11-16 and 2026-11-17. The generator gives pools `sim2sim-20261116/17` a
+  $2000 cap. The 8 part-1 runs were prepared with $1000 and are raised at their holds.
+- **Found by the level builder, not changed:** the point-grasp evaluator ignores manifest `object_geoms` and uses every
+  non-world geom. So the hidden plunger geoms of the point-grasp tunnel levels count in their Chamfer (waves 16, 17,
+  20). Changing it would alter completed scores.
+
+## 2026-11-16 UTC — Wave 20 launched (part 1: outside-start tunnels, 1D spring–mass(–damper), lighting ablation)
+- **User request (2026-11-16):**
+  - tunnel spring and latch with the rod starting outside the channel;
+  - point-grasp tetra/cube spring levels (part 2, pending);
+  - 1D mass on an ideal spring that looks / does not look like one, without / with a damper;
+  - a ground-truth-lighting twin of each family's basic level;
+  - "4 h extendable to 6 h" for all.
+- **New infrastructure:** `[inference] checkpoint_wall_seconds`. The agent sees the full 6 h. At 4 h wall the next
+  inference call holds exactly like a spend-cap hold (`hold.json`, reason "Wall-time checkpoint reached"), and the
+  orchestrator resumes it to 6 h or stops it.
+  - Test `test_wall_checkpoint_holds_once_and_stops_on_decision`; runtime and harness tests 44 passed.
+  - Host-side only, so image `cb84098cc84e` is unchanged.
+- **Levels:**
+  - `tunnel_{spring,latch}_out` (`tunnel-scenes.py`, check job `61026358`):
+    - the stick starts 240 mm out, in an open frictionless trough that continues as the bore floor;
+    - the lip is widened to 29 mm, so nothing is captive;
+    - in the probe k = 200.0 / 199.3 N/m, onset at 30 mm, and the latch toggles 18.83 / 0 / 18.83 mm;
+    - the mechanism is invisible to camera, depth and grasp rays;
+    - the probe inserts 0.24 m first, then repeats the original strokes.
+  - `msd_{spring,damper}_{visible,hidden}` (`msd-scenes.py`, check job `61025818`):
+    - a 0.5 kg block on a frictionless slide, k = 32 N/m, period 0.785 s; the damper levels add b = 0.8 N·s/m (ζ 0.10);
+    - the visible levels have a tendon-cage coil, plus a dashpot in the damper level;
+    - the hidden levels are a closed "linear stage" and are pixel-identical to each other;
+    - force_profile probe: slow and fast two-sided cycles.
+- **Conditions:**
+  - All runs: point grasp with wrench, RGB + depth, `sequence` tool, plain `TASK_CONVERGE`.
+  - Tunnels use the fixed camera; spring–mass levels use the movable camera.
+  - The `-lit` twins (w20-spring-out-lit, w20-msd-spring-visible-lit) add the exact `<light>` elements and headlight
+    (`generate-waves.py` `lighting()`).
+- **Jobs:**
+  - `61027261`: latch-out, msd-damper-hidden;
+  - `61027262`: msd-damper-visible, msd-spring-hidden;
+  - `61027263`: msd-spring-visible-lit, msd-spring-visible;
+  - `61027284`: spring-out-lit, spring-out.
+  - Pool `sim2sim-20261116`.
+
 ## 2026-11-15 00:30 UTC — Wave 19 complete: with the hint, both marble agents inferred the ball from loads alone
 - **marble-equal-hint-003 is valid.**
   - Finished by `finish` at 5.9 h, 7 submissions, on image `cb84098cc84e`.

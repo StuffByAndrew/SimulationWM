@@ -6,6 +6,7 @@ controller-provided task text, action contract and observations differ."""
 from __future__ import annotations
 import argparse
 import base64
+import ctypes
 import hashlib
 import json
 import os
@@ -50,6 +51,7 @@ ACTIONS = {
     "release": ({"world": WORLD, "ticks": {"type": "integer", "minimum": 0}}, ["world"]),
     "arm_target": ({"world": WORLD, "joint_targets": NUMBERS(7), "gripper_width_m": {"type": "number"},
                     "ticks": {"type": "integer", "minimum": 1}}, ["world", "joint_targets", "gripper_width_m"]),
+    "hand_target": ({"world": WORLD, "actuator_targets": NUMBERS(20), "ticks": {"type": "integer", "minimum": 1}}, ["world", "actuator_targets"]),
     "camera": ({"world": WORLD, "pos": NUMBERS(3), "lookat": NUMBERS(3)}, ["world", "pos", "lookat"]),
     "reset": ({"world": WORLD}, ["world"]),
     "load_reconstruction": ({"project_dir": STRING, "entrypoint": STRING, "camera": STRING}, []),
@@ -58,13 +60,27 @@ ACTIONS = {
     "sequence": ({"world": WORLD, "steps_file": STRING, "images": {"type": "string", "enum": ["last", "none"]}}, ["world", "steps_file"]),
     "finish": ({}, []),
 }
-SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "camera", "reset")  # physical actions a sequence may contain
+SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "hand_target", "camera", "reset")  # physical actions a sequence may contain
 SEQUENCE_STEPS = 2000
 LOCAL = {
     "bash": ("Run a bash command in /workspace and return its exit status and combined stdout/stderr (long output is truncated in the middle). "
              "Each command runs in its own process group, which is terminated when the command returns or times out (default 300 s).",
              {"command": STRING, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 1800}}, ["command"]),
     "view_image": ("Show a PNG or JPEG file from the sandbox, for example your own offscreen render.", {"path": STRING}, ["path"]),
+}
+CHECK = {"type": "integer", "minimum": 1}
+# --bash-mode pausable: no time limit, and no code runs while the model thinks or other tools run (fair compute across agents).
+PAUSABLE = {
+    "bash": ("Run a bash command in /workspace and return its exit status and combined stdout/stderr (long output is truncated in the middle). "
+             "A command has no time limit: it runs until it exits, you stop it with bash_kill, or the session ends. After every check_seconds "
+             "of running time (default 300) a still-running command is paused and you get its output so far; it then stays paused, using no "
+             "compute, until you call bash_resume or bash_kill, and no other tool can run until you do. Nothing keeps running in the "
+             "background: when a command exits or is stopped, every process it started is stopped too.",
+             {"command": STRING, "check_seconds": CHECK}, ["command"]),
+    "bash_resume": ("Let the paused bash command run again until it exits or check_seconds more seconds of running time pass (default 300).",
+                    {"check_seconds": CHECK}, []),
+    "bash_kill": ("Stop the paused bash command and every process it started, and return its remaining output.", {}, []),
+    "view_image": LOCAL["view_image"],
 }
 IMAGE_KEYS = ("rgb", "depth", "wrist_rgb", "wrist_depth")
 FORBIDDEN_PATHS = ("/opt/sim2sim/environments", "/opt/sim2sim/experiments", "/opt/sim2sim/runs", "/opt/sim2sim/.git", "/opt/sim2sim/configs")
@@ -92,9 +108,67 @@ def check_boundary():
         raise RuntimeError("A host credential was exposed to the agent")
 
 
-def tool_schemas(task):
+def descendants():
+    """Live (non-zombie) descendant pids of this process with their /proc states. As a child subreaper, detached
+    (setsid/nohup/double-forked) processes re-parent to this process, so they stay descendants."""
+    children = {}
+    for entry in os.listdir("/proc"):
+        if entry.isdigit():
+            try:
+                stat = (Path("/proc") / entry / "stat").read_text()
+            except OSError:
+                continue
+            state, parent = stat[stat.rindex(")") + 2:].split()[:2]
+            if state != "Z":
+                children.setdefault(int(parent), []).append((int(entry), state))
+    found, stack = {}, [os.getpid()]
+    while stack:
+        for pid, state in children.get(stack.pop(), ()):
+            found[pid] = state
+            stack.append(pid)
+    return found
+
+
+def signal_tree(sig):
+    """Send sig to every descendant until none is left running (SIGSTOP) or alive (SIGKILL); repeated passes catch forks."""
+    for _ in range(1000):
+        targets = [pid for pid, state in descendants().items() if sig != signal.SIGSTOP or state not in "tT"]
+        for pid in targets:
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                pass
+        if not targets or sig == signal.SIGCONT:
+            return
+        time.sleep(.01)
+    raise RuntimeError("bash processes did not stop")
+
+
+def read_output(handle, start, chars):
+    """Bytes of handle from start to its end, truncated in the middle beyond chars; returns (text, end offset)."""
+    size = handle.seek(0, os.SEEK_END)
+    half = chars // 2
+    handle.seek(start)
+    if size - start <= chars:
+        return handle.read().decode(errors="replace"), size
+    head = handle.read(half).decode(errors="replace")
+    handle.seek(size - half)
+    return head + "\n[... %d bytes omitted ...]\n" % (size - start - 2 * half) + handle.read().decode(errors="replace"), size
+
+
+def reap():
+    """Collect exited orphans that re-parented to this subreaper."""
+    while True:
+        try:
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return
+        except ChildProcessError:
+            return
+
+
+def tool_schemas(task, local=LOCAL):
     tools = [{"name": name, "description": description, "parameters": {"type": "object", "properties": properties,
-              "required": required, "additionalProperties": False}} for name, (description, properties, required) in LOCAL.items()]
+              "required": required, "additionalProperties": False}} for name, (description, properties, required) in local.items()]
     for op in task["actions"]:
         if op in ("inference", "progress"):
             continue
@@ -112,7 +186,7 @@ def tool_schemas(task):
 
 class Agent:
     def __init__(self, client, workspace="/workspace", compact_tokens=100000, keep_turns=8, max_images=12,
-                 reserve_seconds=360, output_chars=16000, keep_image_files=400, now=time.time):
+                 reserve_seconds=360, output_chars=16000, keep_image_files=400, bash_mode="timeout", now=time.time):
         self.client, self.task, self.now = client, client.task, now
         assert self.task["inference"]["enabled"], "The host inference broker is not configured"
         assert self.task.get("deadline_unix"), "The sandbox agent requires a hard wall-time deadline"
@@ -125,7 +199,11 @@ class Agent:
         self.observations.mkdir(parents=True, exist_ok=True)
         self.compact_tokens, self.keep_turns, self.max_images = compact_tokens, keep_turns, max_images
         self.reserve, self.output_chars, self.keep_image_files = reserve_seconds, output_chars, keep_image_files
-        self.tools = tool_schemas(self.task)
+        assert bash_mode in ("timeout", "pausable"), bash_mode
+        self.bash_mode, self.job = bash_mode, None
+        if bash_mode == "pausable":
+            assert ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0, "PR_SET_CHILD_SUBREAPER failed"
+        self.tools = tool_schemas(self.task, PAUSABLE if bash_mode == "pausable" else LOCAL)
         self.schemas = {tool["name"]: tool["parameters"] for tool in self.tools}
         self.turns, self.summary, self.saved, self.images = [], None, [], 0
         self.turn, self.submissions, self.intercepted = 0, 0, None
@@ -189,6 +267,8 @@ class Agent:
                 self.compact()
         else:
             self.note("Ending the session automatically with %s remaining." % clock(self.left()))
+        if self.job is not None:
+            self.bash_end("killed because the session is ending")
         self.client.finish()
 
     def compact(self):
@@ -201,6 +281,8 @@ class Agent:
 
     def budget_stop(self, reason):
         self.note("Inference budget exhausted (%s); submitting any unsubmitted project changes, then finishing." % reason)
+        if self.job is not None:
+            self.bash_end("killed because the session is ending")
         digest = project_digest(self.project)
         if digest is not None and digest != self.submitted:
             try:
@@ -224,9 +306,19 @@ class Agent:
             return [text("ERROR: arguments must be a JSON object")], False
         if not isinstance(args, dict) or set(args) - set(schema["properties"]) or set(schema["required"]) - set(args):
             return [text("ERROR: arguments must match the tool schema %s" % json.dumps(schema))], False
+        if self.job is not None and name not in ("bash_resume", "bash_kill"):
+            return [text("ERROR: a bash command is paused; call bash_resume or bash_kill before any other tool")], False
         try:
+            if name == "bash" and self.bash_mode == "pausable":
+                return [text(self.bash_start(args["command"], int(args.get("check_seconds", 300))))], False
             if name == "bash":
                 return [text(self.bash(args["command"], int(args.get("timeout_seconds", 300))))], False
+            if name == "bash_resume":
+                return [text(self.bash_continue(int(args.get("check_seconds", 300))))], False
+            if name == "bash_kill":
+                if self.job is None:
+                    raise ValueError("no bash command is paused")
+                return [text(self.bash_end("killed by bash_kill after %d s of running time" % self.job["ran"]))], False
             if name == "view_image":
                 return self.view_image(args["path"]), False
             if name == "finish":
@@ -300,16 +392,46 @@ class Agent:
             except ProcessLookupError:
                 pass
             process.wait()
-            size = output.seek(0, os.SEEK_END)
-            half = self.output_chars // 2
-            if size <= self.output_chars:
-                output.seek(0)
-                body = output.read().decode(errors="replace")
-            else:
-                output.seek(0)
-                head = output.read(half).decode(errors="replace")
-                output.seek(size - half)
-                body = head + "\n[... %d bytes omitted ...]\n" % (size - 2 * half) + output.read().decode(errors="replace")
+            body, _ = read_output(output, 0, self.output_chars)
+        return "%s\n%s" % (status, body)
+
+    def bash_start(self, command, check):
+        output = tempfile.TemporaryFile()
+        process = subprocess.Popen(["bash", "-c", command], cwd=self.workspace, stdin=subprocess.DEVNULL, stdout=output,
+                                   stderr=subprocess.STDOUT, start_new_session=True,
+                                   env={**os.environ, "HOME": str(self.workspace), "MPLBACKEND": "Agg"})
+        self.job = {"process": process, "output": output, "shown": 0, "ran": 0.}
+        return self.bash_continue(check)
+
+    def bash_continue(self, check):
+        """Run the current command until it exits or check more seconds of running time pass, then pause its process tree.
+        Only the session deadline (less the reserve) ends a command without the agent's choice."""
+        job = self.job
+        if job is None:
+            raise ValueError("no bash command is paused")
+        signal_tree(signal.SIGCONT)
+        limit, started = int(self.left() - self.reserve), time.monotonic()
+        try:
+            status = "exit code %d" % job["process"].wait(timeout=max(1, min(check, limit)))
+        except subprocess.TimeoutExpired:
+            job["ran"] += time.monotonic() - started
+            if check >= limit:
+                return self.bash_end("killed because the session is ending")
+            signal_tree(signal.SIGSTOP)
+            body, job["shown"] = read_output(job["output"], job["shown"], self.output_chars)
+            return ("paused after %d s of running time; it uses no compute until you call bash_resume to continue it or bash_kill "
+                    "to stop it. Output since the last report:\n%s" % (job["ran"], body))
+        job["ran"] += time.monotonic() - started
+        return self.bash_end(status)
+
+    def bash_end(self, status):
+        """Kill everything the command started (including detached processes), reap it, and report its remaining output."""
+        job, self.job = self.job, None
+        signal_tree(signal.SIGKILL)
+        job["process"].wait()
+        reap()
+        body, _ = read_output(job["output"], job["shown"], self.output_chars)
+        job["output"].close()
         return "%s\n%s" % (status, body)
 
     def sam3d(self, args):
@@ -363,12 +485,15 @@ def main(argv=None, client=None):
     parser.add_argument("--output-chars", type=int, default=16000, help="bash output returned to the model")
     parser.add_argument("--keep-image-files", type=int, default=400, help="saved observation images retained in /workspace")
     parser.add_argument("--workspace", default="/workspace")
+    parser.add_argument("--bash-mode", choices=("timeout", "pausable"), default="timeout",
+                        help="timeout: each bash command ends after timeout_seconds (at most 1800); pausable: no time limit, the "
+                             "command's processes are paused between check-ins and while any other tool or model call runs")
     args = parser.parse_args(argv)
     assert args.compact_tokens > 0 and args.keep_turns > 0 and args.max_images > 1 and args.reserve_seconds > 0 and args.keep_image_files > 0
     check_boundary()
     Agent(client or Client(), workspace=args.workspace, compact_tokens=args.compact_tokens, keep_turns=args.keep_turns,
           max_images=args.max_images, reserve_seconds=args.reserve_seconds, output_chars=args.output_chars,
-          keep_image_files=args.keep_image_files).run()
+          keep_image_files=args.keep_image_files, bash_mode=args.bash_mode).run()
 
 
 if __name__ == "__main__":

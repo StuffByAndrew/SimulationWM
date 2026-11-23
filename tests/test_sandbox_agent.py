@@ -95,7 +95,7 @@ def test_gateway_rejections():
                     {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}]}]}):
         with pytest.raises(RuntimeFailure):
             broker.payload(request)
-    for config in ({**CONFIG, "api": "responses"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
+    for config in ({**CONFIG, "api": "chat"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
         with pytest.raises(RuntimeFailure):
             InferenceBroker(config)
 
@@ -246,7 +246,7 @@ def test_shared_cost_pool_ledger_threshold_and_monitor(tmp_path, capsys):
     parent, child = multiprocessing.Pipe(duplex=False)
     with patch.object(InferenceBroker, "_call", lambda self, request, timeout: {"ledger": self.ledger}):
         _inference_process(config, {}, 1, child)
-    assert parent.recv() == (True, {"ledger": None})
+    assert parent.recv() == (True, {"ledger": None}, False)
     assert InferenceBroker({**CONFIG, "max_cost_usd": 5., "call_reserve_usd": 3.}).stop_reason() == "Run inference cost budget exhausted"
 
 
@@ -296,3 +296,44 @@ def test_harness_sequence_runs_agent_written_steps_and_saves_outputs(tmp_path):
     (tmp_path / "bad.json").write_text(json.dumps([{"op": "finish"}]))
     parts, _ = loop.execute({"id": "d", "name": "sequence", "arguments": json.dumps({"world": "reference", "steps_file": str(tmp_path / "bad.json")})})
     assert parts[0]["text"].startswith("ERROR: steps_file must hold")
+
+
+def test_pausable_bash_runs_without_limit_only_while_the_agent_waits(tmp_path):
+    controller = Controller([[("bash", {"command": "sleep 100", "check_seconds": 1})]], now=time.time)
+    loop = agent.Agent(controller, workspace=tmp_path, bash_mode="pausable", now=time.time)
+    assert {"bash", "bash_resume", "bash_kill", "view_image"} <= set(loop.schemas) and set(loop.schemas["bash"]["properties"]) == {"command", "check_seconds"}
+    call = lambda name, **args: loop.execute({"id": "c", "name": name, "arguments": json.dumps(args)})[0][0]["text"]
+    def ours():  # live processes started from this test's workspace
+        found = {}
+        for pid, state in agent.descendants().items():
+            try:
+                if os.readlink("/proc/%d/cwd" % pid) == str(tmp_path):
+                    found[pid] = state
+            except OSError:
+                pass
+        return found
+    assert call("bash", command="echo done") == "exit code 0\ndone\n"
+    # A detached (double-forked, new session) loop and a foreground loop: both may only run between check-ins.
+    loops = "(setsid bash -c 'while true; do echo x >> detached.txt; sleep .05; done' &); while true; do echo tick; echo x >> fg.txt; sleep .05; done"
+    out = call("bash", command=loops, check_seconds=1)
+    assert out.startswith("paused after 1 s of running time") and "tick" in out
+    assert len(ours()) >= 2 and all(state in "tT" for state in ours().values())  # both loops (a short sleep may be between runs)
+    sizes = lambda: [(tmp_path / name).stat().st_size for name in ("fg.txt", "detached.txt")]
+    before = sizes()
+    time.sleep(.5)
+    assert sizes() == before
+    assert call("observe", world="reference").startswith("ERROR: a bash command is paused")
+    assert call("bash", command="echo no").startswith("ERROR: a bash command is paused")
+    out = call("bash_resume", check_seconds=1)
+    assert out.startswith("paused after 2 s") and all(a > b for a, b in zip(sizes(), before))
+    assert call("bash_kill").startswith("killed by bash_kill after 2 s") and ours() == {} and loop.job is None
+    assert call("bash_kill").startswith("ERROR: no bash command is paused")
+    # A finished command leaves nothing behind, even a detached process.
+    assert call("bash", command="(setsid sleep 100 &); echo started") == "exit code 0\nstarted\n" and ours() == {}
+    # Only the session deadline ends a command without the agent's choice.
+    loop.deadline = time.time() + loop.reserve + 2
+    assert call("bash", command="sleep 100", check_seconds=50).startswith("killed because the session is ending") and ours() == {}
+    # A command still paused when the host stops the session is killed before finishing.
+    loop.deadline = time.time() + 3600
+    loop.run()
+    assert loop.job is None and ours() == {} and controller.requests[-1]["op"] == "finish"

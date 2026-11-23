@@ -103,7 +103,7 @@ def test_density_does_not_force_distant_or_wrong_type_assignment(tmp_path):
         assert 'center_of_mass_error_m' not in result and 'chamfer_distance_m' not in result
 
 
-def test_unsupported_candidate_primitive_component_unavailable(tmp_path):
+def test_mesh_candidate_counts_as_its_convex_hull(tmp_path):
     import mujoco
     source=make_sim(tmp_path,'source','<geom name="part" type="sphere" size=".1"/>')
     path=tmp_path/'mesh.xml'
@@ -114,8 +114,9 @@ def test_unsupported_candidate_primitive_component_unavailable(tmp_path):
         mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data)
     action(None)
     result=metrics(source,(SimpleNamespace(_model=model,_data=data,action=action),path))
-    assert result['chamfer_status']=='unavailable'
-    assert result['density']['status']=='unavailable'
+    assert result['chamfer_status']=='ok' and result['chamfer_distance_m']>0.01
+    assert result['density']['per_primitive'][0]['predicted_density_kg_m3']==pytest.approx(1000)
+    assert result['density']['candidate_compiled_mass_consistent'] is True  # hull volume = MuJoCo's mesh volume
     assert result['center_of_mass_status']=='ok'
 
 

@@ -19,6 +19,7 @@ import numpy as np
 from .evaluation import _relative, extract_submission
 from .inspector import PROPERTIES
 from .runtime import decode_submission, extract_bundle
+from .robots import ROBOTS
 from .simulation import Simulation, _load_xml
 
 STATE_HZ = 30
@@ -32,14 +33,15 @@ VISIBLE_GROUPS = np.array([1, 1, 1, 0, 0, 0], dtype=np.uint8)
 
 
 def _non_robot_bodies(scene):
-    """Jointed named bodies outside the top-level subtree that owns Panda joint1.
+    """Jointed named bodies outside the top-level subtree that owns a robot fixture's root body (Panda link0, Shadow rh_forearm).
 
     Expanded includes can contribute several worldbody sections (MuJoCo merges
     them), e.g. a robot include placed before the scene's own worldbody.
     """
     worlds = _load_xml(scene).findall("worldbody")
     tops = [top for world in worlds for top in world.findall("body")]
-    robot = {id(body) for top in tops if any(joint.get("name") == "joint1" for joint in top.iter("joint"))
+    roots = {entry[1] for entry in ROBOTS.values()}
+    robot = {id(body) for top in tops if any(node.get("name") in roots for node in top.iter("body"))
              for body in top.iter("body")}
     return [body.get("name") for world in worlds for body in world.iter("body") if body.get("name") and id(body) not in robot
             and (body.find("joint") is not None or body.find("freejoint") is not None)]
@@ -58,7 +60,7 @@ def load(workspace, setup):
     simulation = setup.get("simulation") or {}
     robot = simulation.get("robot")
     names = simulation.get("graspable_bodies")
-    if names is None and robot == "panda":
+    if names is None and robot:
         names = _non_robot_bodies(scene)
     # A private camera satisfies the Simulation contract; nothing is rendered.
     config = {"robot": robot, "camera": INSPECTOR_CAMERA, "rgb": False, "calibration": False,
@@ -108,11 +110,11 @@ def tendon_paths(m, d, samples=12):
 
 
 def object_bodies(sim):
-    """Bodies not welded to the world, not mocap (e.g. grasp targets) and outside the Panda arm's subtree: the object
+    """Bodies not welded to the world, not mocap (e.g. grasp targets) and outside the robot fixture's subtree: the object
     whose CoM the viewer marks."""
     m = sim._model
-    robot = (int(m.body_rootid[m.jnt_bodyid[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, "joint1")]])
-             if sim.robot == "panda" else -1)
+    robot = (int(m.body_rootid[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, ROBOTS[sim.robot][1])])
+             if sim.robot else -1)
     return [b for b in range(1, m.nbody) if m.body_weldid[b] and m.body_mocapid[b] < 0 and m.body_rootid[b] != robot]
 
 

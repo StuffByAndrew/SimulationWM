@@ -26,7 +26,7 @@ Validation: Slurm test-partition job 56020252 passed the then-current full suite
 
 The two seeded assembly manifests enable `[reconstruction]` with `samples = 2048` and their construction seed. The same table in trusted evaluation configuration overrides the manifest. `samples` accepts 128 through 32768, and `seed` controls deterministic sampling. Metrics reset both simulations and compare geometry in the **reset world coordinate frame**, without rigid alignment or scale fitting, so position and orientation errors count. Floor geometry and synthetic grasp targets are excluded.
 
-`scores.reconstruction.chamfer_distance_m` is the symmetric mean **unsquared** nearest-neighbor distance in meters: half the sum of each sampled surface's mean distance to the other sampled surface. Samples represent the **exposed union surface** of supported object primitives (sphere, box, ellipsoid, cylinder and capsule); proposal points strictly inside another constituent primitive are rejected. They are area weighted across constituents, and ellipsoid samples use the sphere-transform area Jacobian. Ellipsoid area weights use deterministic numerical quadrature. Internal overlap surfaces and floor surfaces do not enter the Chamfer calculation. This is a finite sampled-surface estimate; increasing samples improves spatial resolution. Canonical geometry ordering excludes names, density and color, so identical geometry with renamed or reordered constituents yields the same samples and zero distance within numerical precision.
+`scores.reconstruction.chamfer_distance_m` is the symmetric mean **unsquared** nearest-neighbor distance in meters: half the sum of each sampled surface's mean distance to the other sampled surface. Samples represent the **exposed union surface** of supported object primitives (sphere, box, ellipsoid, cylinder, capsule, and mesh geoms taken as the convex hull of their compiled vertices, which is what MuJoCo collides); proposal points strictly inside another constituent primitive are rejected. They are area weighted across constituents, and ellipsoid samples use the sphere-transform area Jacobian. Ellipsoid area weights use deterministic numerical quadrature. Internal overlap surfaces and floor surfaces do not enter the Chamfer calculation. This is a finite sampled-surface estimate; increasing samples improves spatial resolution. Canonical geometry ordering excludes names, density and color, so identical geometry with renamed or reordered constituents yields the same samples and zero distance within numerical precision.
 
 `center_of_mass_error_m` is the norm of predicted minus source compiled object COM, with the signed difference in `center_of_mass_error_vector_m` and both COM positions retained. Each COM uses compiled body mass and reset-world inertial positions. It therefore honors explicit body inertial overrides. COM remains available independently when primitive surface or density evaluation is unavailable.
 
@@ -65,9 +65,13 @@ until a declared pair or unambiguous single-hinge pair exists.
 
 ## Panda object and arm evaluation
 
-Panda submissions include an unchanged copy of the public robot fixture.
+Panda and Shadow hand submissions include an unchanged copy of the public robot fixture.
 The evaluator compares it byte-for-byte to the trusted public fixture and
-requires a single `robot/panda.xml` include. The arm is an instrument, not a
+requires a single `robot/panda.xml` (or `robot/shadow_hand.xml`) include. Shadow hand
+levels use the same object selectors, fixture exclusion (the `rh_forearm` subtree) and
+`[[arm_probes]]`, whose steps carry `hand_target` fields (`actuator_targets`, `ticks`);
+the probe score then compares joint positions, velocities and efforts and adds
+`tactile_mae_n`, the mean absolute difference over every taxel and body total. The arm is an instrument, not a
 reconstruction target: private object selectors exclude it from surface,
 density and compiled COM metrics. A fixed cube is retained as a jointless
 nonworld body so its box enters target geometry sampling. Single-hinge matching
@@ -199,6 +203,35 @@ Scores: `rms_resistance_error_n`, `max_resistance_error_n`, `source_rms_resistan
 (`stroke`, `arc_length_m`, `resistance_n`, `force_world_n`) for plotting the ground-truth force-position profile
 against the model's; loading and unloading strokes stay separate, so latch hysteresis and damping are plottable. A
 candidate handle the ray misses is `missed_grasp` with null errors (a gap). The empty baseline has no handle.
+
+## Cloth (2D flex)
+
+`cloth` (selector; needs a private manifest `[cloth]`, see `src/sim2sim/cloth.py` and the `cloth_*` manifests) compares
+cloths independently of mesh resolution or MJCF layout. A model's cloth is the union of its 2D flexes, whose vertex
+bodies must move on three orthogonal slide joints (flexcomp `dof="full"` or explicit vertex bodies); a candidate without a
+2D flex, or with another vertex parameterization, is `unavailable` (with the error), never zero. Fresh source and
+candidate worlds gain two researcher-only static fixtures far from the scene (a horizontal bar and a cone, 1.5 m either
+side of the source cloth's reset centre, their tops 0.6 m above it); placements and probe points come from the source and
+apply to both worlds in the world frame, without alignment.
+
+- `stiffness_map`: on a `lift_grid`² grid over the source cloth's reset bounding box (inset `lift_margin_m`), a vertical
+  ray from above grasps the cloth as an agent's point grasp does (nearest vertex of the hit flex face, at the hit offset)
+  and lifts it `lift_height_m` at `lift_speed_m_s`, recording the grasp's vertical reaction every `sample_ticks`. A
+  stiffer cloth lifts a wider tent, so the final lift force and the force/height slope map local bending stiffness (plus
+  the lifted weight). Reports both per-point maps, raw curves, `lift_force_mae_n`, `lift_force_rms_error_n`,
+  `lift_force_relative_error` (MAE over the mean source force), `stiffness_mae_n_m`, `stiffness_rms_error_n_m`,
+  `probed_points` and `candidate_missed_points`. Source-ray misses (holes, outside the outline) are gaps.
+- `drops`: each `[[cloth.drops]]` (seeded in the generator: three bar, two cone) rotates the reset layout by `yaw_deg`
+  about z and `tilt_deg` about a horizontal axis at `tilt_axis_deg`, releases it at rest 5 cm above the bar or the cone
+  apex, and runs `drop_ticks`. Every `frame_ticks` the symmetric mean Chamfer distance between `samples` area-weighted
+  barycentric surface points of each cloth (fixed on each mesh) gives `chamfer_series_m`, `mean_chamfer_m`,
+  `final_chamfer_m` (the drape at rest) and `max_chamfer_m`; `drop_mean_chamfer_m` and `drop_final_chamfer_m` average the
+  drops. `rest_chamfer_m` compares the two flat cloths at reset.
+
+Private artifacts under `artifacts/<digest>/cloth/`: `stiffness_map.json`, `stiffness_map.png` (source, candidate and
+absolute-error lift-force maps) and `drop_NNN/side_by_side.mp4` (source left, candidate right, real time). Point-grasp
+interaction with any flex is described in `docs/environments.md` (Cloth levels). Mask-based metrics (`appearance`,
+`dynamics`, `expert` silhouettes/centroids) count geoms only and ignore flexes; use `image_mse` and `cloth` for cloth levels.
 
 ## Trivial baselines and normalization
 

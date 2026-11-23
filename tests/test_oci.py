@@ -390,3 +390,79 @@ class MovableCameraOCITests(unittest.TestCase):
         cameras = [event for event in events if event.get("op") == "camera"]
         self.assertEqual(len(cameras), 2)
         self.assertTrue(all(event.get("ok", True) for event in events))
+
+
+# Runs as the agent in a strict Shadow-hand container: the local_controller tool reproduces the reconstruction world exactly,
+# and the pausable-bash process control (subreaper, /proc, SIGSTOP/SIGKILL of a detached tree) works without capabilities.
+TOUCH_AGENT = r'''
+import ctypes, json, os, shutil, signal, subprocess, sys, time
+from pathlib import Path
+sys.path[:0] = ["/opt/public/tools/local_controller", "/opt/agent"]
+import localsim, sandbox_agent
+from sim2sim.client import Client
+from sim2sim.robots import HAND_ACTUATORS, HAND_HOME
+client = Client()
+assert "/opt/public/tools/local_controller" in client.task["task"]
+assert json.loads(Path("/opt/public/tools/local_controller/public_tool_config.json").read_text()) == client.task["public_tool_config"]
+project = Path("/workspace/project")
+shutil.copytree("/opt/public/robot", project / "robot")
+(project / "scene.xml").write_text("""<mujoco model="guess"><compiler angle="radian" autolimits="true" meshdir="robot/assets"/>
+<worldbody><camera name="fixed" pos="0.58 -0.42 0.38" xyaxes="0.8229 0.5682 0 -0.3213 0.4654 0.8247"/>
+<geom name="floor" type="plane" pos="0 0 -0.1" size="1 1 .05"/>
+<body name="guess" pos="0.3 0 0.04"><freejoint/><geom type="box" size=".03 .02 .015" density="500"/></body>
+</worldbody><include file="robot/shadow_hand.xml"/></mujoco>""")
+client.load_reconstruction(project)
+home = [HAND_HOME.get(n.replace("_A_", "_")[:-1] + "1", 0) + HAND_HOME.get(n.replace("_A_", "_")[:-1] + "2", 0) if n.endswith("J0")
+        else HAND_HOME.get(n.replace("_A_", "_"), 0) for n in HAND_ACTUATORS]
+curl = [1.5708 if n[-3:] == "FJ3" else 3.0 if n[-3:] == "FJ0" else v for n, v in zip(HAND_ACTUATORS, home)]
+steps = [{"op": "observe", "ticks": 10}, {"op": "hand_target", "actuator_targets": curl, "ticks": 200}, {"op": "reset"}, {"op": "observe"}]
+remote = [client.request(s["op"], world="reconstruction", **{k: v for k, v in s.items() if k != "op"})["observation"] for s in steps]
+local = localsim.LocalController(project)
+assert [local.act(s) for s in steps] == remote, "local copy differs from the reconstruction world"
+cells = localsim.taxels(remote[1]["proprioception"]["joint_positions_rad"])
+assert len(cells) == 6 and all(c["surface_point_m"] for c in cells["middle"]["cells"][1])
+assert ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0
+job = subprocess.Popen(["bash", "-c", "(setsid bash -c 'while :; do echo x >> /tmp/d; sleep .05; done' &); while :; do echo x >> /tmp/f; sleep .05; done"],
+                       start_new_session=True)
+time.sleep(1)
+size = lambda: [os.path.getsize("/tmp/" + n) for n in "fd"]
+sandbox_agent.signal_tree(signal.SIGSTOP)
+paused, before = sandbox_agent.descendants(), size()
+time.sleep(.5)
+assert len(paused) >= 3 and all(s in "tT" for s in paused.values()) and size() == before, (paused, before, size())
+sandbox_agent.signal_tree(signal.SIGCONT)
+time.sleep(.5)
+assert all(a > b for a, b in zip(size(), before))
+sandbox_agent.signal_tree(signal.SIGKILL)
+job.wait()
+sandbox_agent.reap()
+assert sandbox_agent.descendants() == {}
+client.progress(json.dumps({"exact_steps": len(steps), "paused_processes": len(paused)}), origin="agent")
+client.finish()
+'''
+
+
+@unittest.skipUnless(os.environ.get("SIM2SIM_OCI_TEST") == "1", "requires explicit rootless OCI integration opt-in")
+class TouchHarnessOCITests(unittest.TestCase):
+    def test_local_controller_matches_reconstruction_world_and_bash_tree_control(self):
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/touch-harness" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(root / "environments/shadow_hand/hand_prism/scene.xml")}, "tools": {"local_controller": True},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                              "command": ["python", "-c", TOUCH_AGENT], "memory": "4g", "cpus": 2, "pids": 128, "workspace": "1g"},
+                  "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 600, "physics_ticks": 5000, "submissions": 1},
+                  "simulation": {"robot": "shadow_hand", "camera": "fixed", "width": 320, "height": 240, "rgb": False, "depth": False,
+                                 "calibration": False, "tactile": True},
+                  "evaluation": {"source_dir": str(root / "environments/shadow_hand"), "source_entrypoint": "hand_prism/scene.xml",
+                                 "manifest": "hand_prism/manifest.toml", "camera": "fixed", "width": 80, "height": 60, "timeout_seconds": 120}}
+        try:
+            run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual(json.loads((output / "termination.json").read_text())["status"], "finished")
+        report = [json.loads(line) for line in (output / "progress.jsonl").read_text().splitlines() if '"origin": "agent"' in line]
+        self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
+        print("touch harness: " + report[-1]["text"])

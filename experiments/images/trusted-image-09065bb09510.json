@@ -1,0 +1,33 @@
+{
+  "image_id": "09065bb09510a92ea1ca7b7656703e6dccebbed7b4af4063fd56ed0caf7aac7d",
+  "archive": "/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-images/sim2sim-09065bb09510.tar",
+  "archive_sha256": "58dd87cf34bcbb718e49d0f43477c04fd338869173447156255c813f919013c6",
+  "archive_bytes": 949506048,
+  "built_job": "61032468",
+  "node": "holy8a24101.rc.fas.harvard.edu",
+  "built_at_utc": "2026-11-16T07:10:36.500483+00:00",
+  "containerfile": "Containerfile",
+  "containerfile_sha256": "e10a07c796daeff89ad2dd515614da3981ed1f3236146766e056e3756cdacf81",
+  "git_head": "f385a5d70784f1e2db1cacfa9bca8505cb31dc43",
+  "inspection": {
+    "forbidden_hits": [],
+    "env_names": [
+      "GPG_KEY",
+      "HOME",
+      "HOSTNAME",
+      "LANG",
+      "MUJOCO_GL",
+      "PATH",
+      "PYTHONDONTWRITEBYTECODE",
+      "PYTHON_SHA256",
+      "PYTHON_VERSION",
+      "container"
+    ],
+    "agent_files": [
+      "sandbox_agent.py"
+    ],
+    "root_read_only": true,
+    "uid": 65532
+  },
+  "note": "Working tree may be uncommitted; the image ID is the trust anchor."
+}

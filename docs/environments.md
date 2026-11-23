@@ -188,6 +188,31 @@ frame margin. Researcher-only global/wrist previews and the full measurements
 are in `experiments/validation/panda-small/`; wrist previews for proprio levels
 are private validation artifacts, not enabled public observations.
 
+## Shadow hand tactile shape levels
+
+`experiments/validation/hand-scenes.py` writes four `environments/shadow_hand/` levels (2026-11-16). The public fixture
+`environments/shadow_hand/robot/` is MuJoCo Menagerie's Shadow Hand E3M5 right hand (commit `71f066ad`), mounted as in
+Menagerie's demo: palm up, fingers along +x, forearm welded. At reset the hand holds its home cradle pose and one free
+object rests on the palm; the floor is 0.12 m below the palm. The agent gets `hand_target`, joint proprioception and
+efforts, and fingertip/palm taxels (`tactile = true`), with no images and no point grasp. Object contact uses
+Menagerie's demo object settings (condim 6, priority 1) with sliding μ 0.5: the object stays on the level palm, and full
+wrist flexion (WRJ1 = −0.698) slides it off toward the wrist onto the floor, after which only `reset` recovers it.
+Densities are 500 kg/m³.
+
+| Level | Object | Mass | COM (body frame) |
+| --- | --- | --- | --- |
+| `hand_prism` | 64 × 44 × 30 mm box | 42.2 g | centre |
+| `hand_prism_offset_com` | same box; a 20 × 20 × 22 mm non-colliding block of extra density 3880 kg/m³ inside one corner | 76.4 g | (8.94, 4.47, 0) mm |
+| `hand_smooth_mesh` | inline convex mesh: an irregular 6-vertex core polytope dilated by a 15 mm ball (68 × 55 × 44 mm); every radius of curvature ≥ 15 mm, larger than the ~8.5 mm fingertip | 39.7 g | (−1.5, −0.5, −4.2) mm |
+| `hand_spiky` | 56 × 40 × 30 mm box plus two sharp inline-mesh cones (base radius 8 mm): one 30 mm up toward the fingers, one 26 mm out toward the little finger. The creases where a cone meets the box are narrower than a fingertip | 35.5 g | (0.1, 0.7, 0.4) mm |
+
+The generator settles each object on the home-pose hand for 3 s and stores the settled pose relative to the palm, so
+reset starts it resting without penetration (deepest contact ≤ 0.21 mm); hand and object then sag together about 4 mm
+under gravity in the first 0.5 s. Two private probes per level: `squeeze` (full finger curl with the thumb raised, hold,
+reopen) and `tilt` (full wrist flexion, which drops the object, then back to home). Metrics: `dynamics`, `chamfer`,
+`center_of_mass`. `experiments/validation/hand-check.py OUTDIR` measures hold, taxel response, the scripted drop,
+reset and the identity/wrong-candidate scores (Slurm job `61031422`; results in `experiments/validation/hand-levels/`).
+
 ## Sealed-box Franka levels
 
 `experiments/validation/box-scenes.py` writes three `environments/panda_small/` levels
@@ -218,3 +243,47 @@ the box lands) and `tilt_shake` (wrist tilts about y, shakes along x and y, set 
 release). `experiments/validation/box-check.py` checks every source probe (grasp
 held, release speed, landing, inner motion, determinism) and the composite-COM
 comparison between all level pairs.
+
+## Cloth levels
+
+`experiments/validation/cloth-scenes.py` writes seven point-grasp cloth levels (2026-11-16), `environments/cloth_*`.
+The ground truth is the simplest default cloth of RoboSimStudio (arXiv 2610.18835; its `rss.sheet` / Newton
+`add_cloth_mesh`: a flat grid of particles triangulated into a sheet with stretch `tri_ke`, bending `edge_ke`, damping and
+areal density, run by VBD) written as plain MuJoCo flex: a 0.40 m square, 16 × 16 cells in a "union jack" triangulation
+(cell diagonals point at the centre, so the axes and both diagonals are mesh edges), lying flat on a 0.72 m table at
+z = 0.402 m. One body per vertex moves on three slide joints with mass = 0.30 kg/m² × a third of its triangles' area (48 g
+for the full square). Each material region is a 2D `<deformable><flex>` over those shared vertex bodies, made inextensible
+by a flex edge equality (`solref="0.005 1"`: hung by a corner it stretches 0.3% on average, 10% at the grasp) and given bending stiffness by `<elasticity young=… thickness="0.001" poisson="0"
+elastic2d="bend" damping="0.001"/>` (edge damping 0.02 N s/m, friction 0.8, radius 2 mm). MuJoCo has one elasticity per
+flex, so a region of different stiffness is its own flex: an agent can write exactly this MJCF. Bending acts only between
+triangles of one flex, so a seam between region flexes is a free hinge (a sewn seam); it is part of the ground truth.
+Region flexes do not collide with one another (contype 2, conaffinity 1) and no flex collides with itself. MuJoCo 3.17
+requires `integrator="discrete"` for flex elasticity; the scenes use the CG solver (tolerance 1e-6), several times faster
+than Newton with the ~1500 cloth-table contacts of a resting cloth. Bending stiffness D = E t³/12; base E0 = 3e5 Pa
+(elastic length (D/(ρ_A g))^(1/3) ≈ 2 cm).
+
+| Level | Flexes (Young's modulus) | Colours |
+| --- | --- | --- |
+| `cloth_base` | one, E0 | one blue |
+| `cloth_quadrants` | four quadrants: E0, 4 E0, 16 E0, 64 E0 for (+x+y), (−x+y), (−x−y), (+x−y) | one blue |
+| `cloth_quadrants_colored` | same quadrants | red, yellow, green, blue by quadrant (aligned with stiffness) |
+| `cloth_quadrants_diagonal_colors` | same quadrants (eight flexes: quadrant × diagonal sector) | the same four colours by the sectors between the diagonals (right, top, left, bottom): misaligned with stiffness |
+| `cloth_holes` | one, E0 | one blue; seeded (20261116) wobbly outline, three wobbly holes and two slits cut in from the edge; largest connected piece |
+| `cloth_center_hole_stiff_rim` | base E0 plus a rim flex 64 E0 (triangles within 0.11 m of the centre) | one blue; 0.07 m circular hole (boundary vertices moved onto the circle) |
+| `cloth_center_hole_soft_rim` | one, E0 (the rim is simply base cloth, no seam) | same mesh as the stiff rim |
+
+Manifests set `graspable_bodies = []`: the point grasp attaches to the cloth itself (the vertex of the hit flex nearest
+the ray hit; `Simulation` adds one shared flex connect for any scene with a flex) and the wrench reports that vertex's
+pull. Each manifest carries a private `[cloth]` probe table for the `cloth` metric (`docs/evaluation.md`): a 4 × 4 lift
+grid, 8192 surface samples, and five seeded drops (three on a bar, tilt ≤ 20°; two over a cone, tilt ≤ 15°; 1.5 s each).
+Suggested metrics: `image_mse`, `cloth`. `experiments/validation/cloth-check.py OUTDIR LEVEL ... [--eval SOURCE:CANDIDATE ...]`
+checks compilation, rest, step cost, a scripted pixel grasp + lift + drag of a corner, and the metric.
+
+Validation (2026-11-16, Slurm `test`): job `61032288` compiled all seven levels (step 2.6–3.8 ms resting), rest drift
+≤ 0.2 mm over 0.5 s, and a camera-pixel grasp lifted a corner 15 cm in each (wrench reported 0.09–0.17 N while part of
+the cloth still lay on the table). `cloth` metric, about 2 min per evaluation on 2 CPUs: source vs source is exactly zero
+(`61032290`); `cloth_quadrants` vs a `cloth_base` candidate gives lift-force MAE 0.015 N (11% of the mean source force),
+stiffness MAE 0.23 N/m, drop Chamfer 1.3–3.3 cm at rest against a 2.2 mm rest floor (same flat cloth, different sampling)
+(`61032293`); stiff vs soft rim gives 7% lift-force error and 1.7–2.8 cm final drop Chamfer (`61032294`). Outputs, videos
+and maps: `experiments/validation/cloth-check/`. Tests: `61032295` (63 passed; the one failure, a too-coarse 3 × 3 lift
+grid in the new test, was fixed) and `61032724` (`tests/test_cloth.py`, 2 passed).

@@ -36,7 +36,7 @@ def _object_box(scene, simconfig):
     from .simulation import Simulation
     sim = Simulation(scene, simconfig)
     m, d = sim._model, sim._data
-    robot = _robot_bodies(sim) if simconfig.get('robot') == 'panda' else set()
+    robot = _robot_bodies(sim) if simconfig.get('robot') else set()
     signs = np.array(list(itertools.product((-1, 1), repeat=3)))
     corners = [(m.geom_aabb[g][:3] + signs * m.geom_aabb[g][3:]) @ d.geom_xmat[g].reshape(3, 3).T + d.geom_xpos[g]
                for g in range(m.ngeom) if m.geom_bodyid[g] != 0 and m.geom_bodyid[g] not in robot]
