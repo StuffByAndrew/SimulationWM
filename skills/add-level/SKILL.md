@@ -19,8 +19,12 @@ Ask the user for a free-form description, prompting for whatever of this they di
 - **Variants**: a family of levels that differ in one hidden property (precedent: `tunnel_*`, `box_*`), and what is
   held identical across them.
 - **Closest existing level** to copy defaults from (list `environments/` and `environments/panda_small/`).
+- **Hypothesis and controls**: the one-sentence claim about the agents the level tests, the single manipulated
+  factor per ablation pair, what is held identical, and what result each answer would produce. Name shortcuts
+  (priors, defaults, unidentifiable scale) and unrelated failure causes (perception, gripper, budget) that could fake
+  the outcome, and how the design rules them out.
 
-Restate the semantics in 3–5 lines and get a yes before the settings round.
+Restate the semantics and hypothesis in 3–5 lines and get a yes before the settings round.
 
 ## 2. Settings walkthrough (at most two AskUserQuestion rounds)
 
@@ -32,7 +36,7 @@ Round A — embodiment and sensing (`[simulation]`):
 
 | Decision | Options → config | Notes |
 | --- | --- | --- |
-| Actuator | point grasp (`environments/<level>`) / Franka (`environments/panda_small/<level>`, `robot = "panda"`, `arm_target`) / both | Franka levels include the shared `robot/` fixture and use `PANDA_CONSTRAINTS`; the fixture gripper pinches only ~1–1.4 N, so design light objects or form closure. |
+| Actuator | point grasp (`environments/<level>`) / Franka (`environments/panda_small/<level>`, `robot = "panda"`, `arm_target`) / Shadow hand (`robot = "shadow_hand"`, `hand_target`, precedent `HAND_LEVELS`) / both | Franka levels include the shared `robot/` fixture and use `PANDA_CONSTRAINTS`; the fixture gripper pinches only ~1–1.4 N, so design light objects or form closure. |
 | Camera | fixed / `movable_camera = true` / + `wrist_camera = "wrist"` (Franka only) | The scene still needs a worldbody perspective camera named `fixed`; evaluation always uses the trusted fixed camera. |
 | Images | none (proprio-only: `rgb = calibration = false`) / RGB / RGB-D (`depth = true`); resolution (default 320×240) | |
 | Force sensing | point grasp `wrench`; Franka `effort` (joint torques, default on), `tactile` | `wrench` defaults false; disabling `effort` means no force sensing at all on Franka. |
@@ -62,8 +66,19 @@ Then pick metrics from what the level is about, and note what each needs in the 
 | `die` (predictor submission, real time) | `[launcher]` and `[die]` (see `src/sim2sim/die.py`, `environments/die_biased`) |
 | `friction`, `expert`, `policy_transfer` | see `docs/evaluation.md`; `expert` needs `[[expert_trajectories]]`, `policy_transfer` is point-grasp only with `[[transfer_tasks]]` |
 
-Finish the round with a one-screen summary: levels × conditions, each condition's single factor, metrics, wall
-budget and cost per run × count. Get approval before building.
+Then fix the **evals card**, the concise plan for judging the level:
+
+- **Quantitative**: one primary metric that measures the hypothesis directly, at most two secondaries, the trivial
+  baseline/normalization, replicates, and comparison at matched wall time and matched cumulative tokens.
+- **Qualitative**: the agent behaviours and reasoning strategies to look for in traces and videos, and expected
+  failure modes.
+- **Human visuals**: the dashboard views a human opens to check a run (rollout video, grasp overlay, action
+  timeline, model context, physics inspector); the one or two report figures that carry the result (paired bars
+  with delta and noise band, 3D reconstruction overlay, estimate-convergence plot vs truth, force-profile curves,
+  calibration plot); and whether the dashboard needs a new view or plot (new work, agreed here).
+
+Finish the round with a one-screen summary: hypothesis, levels × conditions, each condition's single factor, the
+evals card, wall budget and cost per run × count. Get approval before building.
 
 ## 3. Unimplemented capabilities
 
@@ -96,8 +111,8 @@ before the level configs:
    only for a genuinely new knob. Keep these as plain top-level assignments: the dashboard parses them for each
    environment's base prompt. Run `.venv/bin/python experiments/configs/generate-waves.py`; `git status
    experiments/configs` must show only new files (existing outputs stay byte-identical).
-6. **Docs**: a `docs/environments.md` section (design, hidden property, variants table, probes, check job ID and
-   result); an entry in `docs/experiment-todo.md` (planned) or `docs/experiment-log.md` (launched).
+6. **Docs**: a `docs/environments.md` section (hypothesis, design, hidden property, variants table, probes, evals
+   card, check job ID and result); an entry in `docs/experiment-todo.md` (planned) or `docs/experiment-log.md` (launched).
 7. **Smoke**: prepare one config with `--prepare-only` on a `test` node and confirm the level appears in the dashboard
    Environments view. Then hand off to run-experiment.
 

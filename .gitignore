@@ -16,7 +16,8 @@ MUJOCO_LOG.TXT
 sim2sim-experiment-*.out
 /tools/segmentation/vendor/
 # Local agent worktrees, report outputs and data, live spend records and stray job output
-/.claude/
+/.claude/*
+!/.claude/agents/
 /experiments/reports/
 /experiments/cost-ledger/
 /oom
