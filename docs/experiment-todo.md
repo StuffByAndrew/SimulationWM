@@ -26,8 +26,8 @@ Keep this list current: strike items when a log entry covers them.
   - The 100 frames/s control keeps the throws, evaluation trials and baselines identical, so it tests whether the agent
     adapts its modeling approach (e.g. a mechanics model from precise release estimates) to more precise observations.
 - [ ] Before launching:
-  - Merge the die-level worktree and load the image recorded in `experiments/images/trusted-image-die.json` (point
-    `SIM2SIM_TRUSTED_IMAGE_RECORD` at it, or promote it to `trusted-image.json`).
+  - Use the merged main image `42f70708fdcc…` (`experiments/images/trusted-image.json`, job `63142237`); the
+    branch-only image in `trusted-image-die.json` predates the merge (predictor runner moved to `sim2sim.predictor`).
   - Pack **one die run per strict job**. The controller's real-time physics thread, the agent (4 CPU) and, during
     evaluation, the predictor container (4 CPU) all need CPUs at once.
   - Use lab or netscratch storage (`audit_bytes` 32 GiB: every frame batch the agent's code reads is audited).
@@ -272,10 +272,9 @@ Keep this list current: strike items when a log entry covers them.
   `docs/environments.md` (Spring-powered positioning-fixture levels). The submission is a predictor program
   (`predictor.py`: `predict`, `settings`), scored by `fixture` (CRPS at 25 held-out settings × 16 releases, Brier, hit
   rates at the chosen settings × 40 releases); each evaluation takes a few minutes (`timeout_seconds = 1800`).
-- [ ] Launch with the image built from this branch (new harness actions, predictor runner, predictor-task prompts):
-  `87e9f4708d6d…` (job `62994769`), record `experiments/images/trusted-image-fixture.json`; set
-  `SIM2SIM_TRUSTED_IMAGE_RECORD` to it. OCI tests passed with it (job `62995919`: 6 passed, the tools-image test skipped).
-  Rebuild if `src/` or the harness changes before launch.
+- [ ] Launch with the merged main image `42f70708fdcc…` (`experiments/images/trusted-image.json`, job `63142237`; OCI
+  job `63143283` passed). The branch-only image in `trusted-image-fixture.json` predates the merge (unified predictor
+  runner and predictor-task prompt). Rebuild if `src/` or the harness changes before launch.
 - [ ] Gemini fairness rules (AGENTS.md) need an astra reference only if a comparison is wanted; none exists for this level.
 - [ ] Review per run: the dashboard links each submission's fixture view (predicted vs measured histograms, settings map,
   trial replay). Check whether agents find the bimodal level's minor (folded-back) mode and avoid mean-based settings for

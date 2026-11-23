@@ -6,6 +6,21 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-23 18:45 UTC — Fixture and die branches merged into main; new trusted image (no runs)
+- **Merged** `worktree-fixture-level` (wave 23 positioning fixture) and `worktree-die-level` (biased die, now
+  **wave 24**: `experiments/configs/wave24-20261123/`, run ids `w24-die-*`, configs now `entrypoint = "predict.py"`).
+  Main's edits made after both branches were copied (pausable bash, `local_controller`, `allowed_actions`) were kept.
+- **One predictor runner** (`src/sim2sim/predictor.py`, call and real-time stream modes) and a `PREDICTOR_METRICS` lookup in
+  the runtime; one predictor prompt set in the harness; the controller channel also works with `--bash-mode pausable`.
+  Neither wave had launched, so their predictor-task prompt texts changed before any run.
+- **Image** `42f70708fdcce29393307944b198a284da84d753abe54e853cf046715c42f4b2` (job `63142237`, archive in
+  `experiments/images/` on home: the lab image directory hit its quota).
+- **Tests** (Slurm `test`): full suite job `63139927` 327 passed, 10 skipped, 2 failed: the inspector's 10-minute check
+  (40-minute job limit; passes in a 10-minute job) and a harness channel test bug, fixed; job `63142222` reran both files,
+  36 passed. OCI job `63143283` (slurm_step): 8 passed (fixture and die predictor runs, touch harness), the tools-image
+  test skipped. `fixture-check.py fixture_rigid` (job `63142622`) and `die-check.py` (job `63143385`) passed;
+  outputs in `experiments/validation/merge-20261123/`.
+
 ## 2026-11-20 11:30 UTC — Both Gemini batches ended
 - **`gemini-20261120`** (with the provider hold): all 10 `completed`, last at 11:25 UTC.
   - Run-clock minutes: w11 neon 217, hydrogen 135; cloth neon 201, hydrogen 256; marble 357/356; hand 354/355; latch neon
