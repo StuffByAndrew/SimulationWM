@@ -183,6 +183,8 @@ class Simulation:
         if self.robot is not None:
             self._init_robot()
             self._reset_robot()
+        from .fixture import Mechanism, is_fixture  # positioning-fixture scenes: private carriage mechanism (fixture.py)
+        self.fixture = Mechanism(self, self.config.get("fixture_seed")) if is_fixture(self._model) else None
         mujoco.mj_forward(self._model, self._data)
         self._camera_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera)
         if self._camera_id < 0:
@@ -388,6 +390,8 @@ class Simulation:
             result["proprioception"] = self._proprioception()
             if self.config.get("tactile", False):
                 result["tactile"] = self._tactile()
+        if self.fixture is not None:
+            result["fixture"] = self.fixture.readings()
         return result
 
     def _raycast(self, pixel):
@@ -515,11 +519,23 @@ class Simulation:
             self.ticks = 0
             if self.robot is not None:
                 self._reset_robot()
+            if self.fixture is not None:
+                self.fixture.restore()
             mujoco.mj_forward(self._model, self._data)
         elif op in ("wait", "advance"):
             self._advance(action.get("ticks", self.default_ticks))
         elif op == "camera":
             self._aim_camera(action["pos"], action["lookat"])
+        elif op in ("reset_carriage", "release_carriage"):
+            if self.fixture is None:
+                raise ValueError(f"{op} requires a positioning-fixture scene")
+            if op == "reset_carriage":
+                assert self.fixture.rng is not None, "reset_carriage needs a private simulation.fixture_seed"
+                self.fixture.reset_carriage(self.fixture.rng)
+            else:
+                self.fixture.release()
+                if action.get("ticks", 0):
+                    self._advance(action["ticks"])
         else:
             raise ValueError(f"unknown action: {op}")
         return self.observe() if render else None

@@ -172,7 +172,7 @@ if __name__ == "__main__":
     unittest.main()
 
 class HostBudgetTests(unittest.TestCase):
-    def run_agent(self, directory, script, budget=None, evaluate=None, candidate_factory=None, tick_delay=0, simulation=None, extra=None):
+    def run_agent(self, directory, script, budget=None, evaluate=None, candidate_factory=None, tick_delay=0, simulation=None, extra=None, manifest=None):
         import types
         from sim2sim.runtime import run
 
@@ -207,6 +207,8 @@ class HostBudgetTests(unittest.TestCase):
         source = Path(directory) / "source"
         source.mkdir()
         (source / "scene.xml").write_text("<mujoco/>")
+        if manifest is not None:
+            (source / "manifest.toml").write_text(manifest)
         if (simulation or {}).get("robot"):
             from sim2sim.robots import ROBOTS
             (source / "robot/assets").mkdir(parents=True)
@@ -293,6 +295,32 @@ for action in [{"op":"hand_target","actuator_targets":[0.1]*20,"ticks":2}, {"op"
             from sim2sim.audit import read_audit
             actions = [event["resolved_action"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "hand_target"]
             self.assertEqual(actions, [{"op": "hand_target", "world": "reference", "ticks": 2, "actuator_targets": [0.1]*20}])
+
+    def test_fixture_actions_contract_private_seed_and_reference_only(self):
+        script = '''
+assert task["actions"].index("reset_carriage") < task["actions"].index("reset") and "release_carriage" in task["actions"]
+assert task["submission"]["entrypoint"] == "predictor.py" and set(task["submission"]["predictor"]["functions"]) == {"predict", "settings"}
+assert "fixture" in task["observation_contract"] and "fixture_seed" not in json.dumps(task)
+for action, ok in [({"op":"release_carriage","world":"reconstruction"}, False), ({"op":"reset_carriage","ticks":3}, False),
+                   ({"op":"release_carriage","ticks":2}, True), ({"op":"finish"}, True)]:
+ print(json.dumps(action),flush=True)
+ reply=json.loads(input())
+ assert reply["ok"] is ok, reply
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, manifest="[fixture]\nseed = 1\n",
+                                    extra={"evaluation": {"entrypoint": "predictor.py", "metrics": ["fixture"]}})
+            self.assertEqual(result["total_ticks"], 2)
+            self.assertIn("fixture_seed", json.loads((Path(directory) / "run/manifest.json").read_text())["resolved_source_config"])
+        script = '''
+assert "release_carriage" not in task["actions"] and task["submission"]["entrypoint"] == "scene.xml" and "predictor" not in task["submission"]
+for action in [{"op":"release_carriage"}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ reply=json.loads(input())
+assert True
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.run_agent(directory, script)["total_ticks"], 0)
 
     def test_observe_only_reference_rejects_interaction(self):
         script = '''

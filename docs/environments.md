@@ -287,3 +287,64 @@ stiffness MAE 0.23 N/m, drop Chamfer 1.3–3.3 cm at rest against a 2.2 mm rest 
 (`61032293`); stiff vs soft rim gives 7% lift-force error and 1.7–2.8 cm final drop Chamfer (`61032294`). Outputs, videos
 and maps: `experiments/validation/cloth-check/`. Tests: `61032295` (63 passed; the one failure, a too-coarse 3 × 3 lift
 grid in the new test, was fixed) and `61032724` (`tests/test_cloth.py`, 2 passed).
+
+## Spring-powered positioning-fixture levels
+
+`experiments/validation/fixture-scenes.py` writes three `environments/panda_small/` levels (2026-11-23): `fixture_rigid`,
+`fixture_rubber` and `fixture_bimodal`. The task is calibration, not reconstruction: the agent characterizes the fixture,
+picks dial settings for two marked target regions and submits a predictor program (metric `fixture`,
+[evaluation](evaluation.md#positioning-fixture-fixture); runner [protocol](protocol.md#predictor-submissions-srcsim2simpredictorpy)).
+
+Shared fixture (all values in the generator):
+
+- A 40 × 30 × 24 mm carriage (80 g, plus a 20 g, 5 mm thick blade trailing 0.36 m behind it on its top) rides a rail on a
+  slide joint (bearing drag: damping 0.05 N s/m, dry friction 0.03 N), with an end bumper (joint limit) at 245 mm. Its red
+  index line reads the ruler: zero (red tick) where the relaxed spring leaves it; ticks every 10 mm, majors every 50 mm,
+  −50 to 250 mm. Target bands: `target` 70–100 mm (green) and `narrow_target` 18–22 mm (orange).
+- Launcher: a 20 g plunger on a 300 N/m spring (joint stiffness, stop at its free length). `reset_carriage` latches
+  plunger and carriage (joint equalities) at compression `8 + 3.2 · dial` mm (8–40 mm), sets the pad preload, lifts the pad
+  holder by a uniform 0–2 mm (rigid 0.5–2 mm) with the pad hinges perturbed by N(0, σ) about their rest angles, then settles
+  200 ticks (0.4 s). The perturbation comes from a private per-run seed (`simulation.fixture_seed`, drawn by the runtime);
+  evaluation draws trials from the same distribution with its own seeds.
+- Brake: a pad holder (30 g, slide z, damping 20 N s/m) inside a closed caliper housing presses on the blade through a fixed
+  tendon spring `L = pad_z + s · pad_preload`; the hidden preload nut is latched at the pressure dial's position by each
+  cocking cycle. The housing is 110 mm long, its side walls reach to 0.5 mm above the carriage and the blade passes through
+  slots in its end walls, so no camera pose sees the pad. Blade friction 0.1 (the pad surface sets every contact).
+- Dials: two sliders (40 g blocks with a 16 mm vertical peg) on tracks 0.35 m in front of the robot, 0.1 m of travel = 0–10
+  scale divisions, dry friction 1.5 N and damping 3 N s/m; they carry no load. Compression (yellow) at x −0.20…−0.10 m,
+  pressure (blue) at x −0.02…0.08 m. The open gripper straddles a peg along x and closes on it (the coupled fingers centre
+  it: form closure), so the ~1.4 N grip is irrelevant; the arm pushes against the dial friction.
+- Public: RGB-D, movable camera, the `fixture` readings (both dials and `carriage_cocked`), Panda proprioception with
+  joint efforts. Private: pad state, seed, compression/pressure mappings, the carriage position (read it from images).
+
+| Level | Pad | Pad force over the pressure dial | Behaviour |
+| --- | --- | --- | --- |
+| `fixture_rigid` | rigid shoe, μ 0.5 | 1.0–5.0 N (tendon 400 N/m) | the lifted shoe settles to one equilibrium: releases repeat (sd < 0.5 mm) |
+| `fixture_rubber` | 3-segment rubber flap (7 × 2 × 14 mm segments, hinge stiffness 0.004 N m/rad) hanging from the holder's front edge, pre-bent to tuck backward under it; μ 0.9; holder rocks (pitch, 0.05 N m/rad) | 0.8–3.2 N (400 N/m) | the moving blade pushes the tucked strip into its root: it buckles and sticks and slips; how it lands in the settle sets holder height and pitch: a continuous spread |
+| `fixture_bimodal` | 3-segment flap (10 mm segments) hanging from the holder's rear edge, straight; one face grippy rubber (μ 1.1), the other slick fabric (μ 0.25); holder bare face μ 0.3 | 1.0–3.5 N (250 N/m) | the reset tilt decides the fold: tucked forward under the holder (rubber face on the blade, short stops, about 70 %) or folded back behind it (holder steel on the blade, the holder propped higher, long stops) |
+
+Held-out evaluation settings: 25 seeded points (seed 2026112301), one per cell of a 5 × 5 grid over both dials;
+evaluation seed 2026112302. `experiments/validation/fixture-check.py OUTDIR [LEVEL ...]` (Slurm) checks generator
+equality, the cocked rest, the public observation keys, pad invisibility from up to 128 camera poses around the caliper,
+closed-loop scripted Franka dial setting, the per-level behaviour (rigid repeatability; rubber spread, settle-height
+correlation and flap stick→slip transitions; bimodal fold-separated ranges) and metric sanity (an empirical predictor vs a
+mean-only predictor, each with its own choice of settings). `experiments/validation/fixture-explore.py` is the tuning aid.
+
+Validation (2026-11-23, Slurm `test`): jobs `62995910` (rigid), `62995912` (rubber), `62995913` (bimodal) passed every
+check; outputs, previews and evaluator views in `experiments/validation/fixture-check/<level>/`. All levels: step 22–31 µs,
+cocked carriage drift < 0.005 mm over 1 s, pad pixels 0 in all 79 accepted camera poses, the scripted Franka set both dials
+(8.07 / 2.98 for 8 / 3, one closed-loop stroke each) and its release matched the evaluator's direct setting to 0.01 mm.
+
+| Level | Release spread over the 25 held-out settings (16 each) | Pad dynamics while sliding (median of 12 releases) |
+| --- | --- | --- |
+| `fixture_rigid` | sd 0.0 mm at every setting (stops 4–245 mm over the dials) | holder excursion 0.64 mm, 0 snaps, brake-force CV 0.24 |
+| `fixture_rubber` | median sd 16 mm (max 45); settled holder height vs stop correlation, median over settings 0.68 | holder excursion 2.7 mm, 1 buckle-snap (> 1 mm), brake-force CV 0.42 |
+| `fixture_bimodal` | tucked fold 46.5 % of releases; at 20 of 25 settings every tucked release stops short of every folded-back one (e.g. 17.5 ± 1.6 vs 80 ± 24 mm at 7.3 / 5.4) | holder excursion 1.65 mm, brake-force CV 0.41 |
+
+Metric sanity (empirical predictor from independent releases vs a mean-only predictor; each picks its own settings on an
+11 × 11 search grid): rubber CRPS 12.0 vs 18.4 mm (oracle 11.8, settings-blind 27.7); bimodal 20.1 vs 31.0 mm (oracle 19.0,
+settings-blind 27.6). On the bimodal narrow target the mean-only choice (4, 8; mean inside the band, modes on either side)
+hit 0 of 40 releases while predicting 100 %; the empirical choice hit 9 of 40 (predicted 38 %). The rigid level is exactly
+predictable (CRPS 0, all hits). Earlier tuning (jobs `62987997`–`62994769`, `experiments/validation/fixture-explore-*.log`)
+found that column-loaded flaps jam, a 2 mm blade lets a dropped shoe tunnel through, the original short housing showed a
+folded flap, and a loaded dial creeps under MuJoCo's soft dry friction; the design above fixes each.

@@ -244,3 +244,19 @@ Keep this list current: strike items when a log entry covers them.
   - Add timeouts to the podman init and load (fail fast so Slurm frees the node), and log each step.
   - Find out what state on a node causes it (stale pause process or lock?).
 
+
+## Wave 23 positioning fixture (user, 2026-11-23): planned, not launched
+- [ ] Launch `experiments/configs/wave23-20261123/` (6 runs: `fixture_rigid`, `fixture_rubber`, `fixture_bimodal` ×
+  `gemini-4-neon`, `gemini-4-hydrogen`; Franka with joint torques, RGB-D, movable camera, sequence tool; 6 h visible wall,
+  4 h checkpoint hold, `provider_hold_seconds = 14400`, accounting-only caps, pool `gemini-20261123`). Levels:
+  `docs/environments.md` (Spring-powered positioning-fixture levels). The submission is a predictor program
+  (`predictor.py`: `predict`, `settings`), scored by `fixture` (CRPS at 25 held-out settings × 16 releases, Brier, hit
+  rates at the chosen settings × 40 releases); each evaluation takes a few minutes (`timeout_seconds = 1800`).
+- [ ] Launch with the image built from this branch (new harness actions, predictor runner, predictor-task prompts):
+  `87e9f4708d6d…` (job `62994769`), record `experiments/images/trusted-image-fixture.json`; set
+  `SIM2SIM_TRUSTED_IMAGE_RECORD` to it. OCI tests passed with it (job `62995919`: 6 passed, the tools-image test skipped).
+  Rebuild if `src/` or the harness changes before launch.
+- [ ] Gemini fairness rules (AGENTS.md) need an astra reference only if a comparison is wanted; none exists for this level.
+- [ ] Review per run: the dashboard links each submission's fixture view (predicted vs measured histograms, settings map,
+  trial replay). Check whether agents find the bimodal level's minor (folded-back) mode and avoid mean-based settings for
+  the narrow target.

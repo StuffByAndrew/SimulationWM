@@ -1,0 +1,128 @@
+<mujoco model="panda_small_fixture_rubber">
+  <!-- Researcher-only. Positioning fixture "fixture_rubber" (experiments/validation/fixture-scenes.py). Spring 300 N/m,
+       compression 8-40 mm over the compression dial; pad tendon 400 N/m, pad force about
+       0.8-3.2 N over the pressure dial at the working height; pad {'flap': (3, 0.007, 0.002, 0.004, 0.0001), 'front_root': True, 'springref': 0.3, 'mu': (0.9, 0.9), 'holder_mu': 0.25, 'rock': (0.05, 0.002), 'k_pad': 400.0, 'reset': (0.0, 0.002, 0.1), 'n_range': (0.8, 3.2)}. -->
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets"/>
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <default><geom friction=".7 .01 .001"/></default>
+  <custom>
+    <numeric name="fixture_compression" data="0.008 0.32"/>
+    <numeric name="fixture_reset" data="200 0.0 0.002 0.1"/>
+  </custom>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76"/>
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.550000 -0.850000 0.950000" xyaxes="0.760834 0.648947 -0.000000 -0.331004 0.388074 0.860137" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <geom name="table" type="box" pos="0 -0.08 0.35" size="0.38 0.34 .05" rgba=".65 .52 .37 1"/>
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1"/>
+    <geom name="rail" type="box" pos="0.095000 -0.150000 0.408000" size=".215 .01 .008" rgba=".6 .62 .65 1"/>
+    <geom name="launcher" type="box" pos="-0.155000 -0.150000 0.418000" size=".045 .02 .018" rgba=".3 .3 .33 1"/>
+    <geom name="ruler" type="box" pos="0.120000 -0.180000 0.410000" size=".165 .012 .01" rgba=".93 .93 .9 1"/>
+    <geom name="tick_-50" type="box" pos="-0.030000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_-40" type="box" pos="-0.020000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_-30" type="box" pos="-0.010000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_-20" type="box" pos="0.000000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_-10" type="box" pos="0.010000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_0" type="box" pos="0.020000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".8 .1 .1 1" contype="0" conaffinity="0"/>
+    <geom name="tick_10" type="box" pos="0.030000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_20" type="box" pos="0.040000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_30" type="box" pos="0.050000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_40" type="box" pos="0.060000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_50" type="box" pos="0.070000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_60" type="box" pos="0.080000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_70" type="box" pos="0.090000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_80" type="box" pos="0.100000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_90" type="box" pos="0.110000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_100" type="box" pos="0.120000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_110" type="box" pos="0.130000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_120" type="box" pos="0.140000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_130" type="box" pos="0.150000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_140" type="box" pos="0.160000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_150" type="box" pos="0.170000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_160" type="box" pos="0.180000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_170" type="box" pos="0.190000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_180" type="box" pos="0.200000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_190" type="box" pos="0.210000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_200" type="box" pos="0.220000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_210" type="box" pos="0.230000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_220" type="box" pos="0.240000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_230" type="box" pos="0.250000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_240" type="box" pos="0.260000 -0.189000 0.420300" size=".0006 0.003 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="tick_250" type="box" pos="0.270000 -0.186000 0.420300" size=".0006 0.006 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="target_band" type="box" pos="0.105000 -0.176000 0.420200" size="0.015000 .006 .0002" rgba=".2 .7 .3 1" contype="0" conaffinity="0"/>
+    <geom name="narrow_target_band" type="box" pos="0.040000 -0.176000 0.420200" size="0.002000 .006 .0002" rgba=".95 .45 .1 1" contype="0" conaffinity="0"/>
+    <geom name="caliper_top" type="box" pos="-0.050000 -0.150000 0.507000" size="0.055 .022 .003" rgba=".55 .2 .2 1"/>
+    <geom name="caliper_side_l" type="box" pos="-0.050000 -0.165500 0.472500" size="0.055 .0065 0.031500" rgba=".55 .2 .2 1"/>
+    <geom name="caliper_side_r" type="box" pos="-0.050000 -0.134500 0.472500" size="0.055 .0065 0.031500" rgba=".55 .2 .2 1"/>
+    <geom name="caliper_back" type="box" pos="-0.103500 -0.150000 0.473250" size=".0015 .009 0.030750" rgba=".55 .2 .2 1"/>
+    <geom name="caliper_front" type="box" pos="0.003500 -0.150000 0.473250" size=".0015 .009 0.030750" rgba=".55 .2 .2 1"/>
+    <geom name="compression_dial_track" type="box" pos="-0.150000 -0.300000 0.404000" size=".075 .022 .004" rgba=".35 .37 .4 1"/>
+    <geom name="compression_dial_tick_0" type="box" pos="-0.200000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_1" type="box" pos="-0.190000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_2" type="box" pos="-0.180000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_3" type="box" pos="-0.170000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_4" type="box" pos="-0.160000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_5" type="box" pos="-0.150000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_6" type="box" pos="-0.140000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_7" type="box" pos="-0.130000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_8" type="box" pos="-0.120000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_9" type="box" pos="-0.110000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="compression_dial_tick_10" type="box" pos="-0.100000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_track" type="box" pos="0.030000 -0.300000 0.404000" size=".075 .022 .004" rgba=".35 .37 .4 1"/>
+    <geom name="pressure_dial_tick_0" type="box" pos="-0.020000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_1" type="box" pos="-0.010000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_2" type="box" pos="0.000000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_3" type="box" pos="0.010000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_4" type="box" pos="0.020000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_5" type="box" pos="0.030000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_6" type="box" pos="0.040000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_7" type="box" pos="0.050000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_8" type="box" pos="0.060000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_9" type="box" pos="0.070000 -0.316000 0.408300" size=".0006 0.0025 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <geom name="pressure_dial_tick_10" type="box" pos="0.080000 -0.316000 0.408300" size=".0006 0.004 .0003" rgba=".05 .05 .05 1" contype="0" conaffinity="0"/>
+    <body name="carriage" pos="0.020000 -0.150000 0.428500">
+      <joint name="carriage_x" type="slide" axis="1 0 0" range="-.05 0.245" damping=".05" frictionloss=".03" solreflimit=".01 2"/>
+      <geom name="carriage" type="box" size="0.020000 0.015000 0.012000" mass="0.08" contype="2" conaffinity="2" rgba=".85 .85 .88 1"/>
+      <geom name="blade" type="box" pos="-0.170000 0.000000 0.014500" size="0.190000 0.008000 0.002500" mass="0.02" friction=".1 .005 .0001" contype="4" conaffinity="4" condim="3" rgba=".75 .77 .8 1"/>
+      <geom name="carriage_index" type="box" pos="0 -0.0153 0" size=".0008 .0003 0.012" rgba=".9 .1 .1 1" contype="0" conaffinity="0" mass="0"/>
+    </body>
+    <body name="plunger" pos="-0.030000 -0.150000 0.428500">
+      <joint name="plunger_x" type="slide" axis="1 0 0" range="-.05 0" stiffness="300.0" springref="0" damping=".02" solreflimit=".005 1"/>
+      <geom name="plunger_rod" type="cylinder" euler="0 1.5707963 0" size=".006 .028" mass="0.013999999999999999" contype="2" conaffinity="2" rgba=".5 .5 .52 1"/>
+      <geom name="plunger_plate" type="box" pos=".028 0 0" size=".002 .008 .008" mass="0.006" contype="2" conaffinity="2" rgba=".5 .5 .52 1"/>
+    </body>
+    <body name="pad_preload" pos="-0.050000 -0.150000 0.490000">
+      <joint name="pad_preload" type="slide" axis="1 0 0" range="0 .1" ref=".05" damping="1"/>
+      <inertial pos="0 0 0" mass=".001" diaginertia="1e-8 1e-8 1e-8"/>
+    </body>
+    <body name="pad_holder" pos="-0.050000 -0.150000 0.472500">
+      <joint name="pad_z" type="slide" axis="0 0 1" range="-.04 .03" damping="20"/><joint name="pad_pitch" type="hinge" axis="0 1 0" stiffness="0.05" damping="0.002" range="-.3 .3"/><geom name="pad_holder" type="box" size="0.015 0.007 .005" mass=".03" friction="0.25 .005 .0001" contype="4" conaffinity="4" condim="3" rgba=".4 .4 .42 1"/><body name="pad_seg_0" pos="0.0170 0 -.005"><joint name="pad_hinge_0" type="hinge" axis="0 1 0" stiffness="0.004" springref="0.3" damping="0.0001" armature="2e-6"/><geom name="pad_0_front" type="box" pos="0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/><geom name="pad_0_rear" type="box" pos="-0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/><body name="pad_seg_1" pos="0 0 -0.007"><joint name="pad_hinge_1" type="hinge" axis="0 1 0" stiffness="0.004" springref="0" damping="0.0001" armature="2e-6"/><geom name="pad_1_front" type="box" pos="0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/><geom name="pad_1_rear" type="box" pos="-0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/><body name="pad_seg_2" pos="0 0 -0.007"><joint name="pad_hinge_2" type="hinge" axis="0 1 0" stiffness="0.004" springref="0" damping="0.0001" armature="2e-6"/><geom name="pad_2_front" type="box" pos="0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/><geom name="pad_2_rear" type="box" pos="-0.0005 0 -0.0035" size="0.0005 0.007 0.0035" mass="0.0001078" friction="0.9 .005 .0001" solref=".01 1" contype="4" conaffinity="4" condim="3" rgba=".1 .1 .1 1"/></body></body></body>
+    </body>
+    <body name="compression_dial" pos="-0.150000 -0.300000 0.413500">
+      <joint name="compression_dial" type="slide" axis="1 0 0" range="0 .1" ref=".05" frictionloss="1.5" damping="3"/>
+      <geom name="compression_dial_base" type="box" size=".012 .012 .0045" mass=".03" rgba=".85 .75 .15 1"/>
+      <geom name="compression_dial_peg" type="cylinder" pos="0 0 .03" size=".008 .025" mass=".01" rgba=".85 .75 .15 1"/>
+      <geom name="compression_dial_pointer" type="box" pos="0 -.014 .0047" size=".0012 .004 .0002" rgba=".9 .1 .1 1" contype="0" conaffinity="0" mass="0"/>
+    </body>
+    <body name="pressure_dial" pos="0.030000 -0.300000 0.413500">
+      <joint name="pressure_dial" type="slide" axis="1 0 0" range="0 .1" ref=".05" frictionloss="1.5" damping="3"/>
+      <geom name="pressure_dial_base" type="box" size=".012 .012 .0045" mass=".03" rgba=".2 .45 .85 1"/>
+      <geom name="pressure_dial_peg" type="cylinder" pos="0 0 .03" size=".008 .025" mass=".01" rgba=".2 .45 .85 1"/>
+      <geom name="pressure_dial_pointer" type="box" pos="0 -.014 .0047" size=".0012 .004 .0002" rgba=".9 .1 .1 1" contype="0" conaffinity="0" mass="0"/>
+    </body>
+  </worldbody>
+  <equality>
+    <joint name="latch_plunger" joint1="plunger_x" polycoef="0 0 0 0 0" active="false" solref=".004 1"/>
+    <joint name="latch_carriage" joint1="carriage_x" polycoef="0 0 0 0 0" active="false" solref=".004 1"/>
+    <joint name="latch_preload" joint1="pad_preload" polycoef="0 0 0 0 0" solref=".004 1"/>
+  </equality>
+  <tendon>
+    <fixed name="pad_spring" stiffness="400.0" springlength="-0.021248 -0.021248">
+      <joint joint="pad_z" coef="1"/>
+      <joint joint="pad_preload" coef="0.060000"/>
+    </fixed>
+  </tendon>
+  <include file="../robot/panda.xml"/>
+</mujoco>

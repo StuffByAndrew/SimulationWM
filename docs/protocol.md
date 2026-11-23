@@ -149,7 +149,7 @@ against the candidate worker and, in OCI, the strict reconstruction world); `tax
 cell's body-frame bounds, the pad body's world pose, and the cell centre's palmar surface point and normal from the
 public fixture alone. It extracts no contact points and fits no shapes. `sequence` (no files) adds a `sequence` action that the
 sandbox harness executes itself: the agent's code writes a JSON array of at most 2000 physical action objects
-(`observe`, `grasp`, `move`, `release`, `arm_target`, `hand_target`, `camera`, `reset`, as offered, without `world`), the harness
+(`observe`, `grasp`, `move`, `release`, `arm_target`, `hand_target`, `camera`, `reset`, and on fixture levels `reset_carriage` and `release_carriage`, as offered, without `world`), the harness
 sends them in order to one world as ordinary controller actions (each charged and audited as usual), stops at the
 first rejected step, saves every step's non-image observation fields to `/workspace/sequences/NNNN.json` and returns
 the final step's images (or none). The controller never receives a `sequence` request.
@@ -650,3 +650,48 @@ termination), and `termination.json` lists `holds` and `held_seconds`. Every inf
 `deadline_unix`, which the sandbox harness adopts (never shown to the model), so the agent's remaining wall time is
 unaffected by a hold. A resumed run is therefore the same run it would have been with the higher cap from the start;
 the agent sees the full `wall_seconds` budget from its first message. Call/token caps and missing accounting never hold.
+
+
+## Positioning-fixture actions
+
+Levels whose private manifest has a `[fixture]` table (`environments/panda_small/fixture_*`, see
+[environments](environments.md#spring-powered-positioning-fixture-levels)) add two reference-world actions, also allowed in
+`sequence` step lists. Both are host-enforced, charged and audited like other physical actions; in the reconstruction world
+they are rejected, and an observe-only reference world (`reference_interaction = false`) blocks them.
+
+| op | Fields | Behavior |
+| --- | --- | --- |
+| `reset_carriage` | none | The fixture's cocking cycle: retract the spring plunger to the compression set on the compression dial, latch it with the carriage against it, set the brake pad's spring preload from the pressure dial (dial changes take effect here), and re-seat the pad, which then settles for a fixed number of physics ticks (executed, recorded and charged). Dials and robot are untouched. |
+| `release_carriage` | optional `ticks` (default 0) | Open the latch of a cocked carriage, then advance physics. Rejected unless `reset_carriage` cocked it since the last release. |
+
+Every observation on these levels has `fixture`: `{"compression_dial": d, "pressure_dial": d, "carriage_cocked": bool}`,
+the two dial positions in scale divisions (0 to 10, as printed on the dial scales). The agent moves the dials only with
+the robot (`arm_target`). The carriage position is not reported: it is read from images against the ruler. The pad's
+contact state, the seed of the reset perturbations, the compression and pressure mappings and every other fixture value
+stay private. A world `reset` restores the initial state (carriage uncocked, dials at 5).
+
+## Predictor submissions (`src/sim2sim/predictor.py`)
+
+A metric may score a program instead of a scene. Its configuration sets `[evaluation] entrypoint` to the program (e.g.
+`predictor.py`), the task's `submission.entrypoint` names it, and `submission.predictor` states the contract: the runner
+description and the metric's functions (for `fixture`: `predict(compression, pressure, n)` returning `n` stopping
+positions in ruler mm, and `settings()` returning `{target name: {"compression", "pressure"}}`). On `submit` the host
+runs, before the private evaluator and while the agent is paused:
+
+1. `run_predictor(submission, entrypoint, sandbox, output, supervisor, collect, timeout, call_seconds)` starts one
+   container per submission from the evaluator image (`python -m sim2sim.predictor`) with the `[sandbox.worker]` limits,
+   `--network=none`, a read-only root, no mounts and no source scene, manifest or credentials.
+2. Wire, one JSON line each way: `{"op":"load","project_b64","entrypoint","call_seconds"}` extracts the ZIP with the
+   submission checks (XML files are still MJCF-validated) and imports the entrypoint; `{"op":"call","function","kwargs"}`
+   returns `{"ok":true,"value"}` or `{"ok":false,"error"}`. Each load or call has `call_seconds` (default 60) of wall
+   time, enforced by an alarm that agent code cannot catch with `except Exception`; a value must be JSON with finite
+   numbers, at most 1 MiB. Anything the program prints goes to the worker's stderr log, never the protocol.
+3. The metric's `collect(call)` (for `fixture`, `fixture.collect_predictions(manifest[fixture], call)`) decides the
+   calls; one failed call is that call's error. A timeout of the whole session (`[evaluation]
+   predictor_timeout_seconds`, default 900), a crash or an oversized reply marks the worker broken and fails every later
+   call. The result goes to the evaluator as `evaluation["predictions"]`; the call log (arguments, values, errors,
+   seconds) is written to `RUN/predictor-NNN/predictor-calls.json` and the program's stderr to `predictor.stderr.log`.
+
+Nothing a predictor returns reaches the agent; the submit reply is only the evaluator status. Predictor metrics need
+`strict_oci`; the development backend fails such an evaluation explicitly. A new predictor metric adds its function
+contract and a `collect_predictions(table, call)` beside its scorer and selects the runner in the runtime's submit path.

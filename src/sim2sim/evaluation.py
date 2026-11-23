@@ -67,7 +67,8 @@ def extract_submission(data: bytes, destination: Path, entrypoint='scene.xml'):
     scene = destination.joinpath(*_relative(entrypoint).parts)
     if not scene.is_file():
         raise ValueError('missing scene entrypoint')
-    pending = [scene] + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
+    # Every XML file is checked as MJCF, and so is the entrypoint unless it is a predictor program (src/sim2sim/predictor.py).
+    pending = [scene] * (scene.suffix != '.py') + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
     checked = set()
     while pending:
         xml = pending.pop()
@@ -627,7 +628,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer', 'force_profile', 'cloth'})
+                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture'})
 
 
 def selected_metrics(config):
@@ -658,7 +659,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
-                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth'):
+                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -677,6 +678,15 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             if key in config:
                 simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)
+        if 'fixture' in selection:
+            # A predictor submission (src/sim2sim/predictor.py ran it in isolation; config['predictions'] holds its answers):
+            # scored against fresh source releases only, with no candidate scene.
+            assert selection == {'fixture'}, 'the fixture metric scores a predictor program and combines with no scene metric'
+            from .fixture import evaluate as fixture
+            scores = {'fixture': fixture(source, config['fixture'], config['predictions'], output / 'artifacts' / version / 'fixture')}
+            json.dumps(scores, allow_nan=False)
+            report.update(status='ok', scores=scores)
+            return report
         import mujoco
         camera_quat = np.zeros(4)
         mujoco.mju_mat2Quat(camera_quat, source._data.cam_xmat[source._camera_id])

@@ -14,6 +14,7 @@ import json
 import os
 import re
 from pathlib import Path
+import secrets
 import selectors
 import stat
 import subprocess
@@ -757,6 +758,8 @@ INFERENCE_ACCOUNTING = ("model", "finish_reason", "usage", "cost_usd", "calls", 
                         "remaining_tokens", "cumulative_cost_usd", "remaining_cost_usd")
 CONTEXT_USAGE = ("promptTokens", "cacheReadTokens", "cacheWriteTokens")  # context size, for harness compaction only
 INTERACTIONS = ("grasp", "move", "release", "arm_target", "hand_target")  # every physical action; blocked in the reference world when reference_interaction=false
+FIXTURE_OPS = ("reset_carriage", "release_carriage")  # positioning-fixture levels only (manifest [fixture]); reference world only
+PHYSICAL = ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera") + FIXTURE_OPS
 POOL_SETTINGS = {"cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd"}
 POOL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 TOOL_TRANSPORT_NOTE = ("This API transport cannot carry native tool-call or tool-result items, so the host reports each genuine function "
@@ -1520,12 +1523,16 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or not sim_config.get("robot")):
         raise RuntimeFailure("simulation.effort is a boolean for a robot (false hides actuator_effort_nm: no force sensing)")
     source_manifest = Path(scene).resolve().parent / config["source"].get("manifest", "manifest.toml")
+    private_manifest = {}
     if source_manifest.is_file():
         with source_manifest.open("rb") as handle:
             private_manifest = tomllib.load(handle)
         for key in ("camera", "graspable_bodies"):
             if key in private_manifest:
                 sim_config.setdefault(key, private_manifest[key])
+    fixture_table = private_manifest.get("fixture")
+    if fixture_table:  # private seed of the fixture's reset perturbations (src/sim2sim/fixture.py); never public
+        sim_config["fixture_seed"] = secrets.randbits(63)
     supervisor.check()
     from .simulation import Simulation
     robot = sim_config.get("robot")
@@ -1826,7 +1833,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             "remaining_wall_seconds": supervisor.remaining() if supervisor.deadline != float("inf") else None,
                             "physics_ticks": max_ticks, "physics_ticks_scope": "shared across both worlds; resets/loads never refund; uncertain worker failure conservatively charges requested ticks",
                             "submissions": max_submissions, "audit_bytes": audit.limit},
-                "submission": {"format": "base64 ZIP", "entrypoint": "scene.xml", "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024))},
+                "submission": {"format": "base64 ZIP", "entrypoint": config.get("evaluation", {}).get("entrypoint", "scene.xml"),
+                               "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024))},
                 "observation": public_observation(cache["reference"]["observation"], sim_config)}
         if sim_config.get("movable_camera"):
             task["actions"].insert(task["actions"].index("reset"), "camera")
@@ -1844,6 +1852,26 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 "execution": "the sandbox harness sends the steps in order as ordinary controller actions, each charged and recorded as "
                              "usual, and stops at the first rejected step",
                 "outputs": "/workspace/sequences/NNNN.json: per step its index, op and all non-image observation fields"}
+        if fixture_table:
+            from .fixture import PREDICTOR_FUNCTIONS
+            from .predictor import CONTRACT
+            for op in FIXTURE_OPS:
+                task["actions"].insert(task["actions"].index("reset"), op)
+            task["action_schema"]["reset_carriage"] = (
+                "reference world only: the fixture's cocking cycle. It retracts the plunger to the compression set on the compression "
+                "dial, latches it with the carriage against it, sets the brake pad's spring preload from the pressure dial, and re-seats "
+                "the pad, which settles for a fixed number of physics ticks (charged); the dials and the robot are untouched. Dial "
+                "changes take effect at the next reset_carriage")
+            task["action_schema"]["release_carriage"] = {"ticks": "optional nonnegative integer, physics ticks to advance after the release",
+                                                         "effect": "reference world only: opens the latch of a cocked carriage (after reset_carriage)"}
+            task["observation_contract"]["fixture"] = ("fixture instrument readings: compression_dial and pressure_dial positions in scale "
+                                                      "divisions (0 to 10, as on the dial scales) and carriage_cocked")
+            if "fixture" in config.get("evaluation", {}).get("metrics", ()):
+                task["submission"]["predictor"] = {**CONTRACT, "functions": PREDICTOR_FUNCTIONS}
+            if "sequence" in task["action_schema"]:
+                sequence = task["action_schema"]["sequence"]
+                sequence["steps_file"] = sequence["steps_file"].replace("camera or reset", "camera, reset, reset_carriage or release_carriage")
+                assert "release_carriage" in sequence["steps_file"]
         if sam3d_relay:
             task["actions"].insert(task["actions"].index("progress"), "sam3d")
             task["action_schema"]["sam3d"] = {"image_png_b64": "8-bit RGB(A) PNG, at most 2048x2048", "mask_png_b64": "grayscale PNG, same size, nonzero = object",
@@ -1893,7 +1921,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 task["observation_contract"]["modalities"]["tactile"] = True
             task["observation_contract"]["proprioception"] = proprioception
         if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
-            blocked = [op for op in INTERACTIONS if op in task["actions"]]
+            blocked = [op for op in INTERACTIONS + FIXTURE_OPS if op in task["actions"]]
             task["worlds"]["reference"] = ("Observe-only: " + ", ".join(blocked) + " are unavailable in the reference world; "
                                            "observe and reset work there, and every action works in the reconstruction world.")
             for op in blocked:
@@ -1926,7 +1954,9 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     raise RuntimeFailure("Operation must be a string")
                 if op in INTERACTIONS and op not in ((ROBOTS[robot][2],) if robot else ("grasp", "move", "release")):
                     raise RuntimeFailure("Operation unavailable for configured robot")
-                if world == "reference" and op in INTERACTIONS and not sim_config["reference_interaction"]:
+                if op in FIXTURE_OPS and (not fixture_table or world != "reference"):
+                    raise RuntimeFailure("Unknown operation" if not fixture_table else f"{op} works only in the reference world")
+                if world == "reference" and op in INTERACTIONS + FIXTURE_OPS and not sim_config["reference_interaction"]:
                     raise RuntimeFailure("The reference world is observe-only: %s works only in the reconstruction world" % op)
                 ticks = request.get("ticks", sim_config["default_ticks"] if op in ("move", "arm_target", "hand_target") else 0)
                 if isinstance(ticks, bool) or not isinstance(ticks, int) or ticks < 0:
@@ -1935,7 +1965,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     raise RuntimeFailure(f"{op} requires at least one tick")
                 if max_ticks is not None and ticks > max_ticks - sum(charged.values()):
                     raise RuntimeFailure("Shared cumulative physics tick budget exceeded")
-                if op not in ("observe", "move", "release", "arm_target", "hand_target") and ticks:
+                if op not in ("observe", "move", "release", "arm_target", "hand_target", "release_carriage") and ticks:
                     raise RuntimeFailure("This operation does not accept ticks")
                 if op == "camera" and not sim_config.get("movable_camera"):
                     raise RuntimeFailure("Unknown operation")
@@ -1943,7 +1973,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
-                token = reserve_for(request, world, ticks)
+                token = reserve_for(request, world, ticks + (sim.fixture.settle_ticks if op == "reset_carriage" else 0))
                 context["token"] = token
                 private = cache.get(world) or {}
                 audit.record({"kind": "action_begin", "action_id": context["action_id"], "world": world,
@@ -1954,7 +1984,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 if time.monotonic() >= min(deadline, supervisor.deadline):
                     supervisor.check()
                     raise RuntimeFailure("Active wall-time budget exhausted")
-                if op in ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera"):
+                if op in PHYSICAL:
                     action = {k: v for k, v in resolved.items() if k != "world"}
                     if world == "reference":
                         if op == "reset":
@@ -2149,6 +2179,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                         timing["pause_start"] = pause
                         try:
                             try:
+                                if "fixture" in evaluation.get("metrics", ()):  # predictor submission: run it in isolation first
+                                    if backend is not None:
+                                        raise RuntimeFailure("Predictor evaluation requires strict_oci")
+                                    from .fixture import collect_predictions
+                                    from .predictor import run_predictor
+                                    evaluation["predictions"] = run_predictor(
+                                        submission, evaluation["entrypoint"], sandbox, output / ("predictor-%03d" % submissions), supervisor,
+                                        lambda call: collect_predictions(fixture_table, call), float(evaluation.get("predictor_timeout_seconds", 900)))
                                 evaluator = evaluate_in_container if backend is None else backend.evaluate
                                 report = evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor)
                             except Exception as exc:
@@ -2180,7 +2218,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 response = {"ok": False, "error": str(exc) if isinstance(exc, RuntimeFailure) and op != "submit" else "Operation failed"}
                 if world == "reference" and hasattr(sim, "total_ticks"):
                     charged[world] = int(sim.total_ticks)
-                    if action_started and op in ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera"):
+                    if action_started and op in PHYSICAL:
                         save_checkpoint(world, snapshot_simulation(sim), None, "interrupted", token)
             finally:
                 if response is not None:

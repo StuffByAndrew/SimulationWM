@@ -196,7 +196,7 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
     status=status_meta.get('status',status_meta.get('state','empty'));reason=status_meta.get('error') or status_meta.get('reason')
     data=dict(id=identifier,name=str(name),directory=run.name,status=status,reason=reason,execution_mode=_execution_mode(metadata),
         started_at=status_meta.get('started_at'),model_context=_model_context(_metadata(run/'public/task.json'),metadata,'public/task.json (recorded public artifact; not audit-verified)'),
-        frames={'reference':[],'candidate':[]},videos=[],progress=[],actions=[],metrics=[],duration_wall=_wall(status_meta) or 0.,
+        frames={'reference':[],'candidate':[]},videos=[],views=[],progress=[],actions=[],metrics=[],duration_wall=_wall(status_meta) or 0.,
         snapshot=dict(verified=False,complete=False,event_count=0),warnings=[])
     if not (run/'audit/manifest.json').is_file():
         data['warnings'].append('No recorded audit, camera frames or model progress are available.')
@@ -253,6 +253,12 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                         origin=event.get('checkpoint_kind','submission'),change_index=event.get('change_index'),
                         checkpoint_kind=event.get('checkpoint_kind','submission'),evaluated_at=event.get('evaluated_at')))
                 else: untimed+=1
+                # Fixture evaluations carry a researcher view (fixture_view.py) whose hash the audited report records.
+                view=((report.get('scores') or {}).get('fixture') or {}).get('view') if report.get('status')=='ok' else None
+                if view and event.get('submission'):
+                    page=_safe_file(run,f"version-{int(event['submission']):03d}/evaluation/{view['path']}").read_bytes()
+                    if _digest(page)!=view['sha256']: raise AuditFailure('dashboard fixture view hash mismatch')
+                    data['views'].append(dict(path=_asset(output,page,'.html',verified_assets),submission=event['submission']))
             if event.get('kind')=='video':
                 relative=event.get('path')
                 if not isinstance(relative,str) or not relative.endswith('.mp4'): raise AuditFailure('invalid dashboard video path')
@@ -314,7 +320,7 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
         data['progress'].sort(key=lambda item:(item['wall_elapsed'],item['seq']))
     except (AuditFailure,OSError,ValueError,TypeError) as exc:
         data.update(status='invalid audit snapshot',reason=str(exc),snapshot=dict(verified=False,complete=False,event_count=0),
-            frames={'reference':[],'candidate':[]},metrics=[],progress=[],actions=[],videos=[])
+            frames={'reference':[],'candidate':[]},metrics=[],progress=[],actions=[],videos=[],views=[])
     return data
 
 

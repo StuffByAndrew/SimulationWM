@@ -50,6 +50,13 @@ Do not launch local simulations to investigate a failed compute job.
   fixture root body, actuator/joint order, home pose); no MuJoCo import so the host runtime can use it. Robot levels
   expose only proprioception and optional taxels (`simulation.TACTILE`); the fixture is verified byte-for-byte.
 - `src/sim2sim/client.py`: agent-facing versioned JSON client.
+- `src/sim2sim/fixture.py`, `fixture_view.py`: positioning-fixture levels (`environments/panda_small/fixture_*`): the
+  private carriage mechanism behind `reset_carriage`/`release_carriage` (seeded reset perturbation of the pad; the seed,
+  pad state and mappings never reach a public observation, which carries only the dial readings), and the `fixture` metric
+  (held-out releases vs predictor samples: CRPS, Brier, hit rates at the chosen settings) with its researcher HTML view.
+- `src/sim2sim/predictor.py`: generic isolated runner for agent-submitted predictor programs (one evaluator-image
+  container per submission, no network/mounts/source; per-call alarm, 1 MiB JSON values, prints to stderr). A metric
+  supplies its function contract and `collect_predictions(table, call)`; see `docs/protocol.md`. Strict OCI only.
 - `src/sim2sim/sam3d.py`: optional `[tools] sam3d` relay. The strict controller forwards the agent's validated
   image+mask over a private 0700 spool to a researcher GPU service (`scripts/sam3d-service.slurm`,
   `kempner_gpu_priority`, A100 only, never H100/H200; env/weights under netscratch `SAM3D_ROOT`). A missing,

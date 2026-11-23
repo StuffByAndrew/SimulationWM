@@ -249,3 +249,42 @@ of a baseline: 1 is no better than the trivial scene and 0 is exact. A baseline
 that cannot produce a value (an empty scene's Chamfer or COM, hinges without a
 hinge, or a zero baseline error) leaves a gap, never a ratio. Hinge relative
 errors already compare with the zero-parameter default.
+
+## Positioning fixture (`fixture`)
+
+`fixture` (selector; needs a private manifest `[fixture]` table and a predictor submission, see
+[predictor submissions](protocol.md#predictor-submissions-srcsim2simpredictorpy); `src/sim2sim/fixture.py`) scores a
+calibrated model of the positioning-fixture levels and combines with no scene metric. The isolated predictor first
+answers `settings()` and `predict(compression, pressure, n = samples)` at every held-out setting and at each chosen
+setting. The evaluator then releases the fresh source fixture repeatedly: each trial starts from a world reset, sets both
+dials directly to the setting (joint positions, at rest), runs `reset_carriage` with a perturbation drawn from
+`numpy.random.default_rng([seed, setting index, trial])` (the same distribution as the agent's resets, a different
+stream), releases, and runs until the carriage moves slower than 1 mm/s for 0.1 s (or `max_release_ticks`). The stop is
+the carriage index in ruler mm.
+
+- `prediction`: at the `settings` grid (25 seeded points, one per cell of a 5 × 5 grid over both dials, `repeats` = 16
+  releases each): `crps_mm`, the mean sample CRPS `mean_y(E|X − y|) − E|X − X'|/2` of the predicted samples against each
+  release; baselines from the same releases: `oracle_crps_mm` (the CRPS the true distribution would get, half the mean
+  pairwise release difference), `mean_only_crps_mm` (a point mass at each setting's true mean), `pooled_crps_mm` (all grid
+  releases pooled, a settings-blind predictor) and `crps_skill_vs_pooled = 1 − crps / pooled`. `brier[target]` scores
+  the predicted hit probability (fraction of samples inside the region) against each release's hit, with `mean_only`
+  (1 if the true mean lies inside) and `oracle` (`p(1 − p)` at the true rate). Any failed or malformed query makes
+  `status = failed` with null predicted scores (`failed_queries`, first `error`), never a partial average.
+- `targets[name]`: the chosen setting released `chosen_repeats` = 40 times: `measured_hit_fraction`, `hits`, `trials`,
+  `wilson95`, and `predicted_hit_fraction` from the predictor at that setting. Context from the grid releases:
+  `grid_best_hit_fraction` and `mean_choice_hit_fraction` (the grid setting whose mean is nearest the region centre, the
+  choice a mean-only model would make). A missing or invalid `settings()` gives null hit fractions with `error`.
+- `view`: `{path, sha256}` of the researcher view.
+
+Private artifacts under `artifacts/<digest>/fixture/`: `trials.json` (every release's stop, settle-and-release
+trajectory sampled every `trajectory_every` ticks, the predicted samples, call errors and all scores) and `view.html`
+(`src/sim2sim/fixture_view.py`, self-contained, no network): per target the predicted distribution (line) over the
+histogram of measured stops with the target band and predicted vs measured hit-rate bars with the Wilson interval; a
+2-D map of all held-out and chosen settings coloured by predicted success, measured success or their difference (toggles;
+target selector); clicking a setting shows its histograms and replays all its trials together, carriage trajectories
+overlaid in time and as moving markers on a rail strip. The dashboard links each submission's view under "Verified
+original recordings" after checking its hash against the audited report; otherwise open
+`RUN/version-NNN/evaluation/artifacts/<digest>/fixture/view.html` directly. Evaluation cost: 480 releases of a
+Panda scene at 22–31 µs per step (about 0.2–3 s of simulated time each), plus the predictor's own calls; configs allow
+1800 s. The strict end-to-end path (agent → fixture actions → predictor container → evaluator container) is covered by
+`tests/test_oci.py::test_fixture_level_predictor_submission_end_to_end` with a reduced table.

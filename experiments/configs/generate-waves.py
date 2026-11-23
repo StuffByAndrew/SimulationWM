@@ -377,6 +377,37 @@ RUNS24 = {f"w22-{level.replace('_', '-')}": (level, "cloth; point grasp with wre
 RUNS24.update({"w22-cloth-base-lit": ("cloth_base", RUNS24["w22-cloth-base"][1] + ", ground-truth lighting stated",
                                       {**CLOTH, "task": CLOTH["task"] + lighting("cloth_base")})})
 WAVES["wave22-20261116"] = ("Wave 22", "sim2sim-20261116", 44.0, RUNS24)
+# Wave 23 (user, 2026-11-23; planned, not launched): calibrate a spring-powered positioning fixture
+# (experiments/validation/fixture-scenes.py): a carriage launched along a rail by a spring, braked by a pad in a closed
+# caliper; the Franka slides a compression dial and a pad-pressure dial. Pads: rigid shoe (repeatable), rubber flap on a
+# rocking holder (settle-dependent spread, stick-slip), two-faced flap that tucks under or folds back (two stopping ranges).
+# The submission is a predictor program (src/sim2sim/predictor.py runs it in isolation) plus chosen settings per target;
+# metric `fixture` (CRPS at held-out settings, measured vs predicted hit rates at the chosen settings). Gemini models
+# (AGENTS.md): unlimited spend, provider outages held outside the run; 6 h visible wall with the 4 h checkpoint hold.
+FIXTURE_LEVELS = ("fixture_rigid", "fixture_rubber", "fixture_bimodal")
+FIXTURE_TASK = ("Calibrate the spring-powered positioning fixture on the table. A small carriage rides a rail. reset_carriage cocks "
+                "its spring launcher at the compression set on the yellow compression dial and re-seats the brake pad, whose pressing "
+                "force is set by the blue pressure dial; release_carriage releases the carriage, which slides along the rail until the "
+                "brake stops it. Both dials are sliders on tick scales reading 0 to 10 (the observation's fixture field reports their "
+                "exact readings); move them with the robot arm by pushing their pegs along their tracks. The ruler beside the rail "
+                "reads the carriage position in mm at the carriage's red index line: zero is the red tick, major ticks every 50 mm and "
+                "minor ticks every 10 mm, up to 250 mm. Two coloured bands on the ruler mark target regions: target (green, 70 to "
+                "100 mm) and narrow_target (orange, 18 to 22 mm). Characterize the fixture and find dial settings that stop the "
+                "carriage inside each target region. Submit a ZIP project whose predictor.py defines predict(compression, pressure, n) "
+                "and settings() as the submission's predictor contract specifies; it may use other files in the project, such as your "
+                "own MuJoCo model of the fixture. Hidden tests run predict at other dial settings and compare it with repeated releases "
+                "there, and release the carriage repeatedly at your chosen settings to count how often it stops in each target region. "
+                "Call finish when you believe your predictor matches the fixture.")
+FIXTURE_CONSTRAINTS = ["Submit a ZIP project with predictor.py at its root, written in Python with numpy, scipy and mujoco available; "
+                       "it may read other local files of the project but no native code.",
+                       "Any MuJoCo model you load into the reconstruction world must include the provided Panda robot fixture unchanged."]
+FIXTURE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 17179869184, "task": FIXTURE_TASK,
+           "vision": True, "depth": True, "movecam": True, "tools": ("sequence",), "metrics": ["fixture"], "entrypoint": "predictor.py",
+           "candidate_changes": False, "eval_timeout": 1800, "eval_extra": "", "constraints": FIXTURE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
+RUNS25 = {f"w23-{level.replace('_', '-')}-{model.removeprefix('gemini-4-')}": (
+    "panda_small/" + level, f"positioning fixture, {level[8:]} pad; Franka with joint torques, RGBD, movable camera, sequence tool; {model}",
+    {**FIXTURE, "model": model}) for level in FIXTURE_LEVELS for model in ("gemini-4-neon", "gemini-4-hydrogen")}
+WAVES["wave23-20261123"] = ("Wave 23", "gemini-20261123", 1e6, RUNS25)
 
 
 def q(value):
@@ -404,12 +435,12 @@ def config(wave, pool, cap, env, factor, o):
     hinged = panda and "hinges" in ENVS.get(env.split("/")[1], ([], ""))[0]
     metrics, extra = ((["dynamics", "hinges", "image_mse"], ENVS[env.split("/")[1]][1]) if hinged else
                       (["dynamics", "chamfer", "center_of_mass", "image_mse"], RECON)) if panda else (["dynamics", "chamfer", "center_of_mass"], RECON) if hand else ENVS[env]
-    metrics = o.get("metrics", metrics)
+    metrics, extra = o.get("metrics", metrics), o.get("eval_extra", extra)
     source_dir, entry = ("environments/" + env.split("/")[0], env.split("/", 1)[1] + "/") if panda or hand else ("environments/" + env, "")
     vision = o.get("vision", not panda and not hand)
     wrench = o.get("wrench", vision and not panda)
     return f"""# Generated by generate.py — researcher-only; never mount in the agent image.
-evaluate_candidate_changes = true
+evaluate_candidate_changes = {str(o.get("candidate_changes", True)).lower()}
 record_video = false
 plot_checkpoints = false
 task = {q(o.get("task", TASK))}
@@ -469,7 +500,7 @@ camera = "fixed"
 manifest = "{entry}manifest.toml"
 source_dir = "{source_dir}"
 source_entrypoint = "{entry}scene.xml"
-entrypoint = "scene.xml"
+entrypoint = "{o.get("entrypoint", "scene.xml")}"
 camera = "fixed"
 width = 320
 height = 240
