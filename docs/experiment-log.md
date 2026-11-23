@@ -12,6 +12,11 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `status.json` still says `running`. This is a user-ordered infrastructure cancellation, not a result.
 - A fresh `w20-latch-out-carbon-20261123-002` (same config, same job shape) is prepared and launched by
   `experiments/validation/relaunch-latch-carbon.sh` once `63206812` ends.
+- **Google latency, 22:50 UTC:** the running Gemini runs' clocks advanced only 0.23–0.55× real time over their first
+  3.7 h. Provider holds and slow successful calls (about 3–4 run-minutes per call) dominate, and there are no submissions
+  yet. A 6 h run clock then needs 11–26 h real; `test` caps jobs at 12 h, and running jobs cannot be extended. The `test`
+  runs continue: a run cut at 12 h is an infrastructure truncation, usable only up to the run minute it reached. The 10
+  pending sapphire jobs (waves 23–25) were raised from 14 h to 2 days (`scontrol update`).
 
 ## 2026-11-23 18:40 UTC — Neon/Carbon batch launched: Carbon on the hard five, waves 23–26 (24 runs, queued)
 - **Model policy (user):** `gemini-4-neon` is the default; Carbon is evaluated in parallel on the same five hard levels.
