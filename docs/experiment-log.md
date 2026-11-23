@@ -6,6 +6,13 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-23 22:50 UTC — Carbon latch-out cancelled for the user's dashboard (infrastructure, rerun queued)
+- The results-explorer session (user-approved) cancelled job `63159055` to free a `test` slot for the user's live
+  dashboard (job `63206812`). `w20-latch-out-carbon-20261123-001` died at about 56 min of run wall with no submission; its
+  `status.json` still says `running`. This is a user-ordered infrastructure cancellation, not a result.
+- A fresh `w20-latch-out-carbon-20261123-002` (same config, same job shape) is prepared and launched by
+  `experiments/validation/relaunch-latch-carbon.sh` once `63206812` ends.
+
 ## 2026-11-23 18:40 UTC — Neon/Carbon batch launched: Carbon on the hard five, waves 23–26 (24 runs, queued)
 - **Model policy (user):** `gemini-4-neon` is the default; Carbon is evaluated in parallel on the same five hard levels.
   All runs: provider holds (`provider_hold_seconds` 14400), accounting-only caps, netscratch root, sapphire, 40 CPUs per job
