@@ -17,7 +17,7 @@ function lineChart(host, o) {  // series [{name, color, dash, faded, pts:[[x,y]]
   const pos = pts.map(p => p[1]).concat(spread).filter(v => !o.log || v > floor).concat(o.truth != null ? [o.truth] : [], o.band ? o.band.slice(0, 2) : []);
   let y0 = Math.min(...pos), y1 = Math.max(...pos);
   if (o.log) { y0 = Math.max(Math.min(y0, y1 / 4) / 1.6, floor || 1e-4); y1 *= 1.6; } else { const pad = (y1 - y0 || Math.abs(y1) || 1) * 0.12; y0 = Math.max(0, y0 - pad); y1 += pad; }
-  const x0 = 0, x1 = o.xmax || Math.max(240, ...pts.map(p => p[0]));
+  const x0 = 0, x1 = o.xmax || Math.max(o.xfloor ?? 240, ...pts.map(p => p[0]));
   const sx = x => L + (x - x0) / (x1 - x0) * (W - L - Rm);
   const sy = y => o.log ? T + (Math.log(y1) - Math.log(Math.max(y, y0))) / (Math.log(y1) - Math.log(y0)) * (H - T - Bm) : T + (y1 - y) / (y1 - y0) * (H - T - Bm);
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "img", "aria-label": o.title || "" });
@@ -25,7 +25,7 @@ function lineChart(host, o) {  // series [{name, color, dash, faded, pts:[[x,y]]
   for (const v of ticks(y0, y1, o.log)) { el("line", { x1: L, x2: W - Rm, y1: sy(v), y2: sy(v), class: "gr" }, svg); el("text", { x: L - 6, y: sy(v) + 4, "text-anchor": "end" }, svg).textContent = (o.ratio ? "×" : "") + fmt(v, 2); }
   for (const v of ticks(x0, x1, false)) el("text", { x: sx(v), y: H - Bm + 15, "text-anchor": "middle" }, svg).textContent = fmt(v, 3);
   el("line", { x1: L, x2: W - Rm, y1: H - Bm, y2: H - Bm, class: "ax" }, svg);
-  el("text", { x: (L + W) / 2, y: H - 4, "text-anchor": "middle" }, svg).textContent = "minutes into run";
+  el("text", { x: (L + W) / 2, y: H - 4, "text-anchor": "middle" }, svg).textContent = o.xlabel || "minutes into run";
   if (o.band) title(el("rect", { x: L, width: W - L - Rm, y: sy(o.band[1]), height: Math.max(1, sy(o.band[0]) - sy(o.band[1])), fill: css("--base"), opacity: 0.13 }, svg), o.band[2]);
   if (o.truth != null) title(el("line", { x1: L, x2: W - Rm, y1: sy(o.truth), y2: sy(o.truth), class: "truth" }, svg), "true value");
   if (o.at120) el("line", { x1: sx(120), x2: sx(120), y1: T, y2: H - Bm, class: "gr", "stroke-dasharray": "2 3" }, svg);
@@ -143,31 +143,34 @@ function ratios(host, b) {
 }
 
 // ---------- per-submission convergence small multiples ----------
-function groupCurve(runs, k) {
-  // Several runs of one condition: at each submission time (once every run has submitted), the mean and range of each run's latest value.
+function groupCurve(runs, k, xk = "t") {
+  // Several runs of one condition: at each submission (by run-clock minute, or by cumulative tokens with xk = "mtok"), once every run
+  // has submitted, the mean and range of each run's latest value.
   const subs = runs.map(r => RUNS[r].subs.filter(x => x.m[k] != null));
   if (subs.some(a => !a.length)) return { pts: [], spread: [] };
-  const start = Math.max(...subs.map(a => a[0].t));
-  const times = [...new Set(subs.flatMap(a => a.map(x => x.t)).filter(t => t >= start))].sort((a, b) => a - b);
-  const latest = (a, t) => a.filter(x => x.t <= t).pop().m[k];
+  const start = Math.max(...subs.map(a => a[0][xk]));
+  const times = [...new Set(subs.flatMap(a => a.map(x => x[xk])).filter(t => t >= start))].sort((a, b) => a - b);
+  const latest = (a, t) => a.filter(x => x[xk] <= t).pop().m[k];
   const rows = times.map(t => [t, subs.map(a => latest(a, t))]);
   return { pts: rows.map(([t, v]) => [t, v.reduce((x, y) => x + y, 0) / v.length]), spread: rows.map(([t, v]) => [t, Math.min(...v), Math.max(...v)]) };
 }
 function convergence(host, b) {
   const card = div(host, "card");
   if (b.title) card.appendChild(html(`<h3 style="margin-top:0">${b.title}</h3>`));
+  const xk = b.x || "t";  // x axis: run-clock minutes, or cumulative model tokens ("mtok")
   const series = b.series.map((s, i) => ({ ...s, color: s.color || PALETTE[i], label: s.runs ? `${s.label} (mean of ${s.runs.length} runs)` : s.label }));
   legend(div(card, "legend"), series.filter(s => !s.faded).map(s => [s.label, s.color]).concat(series.some(s => s.faded) ? [["faded: extended +2 h", null]] : [], [["true value (ratio plots)", null, "dash"]]));
   const grid = div(card, "minis");
   for (const k of b.keys) {
     const ss = series.map(s => ({ name: s.label, color: s.color, dash: s.dash, faded: s.faded,
-      ...(s.runs ? groupCurve(s.runs, k) : { pts: RUNS[s.run].subs.map(x => [x.t, x.m[k]]) }) }));
+      ...(s.runs ? groupCurve(s.runs, k, xk) : { pts: RUNS[s.run].subs.map(x => [x[xk], x.m[k]]) }) }));
     if (!ss.some(s => s.pts.some(p => p[1] != null))) continue;
     const ratio = kind(k) === "ratio";
-    lineChart(div(grid), { title: label(k) + (ratio ? " ÷ true" : ""), series: ss, log: true, ratio, truth: ratio ? 1 : null, xmax: b.xmax, at120: true,
+    lineChart(div(grid), { title: label(k) + (ratio ? " ÷ true" : ""), series: ss, log: true, ratio, truth: ratio ? 1 : null, xmax: b.xmax, at120: xk === "t",
+      xlabel: xk === "mtok" ? "cumulative model tokens (M)" : undefined, xfloor: xk === "mtok" ? 0 : undefined,
       floor: ratio || k.endsWith("_mm") || k.endsWith("_n") ? 0.01 : k.startsWith("abs:") ? 1e-3 : 0, fmtv: v => fmtKey(k, v) });
   }
-  card.appendChild(html(`<p class="note">One point per submission at its submission time; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 (mm or N). The dotted vertical line is the 120-minute mark.</p>`));
+  card.appendChild(html(`<p class="note">${xk === "mtok" ? "One point per submission, at the model tokens used by then" : "One point per submission at its submission time"}; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 (mm or N). ${xk === "t" ? "The dotted vertical line is the 120-minute mark." : ""}</p>`));
 }
 
 // ---------- strategy taxonomy (all runs in R.order) ----------
