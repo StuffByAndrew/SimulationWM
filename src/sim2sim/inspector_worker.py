@@ -109,6 +109,27 @@ def tendon_paths(m, d, samples=12):
     return paths
 
 
+def _visible_flexes(m):
+    """Flexes MuJoCo would draw (e.g. a cloth, whose vertex bodies carry no geoms)."""
+    flexes = [f for f in range(m.nflex) if m.flex_group[f] < 3 and m.flex_rgba[f, 3] > 0]
+    assert all(m.flex_dim[f] in (2, 3) for f in flexes), "the inspector draws only 2-D and 3-D flexes"
+    return flexes
+
+
+def _flex_faces(m, f):
+    """Triangles over the flex's own vertices: a 2-D flex's elements, a 3-D flex's boundary shell."""
+    if m.flex_dim[f] == 2:
+        start, count = m.flex_elemdataadr[f], m.flex_elemnum[f]
+        return m.flex_elem[start:start + 3 * count].reshape(-1, 3)
+    start, count = m.flex_shelldataadr[f], m.flex_shellnum[f]
+    return m.flex_shell[start:start + 3 * count].reshape(-1, 3)
+
+
+def flex_vertices(m, d):
+    """Current vertex positions of each visible flex."""
+    return [d.flexvert_xpos[m.flex_vertadr[f]:m.flex_vertadr[f] + m.flex_vertnum[f]] for f in _visible_flexes(m)]
+
+
 def object_bodies(sim):
     """Bodies not welded to the world, not mocap (e.g. grasp targets) and outside the robot fixture's subtree: the object
     whose CoM the viewer marks."""
@@ -159,8 +180,12 @@ def describe(sim, camera="fixed"):
         view = {"pos": sim._data.cam_xpos[cam].tolist(), "forward": (-frame[:, 2]).tolist(),
                 "up": frame[:, 1].tolist(), "fovy": float(m.cam_fovy[cam])}
     tendons = [{"rgba": m.tendon_rgba[t].tolist(), "width": float(m.tendon_width[t])} for t in _visible_tendons(m)]
+    flexes = [{"rgba": (m.mat_rgba[m.flex_matid[f]] if m.flex_matid[f] >= 0 else m.flex_rgba[f]).tolist(),
+               "faces": _array(_flex_faces(m, f), "<i4"), "vertices": _array(xyz, "<f4")}
+              for f, xyz in zip(_visible_flexes(m), flex_vertices(m, sim._data))]
     values = {key: _column(m, spec).tolist() for key, spec in PROPERTIES.items()}
     return {"type": "model", "bodies": bodies, "geoms": geoms, "meshes": meshes, "camera": view, "tendons": tendons,
+            "flexes": flexes,
             "objects": object_bodies(sim), "values": values, "center": m.stat.center.tolist(), "extent": float(m.stat.extent), "timestep": float(m.opt.timestep),
             "robot": sim.robot}
 
@@ -221,7 +246,8 @@ class Session:
                 "xquat": d.xquat.round(6).tolist(), "grasp": self.grasp_state(), "playing": self.playing,
                 "speed": self.speed, "lagging": self.lagging,
                 "unstable": int(d.warning[mujoco.mjtWarning.mjWARN_BADQACC].number),
-                "tendons": tendon_paths(self.sim._model, d)}
+                "tendons": tendon_paths(self.sim._model, d),
+                "flexes": [xyz.round(5).tolist() for xyz in flex_vertices(self.sim._model, d)]}
 
     def step(self, count):
         m, d = self.sim._model, self.sim._data

@@ -544,3 +544,27 @@ def test_live_panda_candidate_with_robot_include_first_is_graspable(tmp_path):
     assert hit is not None and np.allclose(hit[1], [.4, .4, .1])
     reply = Session(sim).command({'op': 'grasp', 'origin': origin.tolist(), 'direction': down.tolist()})
     assert reply['ok'] and reply['body'] == 'block'
+
+
+def test_live_environment_viewer_draws_and_grasps_a_cloth_flex(tmp_path):
+    """A cloth is a flex over geom-less vertex bodies: the viewer must draw its mesh and move it with the physics."""
+    if not ON_TEST_NODE:
+        pytest.skip('Interactive physics runs only on a Slurm test allocation')
+    from sim2sim.inspector import ENVIRONMENT, InspectorApp
+    shutil.copytree(Path(__file__).resolve().parents[1] / 'environments' / 'cloth_base', tmp_path / 'environments' / 'cloth_base')
+    app = InspectorApp(tmp_path, ports=(0, 0, 0, 0), session_seconds=300, workspace=tmp_path / 'workspace',
+                       environments=tmp_path / 'environments')
+    try:
+        viewer = app.viewers[ENVIRONMENT]
+        app.select_environment('cloth_base')
+        _wait(lambda: viewer.positions is not None, timeout=120, message='cloth loaded')
+        (mesh,) = viewer.layers[ENVIRONMENT]['flexes']
+        assert mesh.vertices.shape == (289, 3) and len(mesh.faces) == 512
+        assert np.allclose(mesh.vertices[:, 2], .402, atol=2e-3)
+        app.control('grasp', ENVIRONMENT, {'origin': [0, 0, 1], 'direction': [0, 0, -1]})
+        _wait(lambda: (viewer.summary.get('grasp') or '').startswith('cloth_v') and viewer.gizmo is not None,
+              message='cloth grasp')
+        app.drag(viewer, viewer.gizmo_origin + np.array([0, 0, .15]))
+        _wait(lambda: mesh.vertices[:, 2].max() > .5, timeout=60, message='drawn cloth lifted with the physics')
+    finally:
+        app.close()
