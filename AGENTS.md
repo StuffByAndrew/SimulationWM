@@ -13,6 +13,16 @@ Static source inspection, syntax compilation and lightweight pure validation
 checks may run on the login node. This is a user constraint, not a suggestion.
 Do not launch local simulations to investigate a failed compute job.
 
+## Git workflow (user, 2026-11-23)
+
+- Every agent may commit without asking, and should commit regularly in small logical commits (one coherent change
+  each; note in the message what was validated). Never commit secrets (`.env*`, credentials) or run outputs; never
+  force-push.
+- Work in a git worktree (`.claude/worktrees/<name>`) whenever another agent might be editing the same checkout.
+- Merge a worktree's branch into `main` and remove the worktree and its branch as soon as its work is done, unless
+  the user said to keep it persistent. Before merging, check the main checkout's `git status` and never discard or
+  overwrite another agent's uncommitted changes.
+
 ## Architecture and boundaries
 
 - `src/sim2sim/simulation.py`: private MuJoCo model/data, fixed camera rendering,
@@ -176,7 +186,7 @@ remains blocked; these checks are not an isolated-agent run.
 The current design is in `docs/2026-10-28-design.md`. Preserve minimal scope:
 MuJoCo XML projects, one ideal point grasp, explicit submissions, configurable
 observations, and researcher-only evaluation. See `docs/evaluation.md` for metric
-limitations. No commits unless the active user request authorizes them.
+limitations.
 
 
 Interactive inspector validation, 2026-11-02: Slurm `test` job `57112482`
