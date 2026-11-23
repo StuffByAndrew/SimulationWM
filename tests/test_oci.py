@@ -527,7 +527,7 @@ client = Client()
 assert "/opt/public/tools/local_controller" in client.task["task"]
 assert json.loads(Path("/opt/public/tools/local_controller/public_tool_config.json").read_text()) == client.task["public_tool_config"]
 project = Path("/workspace/project")
-shutil.copytree("/opt/public/robot", project / "robot", copy_function=shutil.copyfile)  # fresh mtimes: the fixture's predate ZIP's 1980
+shutil.copytree("/opt/public/robot", project / "robot")
 (project / "scene.xml").write_text("""<mujoco model="guess"><compiler angle="radian" autolimits="true" meshdir="robot/assets"/>
 <worldbody><camera name="fixed" pos="0.58 -0.42 0.38" xyaxes="0.8229 0.5682 0 -0.3213 0.4654 0.8247"/>
 <geom name="floor" type="plane" pos="0 0 -0.1" size="1 1 .05"/>
