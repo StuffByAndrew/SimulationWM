@@ -49,21 +49,24 @@ Do not launch local simulations to investigate a failed compute job.
 - `src/sim2sim/robots.py`: public robot fixture registry (Panda `arm_target`, Shadow hand `hand_target`: include file,
   fixture root body, actuator/joint order, home pose); no MuJoCo import so the host runtime can use it. Robot levels
   expose only proprioception and optional taxels (`simulation.TACTILE`); the fixture is verified byte-for-byte.
-- `src/sim2sim/client.py`: agent-facing versioned JSON client.
+- `src/sim2sim/client.py`: agent-facing versioned JSON client (and `Channel`, the `[tools] channel` code channel that the
+  sandbox harness serves during bash; unrelated to `local_controller`, a local reconstruction-world copy in the sandbox).
+- `src/sim2sim/predictor.py`: the one isolated runner for agent-submitted predictor programs (one container per
+  submission, no network/mounts/source/controller). `call` mode (evaluator image, worker bounds; per-call alarm, 1 MiB
+  JSON values, prints to stderr) and real-time `stream` mode (agent image and bounds; timed answers). The runtime's
+  `PREDICTOR_METRICS` lookup maps a metric to its module's `evaluate_submission(predictor.Job)`; see `docs/protocol.md`.
+  Strict OCI only.
 - `src/sim2sim/fixture.py`, `fixture_view.py`: positioning-fixture levels (`environments/panda_small/fixture_*`): the
   private carriage mechanism behind `reset_carriage`/`release_carriage` (seeded reset perturbation of the pad; the seed,
   pad state and mappings never reach a public observation, which carries only the dial readings), and the `fixture` metric
-  (held-out releases vs predictor samples: CRPS, Brier, hit rates at the chosen settings) with its researcher HTML view.
-- `src/sim2sim/predictor.py`: generic isolated runner for agent-submitted predictor programs (one evaluator-image
-  container per submission, no network/mounts/source; per-call alarm, 1 MiB JSON values, prints to stderr). A metric
-  supplies its function contract and `collect_predictions(table, call)`; see `docs/protocol.md`. Strict OCI only.
-- `src/sim2sim/client.py`: agent-facing versioned JSON client (and `Channel`, the code channel during bash).
+  (call mode; held-out releases vs predictor samples: CRPS, Brier, hit rates at the chosen settings) with its researcher
+  HTML view.
 - `src/sim2sim/realtime.py`: generic real-time world (`[simulation] realtime`, `frame_rate`; any level, either
   embodiment): host thread at wall-clock rate, FIFO actions on the live world, fixed frame grid rendered from recorded
-  states, no pause/tick-advance/state access; also the real-time predictor stream (`stream_predictor`) and its container
-  entry. `launcher.py`: optional private `[launcher]` (perturbed resets, `throw` protocols, seeded streams).
-  `die.py`: biased-die metric `die` (host-generated fresh throws, baselines, predictor scoring, `RUN/die-view.html`).
-  Keep die-specific logic out of the generic real-time and launcher modules.
+  states, no pause/tick-advance/state access. `launcher.py`: optional private `[launcher]` (perturbed resets, `throw`
+  protocols, seeded streams). `die.py`: biased-die metric `die` (stream mode; host-generated fresh throws, baselines,
+  predictor scoring, `RUN/die-view.html`). Keep die-specific logic out of the generic real-time, launcher and predictor
+  modules.
 - `src/sim2sim/sam3d.py`: optional `[tools] sam3d` relay. The strict controller forwards the agent's validated
   image+mask over a private 0700 spool to a researcher GPU service (`scripts/sam3d-service.slurm`,
   `kempner_gpu_priority`, A100 only, never H100/H200; env/weights under netscratch `SAM3D_ROOT`). A missing,

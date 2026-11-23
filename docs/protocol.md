@@ -674,29 +674,49 @@ stay private. A world `reset` restores the initial state (carriage uncocked, dia
 
 ## Predictor submissions (`src/sim2sim/predictor.py`)
 
-A metric may score a program instead of a scene. Its configuration sets `[evaluation] entrypoint` to the program (e.g.
-`predictor.py`), the task's `submission.entrypoint` names it, and `submission.predictor` states the contract: the runner
-description and the metric's functions (for `fixture`: `predict(compression, pressure, n)` returning `n` stopping
-positions in ruler mm, and `settings()` returning `{target name: {"compression", "pressure"}}`). On `submit` the host
-runs, before the private evaluator and while the agent is paused:
+A predictor metric scores a program instead of a scene: `fixture` (call mode) and `die` (stream mode, real time). The
+runtime's lookup `PREDICTOR_METRICS` maps each to its module, whose `evaluate_submission(job)` (a `predictor.Job`)
+returns the evaluation report; such a metric combines with no other metric. Its configuration sets `[evaluation]
+entrypoint` to the program (`predictor.py`, `predict.py`); the task's `submission.entrypoint` names it and
+`submission.kind = "predictor"` marks the task, so the harness uses its predictor texts (`SYSTEM_PREDICTOR` with one
+line for lock-step or real-time worlds, `COMPACT_PREDICTOR`, `GUARD_PREDICTOR`); scene conditions keep theirs. The metric
+states its own contract (`submission.predictor` for `fixture`, `die.predictor` for `die`).
 
-1. `run_predictor(submission, entrypoint, sandbox, output, supervisor, collect, timeout, call_seconds)` starts one
-   container per submission from the evaluator image (`python -m sim2sim.predictor`) with the `[sandbox.worker]` limits,
-   `--network=none`, a read-only root, no mounts and no source scene, manifest or credentials.
-2. Wire, one JSON line each way: `{"op":"load","project_b64","entrypoint","call_seconds"}` extracts the ZIP with the
-   submission checks (XML files are still MJCF-validated) and imports the entrypoint; `{"op":"call","function","kwargs"}`
-   returns `{"ok":true,"value"}` or `{"ok":false,"error"}`. Each load or call has `call_seconds` (default 60) of wall
-   time, enforced by an alarm that agent code cannot catch with `except Exception`; a value must be JSON with finite
-   numbers, at most 1 MiB. Anything the program prints goes to the worker's stderr log, never the protocol.
-3. The metric's `collect(call)` (for `fixture`, `fixture.collect_predictions(manifest[fixture], call)`) decides the
-   calls; one failed call is that call's error. A timeout of the whole session (`[evaluation]
-   predictor_timeout_seconds`, default 900), a crash or an oversized reply marks the worker broken and fails every later
-   call. The result goes to the evaluator as `evaluation["predictions"]`; the call log (arguments, values, errors,
-   seconds) is written to `RUN/predictor-NNN/predictor-calls.json` and the program's stderr to `predictor.stderr.log`.
+On `submit`, while the agent is paused, the metric starts one container per submission (`predictor.container`,
+`python -m sim2sim.predictor MODE`): `--network=none`, a read-only root, no mounts, no source scene, manifest, controller
+or credentials. The host first sends `{"op":"load","project_b64","entrypoint","call_seconds"}`; the worker extracts the
+ZIP with the submission checks (XML files are still MJCF-validated) and replies `{"ok":true}` or `{"ok":false,"error"}`.
+Logs go to `RUN/predictor-NNN/` (`predictor.stderr.log` and the mode's log).
+
+**call mode** (`predictor.calls`; evaluator image, `[sandbox.worker]` limits). The worker imports the entrypoint; the
+metric's `collect(call)` (for `fixture`, `fixture.collect_predictions(manifest[fixture], call)`) decides the calls,
+`{"op":"call","function","kwargs"}` → `{"ok":true,"value"}` or `{"ok":false,"error"}`. Each load or call has
+`call_seconds` (default 60) of wall time, enforced by an alarm that agent code cannot catch with `except Exception`; a
+value must be JSON with finite numbers, at most 1 MiB. Anything the program prints goes to the stderr log, never the
+protocol. One failed call is that call's error. A timeout of the whole session (`[evaluation]
+predictor_timeout_seconds`, default 900), a crash or an oversized reply marks the worker broken and fails every later
+call. The answers go to the private evaluator container as `evaluation["predictions"]`; the call log (arguments,
+values, errors, seconds) is `predictor-calls.json`.
+
+**stream mode** (`predictor.stream`; the agent image and the agent's sandbox bounds, because answer latency is scored and
+the program gets exactly the resources it was developed with). After the load reply the worker execs
+`python3 ENTRYPOINT` in the unpacked directory; its stdin/stdout are JSON lines in real time:
+
+1. The host sends the metric's public `start` message; the program replies `{"type":"ready"}` within 120 s.
+2. Per trial, the host sends the trial header at release, then frame k at k / frame rate seconds after release in real
+   time (only frames before the deadline), then `trial_end` at the deadline, and `end` after the last trial.
+3. The program's first `{"type":"prediction","trial":i,...}` line for the trial counts:
+   - `on_time` if it is received by the deadline and the metric's `validate` accepts it (for `die`: valid probabilities);
+   - `malformed` if it is not accepted, or if any other line is written during the trial;
+   - `late` if it arrives after the deadline but within the 0.25 s gap before the next trial;
+   - `missing` otherwise.
+
+Every output line is logged with its receipt time (`predictor-output.jsonl`). The metric supplies the trials
+(`(header, frames)` pairs) and the scoring.
 
 Nothing a predictor returns reaches the agent; the submit reply is only the evaluator status. Predictor metrics need
-`strict_oci`; the development backend fails such an evaluation explicitly. A new predictor metric adds its function
-contract and a `collect_predictions(table, call)` beside its scorer and selects the runner in the runtime's submit path.
+`strict_oci`; the development backend fails such an evaluation explicitly. A new predictor metric adds its module with
+its public contract and `evaluate_submission(job)`, and one `PREDICTOR_METRICS` entry.
 
 ## Real-time world (`simulation.realtime`)
 
@@ -749,38 +769,17 @@ The sandbox harness relays the controller to the agent's own programs, so code c
 with low latency.
 
 - **When.** While a `bash` command runs, the harness serves the Unix socket `task.code_channel.path`
-  (`/tmp/sim2sim-controller.sock`), one connection at a time.
+  (`/tmp/sim2sim-controller.sock`), one connection at a time. With `--bash-mode pausable` the socket lives as long as the
+  command and relays requests only while the command runs; pausing waits for a request in flight, and later requests
+  wait until `bash_resume`.
 - **Protocol.** Each request line is a controller action object; the reply line is the controller's reply, including
   base64 images.
 - **Allowed operations.** Only the physical actions the task offers: `observe`, `frames`, `grasp`, `move`, `release`,
-  `arm_target`, `hand_target`, `camera`, `reset` and `throw`. Submit, inference, progress, finish and sequence are refused.
+  `arm_target`, `hand_target`, `camera`, `reset`, `reset_carriage`, `release_carriage` and `throw`. Submit, inference,
+  progress, finish and sequence are refused.
 - **Client.** `from sim2sim.client import Channel; Channel().request("frames", since=-1)`.
 - **Accounting.** The requests pass through the normal controller, so they are audited and charged as usual.
 
-Without `[tools] channel` the socket never exists. The `sequence` tool remains available alongside and may contain
-`throw`.
-
-## Predictor submissions and real-time evaluation streams
-
-Some evaluations score a submitted program instead of a scene. The die metric (`docs/evaluation.md`) is one;
-`task.submission.kind = "predictor"` marks such tasks. The harness then uses fixed predictor wording for its system,
-compaction and finish-guard texts (`SYSTEM_PREDICTOR`, …); scene conditions keep theirs.
-
-The submission is a ZIP with `predict.py`. `realtime.stream_predictor` runs it in its own container: the agent image,
-the agent's sandbox bounds, no network, no mounts, no source, no controller. The container command
-`python -m sim2sim.realtime /workspace/predictor` unpacks the ZIP and execs `python3 predict.py`.
-
-The stream is JSON lines over stdin/stdout:
-
-1. The host sends the bundle and waits for `loaded`.
-2. The host sends the public `start` message; the program replies `{"type":"ready"}` within 120 s.
-3. Per trial, the host sends the trial header at release, then frame k at k / frame rate seconds after release in real
-   time (only frames before the deadline), then `trial_end` at the deadline.
-4. The program's first `{"type":"prediction","trial":i,...}` line for the trial counts:
-   - `on_time` if it is received by the deadline with valid probabilities;
-   - `malformed` if it is invalid, or if any other line is written during the trial;
-   - `late` if it arrives after the deadline but within the 0.25 s gap before the next trial;
-   - `missing` otherwise.
-
-Every output line is logged with its receipt time. The runner is generic: its classes come from `start.faces` and its
-trials are `(header, frames)` pairs. A level-specific evaluation supplies the trials and the scoring.
+Without `[tools] channel` the socket never exists. It is not the `local_controller` tool, which runs a local copy of
+the reconstruction world inside the sandbox and never reaches the controller. The `sequence` tool remains available
+alongside and may contain `throw`.

@@ -174,7 +174,7 @@ input()
         """An agent's predictor program in its own worker container: no source, network, credentials or writable root;
         a per-call alarm it cannot swallow, a 1 MiB value bound, and a session timeout that fails every later call."""
         import io, zipfile
-        from sim2sim.predictor import run_predictor
+        from sim2sim.predictor import calls, container
         from sim2sim.runtime import WallClock
         program = r'''
 import json, os, signal, socket
@@ -213,10 +213,11 @@ def block():
         supervisor = WallClock(600)
         try:
             with patch.dict(os.environ, {"SIM2SIM_TEST_SECRET": "host-only"}):
-                replies = run_predictor(data.getvalue(), "predictor.py", sandbox, output / "a", supervisor,
-                                        lambda call: [call("probe"), call("slow"), call("huge"), call("probe")], 120, call_seconds=3)
-                blocked = run_predictor(data.getvalue(), "predictor.py", sandbox, output / "b", supervisor,
-                                        lambda call: [call("block"), call("probe")], 20, call_seconds=3)
+                def run_predictor(logs, collect, timeout):
+                    with container("call", sandbox, logs, supervisor) as proc:
+                        return calls(proc, data.getvalue(), "predictor.py", collect, time.monotonic() + timeout, logs / "predictor-calls.json", call_seconds=3)
+                replies = run_predictor(output / "a", lambda call: [call("probe"), call("slow"), call("huge"), call("probe")], 120)
+                blocked = run_predictor(output / "b", lambda call: [call("block"), call("probe")], 20)
         finally:
             supervisor.close()
         probe = replies[0]["value"]
@@ -642,14 +643,14 @@ class DieRealtimeOCITests(unittest.TestCase):
                   "output_dir": str(output), "record_video": False, "budget": {"wall_only": True, "wall_seconds": 900},
                   "simulation": {"camera": "fixed", "width": 160, "height": 120, "rgb": True, "depth": True, "calibration": True,
                                  "realtime": True, "frame_rate": 25},
-                  "evaluation": {"source_dir": str(scene.parent), "metrics": ["die"], "die": {"trials_per_protocol": 2, "empirical_throws": 3}}}
+                  "evaluation": {"source_dir": str(scene.parent), "metrics": ["die"], "entrypoint": "predict.py", "die": {"trials_per_protocol": 2, "empirical_throws": 3}}}
         result = run(config)
         self.assertEqual((result["status"], result["submissions"]), ("finished", 1))
         report = json.loads((output / "version-001/evaluation.json").read_text())
         self.assertEqual((report["status"], report["predictor_ready"], report["scores"]["die"]["on_time"]), ("ok", True, 8), report)
         self.assertAlmostEqual(report["scores"]["die"]["brier"], 11 / 12)
         self.assertEqual(report["scores"]["die"]["baselines"]["oracle"]["brier"], 0)
-        isolation = json.loads([line for line in (output / "version-001/predictor.stderr.log").read_text().splitlines() if "isolation" in line][0])["isolation"]
+        isolation = json.loads([line for line in (output / "predictor-001/predictor.stderr.log").read_text().splitlines() if "isolation" in line][0])["isolation"]
         print("predictor isolation: " + json.dumps(isolation))
         self.assertEqual((isolation["uid"], isolation["hits"], isolation["network"], isolation["controller"]), (65532, [], False, False))
         self.assertTrue((output / "die-view.html").is_file())

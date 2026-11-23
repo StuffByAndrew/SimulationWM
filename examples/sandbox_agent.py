@@ -42,30 +42,41 @@ COMPACT = """Your context is nearly full, so older turns will now be removed. Wr
 
 GUARD = """finish was not executed yet (%s of wall time remain). Before ending, list every aspect of your reconstruction that you have NOT validated by a direct comparison experiment between the reference and reconstruction worlds. If any remain, design and run those experiments and resubmit when the reconstruction improves. If none remain, call finish again in a later turn and it will be executed."""
 
-# Tasks whose submission is a predictor program (task["submission"]["kind"] == "predictor", e.g. the real-time die level) get
-# their own fixed texts; every scene-reconstruction condition keeps the texts above unchanged.
-SYSTEM_PREDICTOR = """You are an autonomous research agent working inside an isolated Linux sandbox. Your job is to study an object in a simulated world through the observations and interactions offered by the controller, build a model that predicts its behavior, and submit that model as a predictor program. The task statement, action contract and first observation follow in the first user message.
+# Tasks whose submission is a predictor program (task["submission"]["kind"] == "predictor": the positioning-fixture and
+# real-time die levels) get their own fixed texts, with one line for the task's worlds; every scene-reconstruction
+# condition keeps the texts above unchanged.
+SYSTEM_PREDICTOR = """You are an autonomous research agent working inside an isolated Linux sandbox. Your job is to study an unknown simulated system by experiment through the observations and interactions offered by the controller, build a model that predicts its behavior, and submit that model as a predictor program, as the task statement specifies. The task statement, action contract and first observation follow in the first user message.
 
 Environment
 - You act only through function tools. `bash` runs shell commands in /workspace. python3 with mujoco, numpy, scipy and matplotlib is installed; there is no network. Files in /workspace and /tmp cannot be executed directly, so run scripts as `python3 file.py` or `bash file.sh`. Use code freely: analyze observations quantitatively, simulate your own models offscreen, and write and test your predictor.
-- The world runs continuously in real time, also while you think and while your code runs. Controller tools act on it directly; when the task offers a controller channel, programs you start with bash can act on the world and read its camera frames with low latency.
+- %s
 - Any image a controller tool returns is also saved under /workspace/observations/ for analysis with code; only the most recent files are kept. `view_image` shows you any PNG or JPEG file, including renders you produce yourself.
 - Only recent turns and images stay in your context; older history is replaced by a summary. Keep a running notes file at /workspace/NOTES.md (hypotheses, experiments, measurements, and what is still unverified) and re-read it whenever you need it.
 
 How your work is evaluated
-- Only submitted predictors are evaluated, by hidden tests that run them on new throws as the task describes. You never see scores.
+- Only submitted predictors are evaluated, by hidden tests that run your predictor program in isolation on new trials, at conditions you may not have tried, and compare its answers with what actually happens there, as the task statement describes. You never see scores.
 - First versions of a predictor are almost always wrong in respects that were not directly tested. Treat every assumption in your predictor as a hypothesis until experiments in the world support it.
 
 How to work
 - Every tool result reports the remaining wall time; the session ends automatically at the deadline.
-- Work in cycles: form hypotheses, design experiments that discriminate between them, compare your predictor's answers with what actually happens, update it, and resubmit whenever it improves. A submission is a checkpoint, not an ending: keep testing after every submission.
-- `finish` is irreversible. Call it when you believe no experiment you can still design would improve your predictor. Work that was not submitted is lost, so keep your best current predictor submitted.
+- Work in cycles: form hypotheses, design experiments that discriminate between them, run them, compare your predictor's answers with what actually happens quantitatively, update it, and resubmit whenever it improves. A submission is a checkpoint, not an ending: keep testing after every submission.
+- `finish` is irreversible. Call it when you believe your predictor's answers match the world: every assumption in it has been checked against experiments, and no experiment you can still design would reveal a discrepancy. Work that was not submitted is lost, so keep your best current predictor submitted.
 - In each turn, write one or two sentences of public status describing what you are testing and why, alongside your tool calls. Use only the provided tools and your own sandbox."""
+PREDICTOR_WORLDS = {
+    "lockstep": 'Controller tools act on two independent worlds: "reference" (the system under study) and "reconstruction" (your most recently loaded MuJoCo model, if you choose to build one). Level-specific actions work only where their contract says.',
+    "realtime": "The world runs continuously in real time, also while you think and while your code runs. Controller tools act on it directly; when the task offers a controller channel, programs you start with bash can act on the world and read its camera frames with low latency."}
 
 COMPACT_PREDICTOR = """Your context is nearly full, so older turns will now be removed. Write a complete, self-contained summary of the work so far for your future self: the current predictor and where its files are, every experiment you ran with its measured outcome, what each result established, which aspects are still unverified, which submissions you made, and your plan. Reply with text only; do not call tools in this reply. Also update /workspace/NOTES.md in your next turn."""
 
 GUARD_PREDICTOR = """finish was not executed yet (%s of wall time remain). Before ending, list every assumption in your predictor that you have NOT checked against what actually happens in the world. If any remain, design and run those experiments and resubmit when the predictor improves. If none remain, call finish again in a later turn and it will be executed."""
-PROMPTS = {"scene": (SYSTEM, COMPACT, GUARD), "predictor": (SYSTEM_PREDICTOR, COMPACT_PREDICTOR, GUARD_PREDICTOR)}
+
+
+def prompts(task):
+    """(system, compaction, finish guard) texts for a task."""
+    if task["submission"].get("kind") != "predictor":
+        return SYSTEM, COMPACT, GUARD
+    return SYSTEM_PREDICTOR % PREDICTOR_WORLDS["realtime" if "realtime" in task else "lockstep"], COMPACT_PREDICTOR, GUARD_PREDICTOR
+
 
 WORLD = {"type": "string", "enum": ["reference", "reconstruction"]}
 STRING = {"type": "string"}
@@ -218,6 +229,72 @@ def tool_schemas(task, local=LOCAL):
     return tools
 
 
+class ControllerChannel:
+    """Controller channel (task code_channel) for the programs of one bash command: a Unix socket served one connection at
+    a time; each JSON request line naming an offered op is forwarded to the controller and its reply line written back.
+    Requests are relayed only while the command runs (serve(True)); serve(False) waits for a request in flight, so the
+    harness and the channel never use the client at the same time, and later requests wait until the command runs again."""
+    def __init__(self, agent):
+        spec = agent.task["code_channel"]
+        self.agent, self.allowed, self.path = agent, set(spec["ops"]), Path(spec["path"])
+        self.gate, self.running, self.stopped, self.connection = threading.Condition(), False, False, None
+        self.path.unlink(missing_ok=True)
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(str(self.path))
+        self.server.listen(1)
+        self.server.settimeout(.2)
+        self.thread = threading.Thread(target=self.relay, daemon=True)
+        self.thread.start()
+
+    def relay(self):
+        while not self.stopped:
+            try:
+                connection, _ = self.server.accept()
+            except socket.timeout:
+                continue
+            with self.gate:
+                if self.stopped:
+                    connection.close()
+                    return
+                self.connection = connection
+            with connection, connection.makefile("rwb") as stream:
+                for line in stream:
+                    with self.gate:
+                        self.gate.wait_for(lambda: self.running or self.stopped)
+                        if self.stopped:
+                            return
+                        try:
+                            request = json.loads(line)
+                            assert isinstance(request, dict) and request.get("op") in self.allowed, "op must be one of %s" % sorted(self.allowed)
+                            reply = self.agent.client.request(request.pop("op"), **request)
+                        except (AssertionError, ValueError, RuntimeError, TypeError) as exc:
+                            reply = {"ok": False, "error": str(exc)}
+                        self.agent.channel_requests += 1
+                    try:
+                        stream.write(json.dumps(reply, separators=(",", ":")).encode() + b"\n")
+                        stream.flush()
+                    except OSError:
+                        return
+
+    def serve(self, running):
+        with self.gate:
+            self.running = running
+            self.gate.notify_all()
+
+    def close(self):
+        with self.gate:
+            self.stopped, self.running = True, False
+            self.gate.notify_all()
+            if self.connection is not None:
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+        self.thread.join()
+        self.server.close()
+        self.path.unlink()
+
+
 class Agent:
     def __init__(self, client, workspace="/workspace", compact_tokens=100000, keep_turns=8, max_images=12,
                  reserve_seconds=360, output_chars=16000, keep_image_files=400, bash_mode="timeout", now=time.time):
@@ -238,7 +315,7 @@ class Agent:
         if bash_mode == "pausable":
             assert ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0, "PR_SET_CHILD_SUBREAPER failed"
         self.tools = tool_schemas(self.task, PAUSABLE if bash_mode == "pausable" else LOCAL)
-        self.system, self.compact_text, self.guard = PROMPTS[self.task["submission"].get("kind", "scene")]
+        self.system, self.compact_text, self.guard = prompts(self.task)
         self.schemas = {tool["name"]: tool["parameters"] for tool in self.tools}
         self.turns, self.summary, self.saved, self.images = [], None, [], 0
         self.turn, self.submissions, self.intercepted, self.channel_requests = 0, 0, None, 0
@@ -418,47 +495,20 @@ class Agent:
             response["saved_images"] = [str(path) for _, path in saved]
         return [text(json.dumps(response, separators=(",", ":")))] + parts
 
-    def relay(self, server, stop):
-        """Controller channel (task code_channel): serve the bash command's programs one connection at a time, forwarding each
-        JSON request line that names an offered physical action to the controller and writing back its reply line."""
-        allowed = set(self.task["code_channel"]["ops"])
-        while not stop.is_set():
-            try:
-                connection, _ = server.accept()
-            except socket.timeout:
-                continue
-            with connection, connection.makefile("rwb") as stream:
-                for line in stream:
-                    try:
-                        request = json.loads(line)
-                        assert isinstance(request, dict) and request.get("op") in allowed, "op must be one of %s" % sorted(allowed)
-                        reply = self.client.request(request.pop("op"), **request)
-                    except (AssertionError, ValueError, RuntimeError, TypeError) as exc:
-                        reply = {"ok": False, "error": str(exc)}
-                    stream.write(json.dumps(reply, separators=(",", ":")).encode() + b"\n")
-                    stream.flush()
-                    self.channel_requests += 1
+    def channel(self):
+        """The controller channel for one bash command when the task offers it (task code_channel), else None."""
+        return ControllerChannel(self) if "code_channel" in self.task else None
 
     def bash(self, command, timeout):
         timeout = max(1, min(timeout, 1800, int(self.left() - self.reserve)))
-        stop, relay = threading.Event(), None
-        if "code_channel" in self.task:
-            path = Path(self.task["code_channel"]["path"])
-            path.unlink(missing_ok=True)
-            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            server.bind(str(path))
-            server.listen(1)
-            server.settimeout(.2)
-            relay = threading.Thread(target=self.relay, args=(server, stop), daemon=True)
-            relay.start()
+        channel = self.channel()
         try:
+            if channel:
+                channel.serve(True)
             return self.run_bash(command, timeout)
         finally:
-            if relay is not None:
-                stop.set()
-                relay.join()
-                server.close()
-                path.unlink()
+            if channel:
+                channel.close()
 
     def run_bash(self, command, timeout):
         with tempfile.TemporaryFile() as output:
@@ -482,7 +532,7 @@ class Agent:
         process = subprocess.Popen(["bash", "-c", command], cwd=self.workspace, stdin=subprocess.DEVNULL, stdout=output,
                                    stderr=subprocess.STDOUT, start_new_session=True,
                                    env={**os.environ, "HOME": str(self.workspace), "MPLBACKEND": "Agg"})
-        self.job = {"process": process, "output": output, "shown": 0, "ran": 0.}
+        self.job = {"process": process, "output": output, "shown": 0, "ran": 0., "channel": self.channel()}
         return self.bash_continue(check)
 
     def bash_continue(self, check):
@@ -492,6 +542,8 @@ class Agent:
         if job is None:
             raise ValueError("no bash command is paused")
         signal_tree(signal.SIGCONT)
+        if job["channel"]:
+            job["channel"].serve(True)
         limit, started = int(self.left() - self.reserve), time.monotonic()
         try:
             status = "exit code %d" % job["process"].wait(timeout=max(1, min(check, limit)))
@@ -499,6 +551,8 @@ class Agent:
             job["ran"] += time.monotonic() - started
             if check >= limit:
                 return self.bash_end("killed because the session is ending")
+            if job["channel"]:
+                job["channel"].serve(False)  # waits for a request in flight, so the harness never shares the client
             signal_tree(signal.SIGSTOP)
             body, job["shown"] = read_output(job["output"], job["shown"], self.output_chars)
             return ("paused after %d s of running time; it uses no compute until you call bash_resume to continue it or bash_kill "
@@ -510,6 +564,8 @@ class Agent:
         """Kill everything the command started (including detached processes), reap it, and report its remaining output."""
         job, self.job = self.job, None
         signal_tree(signal.SIGKILL)
+        if job["channel"]:
+            job["channel"].close()
         job["process"].wait()
         reap()
         body, _ = read_output(job["output"], job["shown"], self.output_chars)
@@ -527,6 +583,7 @@ class Agent:
     def sequence(self, args):
         """Run an agent-written JSON list of physical actions back to back in one world as ordinary controller requests."""
         steps = json.loads(Path(args["steps_file"]).read_text())
+        world = "reference" if "realtime" in self.task else args["world"]  # a real-time task has only the reference world
         allowed = [op for op in SEQUENCE_OPS if op in self.task["actions"]]
         if not (isinstance(steps, list) and 1 <= len(steps) <= SEQUENCE_STEPS
                 and all(isinstance(step, dict) and step.get("op") in allowed and "world" not in step for step in steps)):
@@ -537,7 +594,7 @@ class Agent:
         records, response, error = [], None, None
         for index, step in enumerate(steps):
             try:
-                response = self.client.request(step["op"], world=args["world"], **{k: v for k, v in step.items() if k != "op"})
+                response = self.client.request(step["op"], world=world, **{k: v for k, v in step.items() if k != "op"})
             except RuntimeError as exc:
                 error = "step %d (%s) was rejected: %s" % (index, step["op"], exc)
                 break
@@ -545,10 +602,10 @@ class Agent:
             records.append({"step": index, "op": step["op"], "observation": observation})
         path.write_text(json.dumps(records, separators=(",", ":")))
         summary = text("Ran %d of %d steps in the %s world; each step's non-image observation fields are saved in %s.%s"
-                       % (len(records), len(steps), args["world"], path, " Stopped: " + error if error else ""))
+                       % (len(records), len(steps), world, path, " Stopped: " + error if error else ""))
         if response is None or args.get("images", "last") == "none":
             return [summary]
-        return [summary] + self.render(response, args["world"])
+        return [summary] + self.render(response, world)
 
     def view_image(self, path):
         data = Path(path).read_bytes()

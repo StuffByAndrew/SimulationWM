@@ -17,6 +17,7 @@ seed; evaluation draws its own trials from the same distribution. Pad state neve
 from __future__ import annotations
 
 import json
+import time
 
 import mujoco
 import numpy as np
@@ -167,7 +168,7 @@ def parse_settings(value, names):
 
 
 def collect_predictions(table, call):
-    """Host side (predictor.run_predictor): the predictor's chosen settings and its predictions at every held-out setting
+    """Host side (predictor.calls): the predictor's chosen settings and its predictions at every held-out setting
     and at each chosen setting. `call(function, **kwargs)` returns {"ok", "value" | "error"}."""
     names = [target["name"] for target in table["targets"]]
     n = int(table["samples"])
@@ -182,6 +183,18 @@ def collect_predictions(table, call):
             out["chosen"] = {name: {"setting": list(setting), **call("predict", compression=setting[0], pressure=setting[1], n=n)}
                              for name, setting in chosen.items()}
     return out
+
+
+def evaluate_submission(job):
+    """runtime.PREDICTOR_METRICS entry: the program answers the calls of collect_predictions in its call-mode predictor
+    container (predictor.py), then the private evaluator container scores those answers against fresh source releases."""
+    from . import predictor
+    evaluation = job.evaluation
+    with job.container("call") as proc:
+        predictions = predictor.calls(proc, job.data, evaluation["entrypoint"], lambda call: collect_predictions(job.manifest["fixture"], call),
+                                      min(time.monotonic() + float(evaluation.get("predictor_timeout_seconds", 900)), job.supervisor.deadline),
+                                      job.logs / "predictor-calls.json")
+    return job.evaluate_scene({**evaluation, "predictions": predictions})
 
 
 def _samples(reply, n):

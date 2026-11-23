@@ -69,8 +69,7 @@ def test_predictor_worker_bounds_time_output_and_protocol(tmp_path):
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w") as archive:
         archive.writestr("predictor.py", PREDICTOR)
-    worker = subprocess.Popen([sys.executable, "-c", "import sys; from pathlib import Path; from sim2sim.predictor import main; main(root=Path(sys.argv[1]))",
-                               str(tmp_path / "predictor")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    worker = subprocess.Popen([sys.executable, "-m", "sim2sim.predictor", "call", str(tmp_path / "predictor")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     messages = [{"op": "call", "function": "predict", "kwargs": {"compression": 1, "pressure": 2, "n": 2}},
                 {"op": "load", "project_b64": base64.b64encode(data.getvalue()).decode(), "entrypoint": "predictor.py", "call_seconds": 1},
                 *({"op": "call", "function": name, "kwargs": kwargs} for name, kwargs in

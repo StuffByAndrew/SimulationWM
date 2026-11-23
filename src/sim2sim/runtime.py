@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from contextlib import contextmanager, nullcontext
 import io
 import hashlib
+import importlib
 import importlib.metadata
 import platform
 import multiprocessing
@@ -764,6 +765,9 @@ CONTEXT_USAGE = ("promptTokens", "cacheReadTokens", "cacheWriteTokens")  # conte
 INTERACTIONS = ("grasp", "move", "release", "arm_target", "hand_target")  # every physical action; blocked in the reference world when reference_interaction=false
 FIXTURE_OPS = ("reset_carriage", "release_carriage")  # positioning-fixture levels only (manifest [fixture]); reference world only
 PHYSICAL = ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera") + FIXTURE_OPS
+# Metrics that score a submitted predictor program (src/sim2sim/predictor.py) instead of a scene: metric -> module whose
+# evaluate_submission(predictor.Job) runs the program in isolation and returns the evaluation report (strict_oci only).
+PREDICTOR_METRICS = {"fixture": "fixture", "die": "die"}
 POOL_SETTINGS = {"cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd"}
 POOL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 TOOL_TRANSPORT_NOTE = ("This API transport cannot carry native tool-call or tool-result items, so the host reports each genuine function "
@@ -1538,7 +1542,13 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     if fixture_table:  # private seed of the fixture's reset perturbations (src/sim2sim/fixture.py); never public
         sim_config["fixture_seed"] = secrets.randbits(63)
     realtime = sim_config.get("realtime", False)
-    die_metric = "die" in config.get("evaluation", {}).get("metrics", [])
+    metrics = list(config.get("evaluation", {}).get("metrics", []))
+    predictor_metric = next((metric for metric in metrics if metric in PREDICTOR_METRICS), None)
+    if predictor_metric and metrics != [predictor_metric]:
+        raise RuntimeFailure(f"the {predictor_metric} metric scores a predictor program and combines with no other metric")
+    if predictor_metric and not str(config["evaluation"].get("entrypoint", "")).endswith(".py"):
+        raise RuntimeFailure(f"the {predictor_metric} metric needs [evaluation] entrypoint naming the predictor program (*.py)")
+    die_metric = predictor_metric == "die"
     if realtime not in (True, False) or ("launcher" in private_manifest or die_metric) and not realtime or die_metric and "launcher" not in private_manifest:
         raise RuntimeFailure("simulation.realtime is a boolean; a manifest [launcher] needs it, and the die metric needs both")
     if realtime and not (wall_only and type(sim_config.get("frame_rate")) is int and sim_config["frame_rate"] > 0 and backend is None):
@@ -1745,23 +1755,6 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
              (live.paused() if live else nullcontext()):
             yield
 
-    def die_evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor):
-        """Score a predictor submission (die.py): its program runs in its own container with the agent's bounds."""
-        from . import die
-
-        @contextmanager
-        def predictor():
-            predictor_name = "sim2sim-predictor-" + uuid.uuid4().hex
-            process = launch_container(sandbox["image"], ["python", "-m", "sim2sim.realtime", "/workspace/predictor"], sandbox, predictor_name,
-                                       version_output / "predictor.stderr.log", supervisor)
-            try:
-                yield process
-            finally:
-                stop_container(process, predictor_name)
-                supervisor.unregister(process)
-                process.stderr_log.close()
-        return die.evaluate(submission, output, version_output, scene, sim_config, private_manifest, evaluation, predictor, clocks()["wall_elapsed"])
-
     def boundary(direction, raw, complete):
         if direction == "request":
             context["action_id"] += 1
@@ -1911,7 +1904,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                                                          "effect": "reference world only: opens the latch of a cocked carriage (after reset_carriage)"}
             task["observation_contract"]["fixture"] = ("fixture instrument readings: compression_dial and pressure_dial positions in scale "
                                                       "divisions (0 to 10, as on the dial scales) and carriage_cocked")
-            if "fixture" in config.get("evaluation", {}).get("metrics", ()):
+            if predictor_metric == "fixture":
                 task["submission"]["predictor"] = {**CONTRACT, "functions": PREDICTOR_FUNCTIONS}
             if "sequence" in task["action_schema"]:
                 sequence = task["action_schema"]["sequence"]
@@ -1997,15 +1990,17 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         if die_metric:
             from .die import public_contract
             task["die"] = public_contract(sim, launcher, {**private_manifest["die"], **config["evaluation"].get("die", {})}, sim_config["frame_rate"])
-            task["submission"] = {"format": "base64 ZIP", "kind": "predictor", "entrypoint": "predict.py",
-                                  "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024)), "protocol": "task die.predictor"}
-            task["action_schema"]["submit"] = {"project_b64": "base64 ZIP of your predictor (predict.py and its files); scores stay private"}
+            task["submission"]["protocol"] = "task die.predictor"
+        if predictor_metric:
+            task["submission"]["kind"] = "predictor"
+            task["action_schema"]["submit"] = {"project_b64": "base64 ZIP of your predictor program (%s and its files); scores stay private"
+                                                              % task["submission"]["entrypoint"]}
         if "channel" in tools:
             task["code_channel"] = {
                 "path": CHANNEL_SOCKET, "availability": "only while a bash command runs; one connection at a time",
                 "protocol": "connect a Unix stream socket; send one JSON request per line, exactly as a controller action "
                             "({\"op\": ..., fields}), and read one JSON reply per line (the controller's reply, with base64 images)",
-                "ops": [op for op in task["actions"] if op in ("observe", "frames", "grasp", "move", "release", "arm_target", "hand_target", "camera", "reset", "throw")],
+                "ops": [op for op in task["actions"] if op in PHYSICAL + ("frames", "throw")],
                 "python": "from sim2sim.client import Channel; channel = Channel(); reply = channel.request('observe')"}
         if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
             blocked = [op for op in INTERACTIONS + FIXTURE_OPS if op in task["actions"]]
@@ -2288,16 +2283,17 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                         timing["pause_start"] = pause
                         try:
                             try:
-                                if "fixture" in evaluation.get("metrics", ()):  # predictor submission: run it in isolation first
+                                scene_evaluator = evaluate_in_container if backend is None else backend.evaluate
+                                if predictor_metric:
                                     if backend is not None:
                                         raise RuntimeFailure("Predictor evaluation requires strict_oci")
-                                    from .fixture import collect_predictions
-                                    from .predictor import run_predictor
-                                    evaluation["predictions"] = run_predictor(
-                                        submission, evaluation["entrypoint"], sandbox, output / ("predictor-%03d" % submissions), supervisor,
-                                        lambda call: collect_predictions(fixture_table, call), float(evaluation.get("predictor_timeout_seconds", 900)))
-                                evaluator = die_evaluator if die_metric else evaluate_in_container if backend is None else backend.evaluate
-                                report = evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor)
+                                    from .predictor import Job
+                                    job = Job(submission, evaluation, output, version_output, output / ("predictor-%03d" % submissions), scene, sim_config,
+                                              private_manifest, clocks()["wall_elapsed"], sandbox, supervisor,
+                                              lambda scored: scene_evaluator(submission, scored, sandbox, version_output, source_bundle, supervisor))
+                                    report = importlib.import_module("." + PREDICTOR_METRICS[predictor_metric], __package__).evaluate_submission(job)
+                                else:
+                                    report = scene_evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor)
                             except Exception as exc:
                                 report = {"status": "unevaluated" if supervisor.expired.is_set() else "failed", "version": hashlib.sha256(submission).hexdigest(), "scores": None,
                                           "error_type": type(exc).__name__, "error": str(exc) if isinstance(exc, RuntimeFailure) else "Evaluation worker failed"}

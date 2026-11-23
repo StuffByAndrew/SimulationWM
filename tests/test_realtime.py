@@ -16,7 +16,8 @@ import pytest
 
 from sim2sim import die
 from sim2sim.launcher import Launcher
-from sim2sim.realtime import RealtimeWorld, stream_predictor
+from sim2sim.predictor import stream
+from sim2sim.realtime import RealtimeWorld
 from sim2sim.simulation import Simulation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,16 +110,17 @@ def test_predictor_stream_statuses_and_latency(tmp_path):
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, "w") as archive:
         archive.writestr("predict.py", PREDICT)
-    process = subprocess.Popen([sys.executable, "-m", "sim2sim.realtime", str(tmp_path / "predictor")], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    process = subprocess.Popen([sys.executable, "-m", "sim2sim.predictor", "stream", str(tmp_path / "predictor")], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     try:
         trials = [({"type": "trial", "trial": i, "protocol": "drop"}, [{"time": k * .04} for k in range(4)]) for i in range(4)]
-        ready, results = stream_predictor(process, bundle.getvalue(), {"type": "start", "faces": 3}, trials, 25, .15, tmp_path / "log.jsonl")
+        ready, results = stream(process, bundle.getvalue(), "predict.py", {"type": "start", "faces": 3}, trials, 25, .15,
+                                lambda m: die.valid_probabilities(m.get("probabilities"), 3) is not None, tmp_path / "log.jsonl")
     finally:
         process.kill()
     assert ready and [r["status"] for r in results] == ["on_time", "late", "malformed", "missing"], results
-    assert results[0]["latency_s"] < .15 and results[0]["probabilities"] == [1, 0, 0] and results[0]["estimates"] == {"com_die_frame_m": [0, 0, 1]}
-    assert results[1]["probabilities"] is None and results[1]["latency_s"] > .15
-    assert len((tmp_path / "log.jsonl").read_text().splitlines()) == 5  # loaded, ready and three answers
+    assert results[0]["latency_s"] < .15 and results[0]["message"]["probabilities"] == [1, 0, 0] and results[0]["message"]["estimates"] == {"com_die_frame_m": [0, 0, 1]}
+    assert results[1]["latency_s"] > .15
+    assert len((tmp_path / "log.jsonl").read_text().splitlines()) == 5  # load reply, ready and three answers
 
 
 def test_scores_uniform_oracle_and_ties():
@@ -163,7 +165,7 @@ def test_runtime_realtime_contract_and_no_state_leaks(tmp_path):
     config = {"source": {"scene": str(DIE)}, "sandbox": {"image": "test", "command": ["agent"]}, "record_video": False,
               "output_dir": str(tmp_path / "run"), "budget": {"wall_only": True, "wall_seconds": 120},
               "simulation": {**CONFIG, "realtime": True, "frame_rate": 25},
-              "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"]}}
+              "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}}
     with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), \
          patch("sim2sim.runtime.container_command", return_value=cmd), \
          patch("sim2sim.runtime.stop_container", side_effect=lambda proc, name: proc.kill()), \

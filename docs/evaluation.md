@@ -278,7 +278,8 @@ receives every trial in real time and gives one allocation per trial.
 - `RUN/die/trials.json`: release states, trajectories, outcomes, baselines and geometry.
 - `RUN/die/frames/NNNN.json`: the streamed frames and the final image.
 - Per version: `die-predictions.json` (per-trial status, latency, allocation, estimates, Brier and accuracy for every
-  allocation), `predictor-output.jsonl` (every output line with its time), `predictor.stderr.log` and `evaluation.json`.
+  allocation) and `evaluation.json`; in `RUN/predictor-NNN/`, `predictor-output.jsonl` (every output line with its time)
+  and `predictor.stderr.log` (the stream-mode runner of `src/sim2sim/predictor.py`).
 
 **View.** `RUN/die-view.html` is self-contained and rewritten after every evaluation; regenerate it with
 `python -m sim2sim.die RUN`. It shows:

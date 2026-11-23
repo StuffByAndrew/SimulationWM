@@ -1,4 +1,4 @@
-"""Real-time reference world, its seeded launcher, and real-time streaming of submitted predictor programs.
+"""Real-time reference world (with the optional seeded launcher of launcher.py).
 
 `[simulation] realtime = true` with an integer `frame_rate` (default false: every lock-step level is unchanged) is a generic
 environment setting for any level and either embodiment (point grasp or robot): a host thread advances the reference world
@@ -7,22 +7,14 @@ live world in arrival order; there is no pause, slow motion, tick advance, recon
 frames (the configured width x height and modalities) exist only on a fixed grid of `frame_rate` per simulated second since
 the latest reset and are rendered on request from the recorded state. A level whose private manifest has a `[launcher]`
 table (launcher.py) additionally gets perturbed resets and the `throw` action; without one, reset restores the scene's
-initial state.
-
-The same module streams camera frames of evaluation throws to a submitted predictor program in real time
-(`stream_predictor`) and is that program's container entry point (`python -m sim2sim.realtime`). See docs/protocol.md.
+initial state. See docs/protocol.md.
 """
 from __future__ import annotations
 
 import base64
 from collections import deque
 from contextlib import contextmanager
-import json
 import math
-import os
-from pathlib import Path
-import queue
-import sys
 import threading
 import time
 
@@ -222,143 +214,3 @@ class RealtimeWorld:
         self.thread.join()
         return {"total_ticks": self.sim.total_ticks, "frames": self.next_frame, "launches": self.launches, "max_lag_ticks": self.max_lag,
                 "error": None if self.error is None else repr(self.error)}
-
-
-# Real-time predictor streaming ------------------------------------------------------------------------------------------
-MAX_LINE = 1 << 20      # one predictor output line
-MAX_LOG = 16 << 20      # researcher log of every predictor output line per evaluation
-
-
-def valid_probabilities(value, classes):
-    """The normalized allocation, or None unless value is classes finite nonnegative numbers summing to 1 within 1e-3."""
-    if not isinstance(value, list) or len(value) != classes or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in value):
-        return None
-    array = np.asarray(value, float)
-    if not np.isfinite(array).all() or (array < 0).any() or abs(array.sum() - 1) > 1e-3:
-        return None
-    return (array / array.sum()).tolist()
-
-
-def stream_predictor(proc, bundle, start, trials, frame_rate, deadline_s, log_path, gap_s=.25, setup_s=120.):
-    """Run one submitted predictor over trials in real time; return (ready, per-trial results).
-
-    proc runs `python -m sim2sim.realtime` with stdin/stdout pipes (the caller launches and stops its isolated container).
-    The host sends the bundle and waits for {"type":"loaded"}, sends start (public JSON) and waits for {"type":"ready"},
-    then for each (header, frames) in trials sends header and frame k at k / frame_rate seconds after the trial's release
-    (only frames before the deadline), then {"type":"trial_end"} at the deadline. The first
-    {"type":"prediction","trial":i,...} line for trial i counts: "on_time" if received by the deadline with valid
-    probabilities, "malformed" if invalid (or any other unparsable line during the trial), "late" if received after the
-    deadline, "missing" if none. Every output line is logged (bounded) with its receipt time."""
-    lines, outbox = queue.Queue(), queue.Queue()
-    log, logged = Path(log_path).open("w"), [0]
-
-    def reader():
-        for raw in iter(lambda: proc.stdout.readline(MAX_LINE + 1), b""):
-            lines.put((time.monotonic(), raw))
-        lines.put((time.monotonic(), None))
-
-    def writer():
-        try:
-            for payload in iter(outbox.get, None):
-                proc.stdin.write(payload)
-                proc.stdin.flush()
-        except (BrokenPipeError, OSError, ValueError):
-            pass
-
-    def send(message):
-        outbox.put(json.dumps(message, separators=(",", ":"), allow_nan=False).encode() + b"\n")
-
-    def record(stamp, raw, origin):
-        text = raw.decode(errors="replace")[:65536]
-        entry = json.dumps({"t": round(stamp - origin, 6), "line": text}) + "\n"
-        if logged[0] + len(entry) <= MAX_LOG:
-            log.write(entry)
-            logged[0] += len(entry)
-
-    def until(predicate, deadline, origin):
-        """Consume output lines until predicate(message) or deadline; True if found."""
-        while True:
-            try:
-                stamp, raw = lines.get(timeout=max(0, deadline - time.monotonic()))
-            except queue.Empty:
-                return False
-            if raw is None:
-                lines.put((stamp, None))
-                return False
-            record(stamp, raw, origin)
-            try:
-                if predicate(json.loads(raw)):
-                    return True
-            except ValueError:
-                pass
-
-    for target in (reader, writer):
-        threading.Thread(target=target, daemon=True).start()
-    began = time.monotonic()
-    results = []
-    try:
-        send({"type": "bundle", "zip_b64": base64.b64encode(bundle).decode(), "entrypoint": "predict.py"})
-        ready = until(lambda m: m == {"type": "loaded"}, began + setup_s, began)
-        if ready:
-            send(start)
-            ready = until(lambda m: isinstance(m, dict) and m.get("type") == "ready", time.monotonic() + setup_s, began)
-        classes = start["faces"]
-        for index, (header, frames) in enumerate(trials):
-            result = {"trial": header["trial"], "status": "missing", "latency_s": None, "probabilities": None, "estimates": None}
-            results.append(result)
-            if not ready:
-                continue
-            release = time.monotonic()
-            send(header)
-            for k, frame in enumerate(frames):
-                delay = release + k / frame_rate - time.monotonic()
-                if delay > 0:
-                    time.sleep(delay)
-                send({"type": "frame", "trial": header["trial"], "index": k, **frame})
-            time.sleep(max(0, release + deadline_s - time.monotonic()))
-            send({"type": "trial_end", "trial": header["trial"]})
-            time.sleep(gap_s)
-            while not lines.empty():
-                stamp, raw = lines.get()
-                if raw is None:
-                    lines.put((stamp, None))
-                    break
-                record(stamp, raw, began)
-                if result["status"] != "missing" or stamp < release:
-                    continue
-                try:
-                    message = json.loads(raw)
-                except ValueError:
-                    message = None
-                if isinstance(message, dict) and message.get("type") == "prediction" and message.get("trial") != header["trial"]:
-                    continue  # an answer for another trial: logged, never counted
-                probabilities = valid_probabilities(message.get("probabilities"), classes) if isinstance(message, dict) and message.get("type") == "prediction" else None
-                estimates = message.get("estimates") if isinstance(message, dict) and isinstance(message.get("estimates"), dict) else None
-                result.update(latency_s=stamp - release, estimates=estimates,
-                              status="late" if stamp > release + deadline_s else "malformed" if probabilities is None else "on_time",
-                              probabilities=probabilities if stamp <= release + deadline_s else None)
-        send({"type": "end"})
-        outbox.put(None)
-        time.sleep(.5)
-        return ready, results
-    finally:
-        outbox.put(None)
-        log.close()
-
-
-def main(root):
-    """Predictor entry (`python -m sim2sim.realtime DIRECTORY`, in its container): unpack the bundle into DIRECTORY, then
-    become `python3 predict.py` there."""
-    from .runtime import extract_bundle
-    message = json.loads(sys.stdin.buffer.readline(64 << 20))
-    root = Path(root)
-    extract_bundle(base64.b64decode(message["zip_b64"], validate=True), root)
-    assert (root / message["entrypoint"]).is_file(), "the predictor ZIP has no " + message["entrypoint"]
-    sys.stdout.write('{"type":"loaded"}\n')
-    sys.stdout.flush()
-    os.chdir(root)
-    os.execv(sys.executable, [sys.executable, message["entrypoint"]])
-
-
-if __name__ == "__main__":
-    main(sys.argv[1])

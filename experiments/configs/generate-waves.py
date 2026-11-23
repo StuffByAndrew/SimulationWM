@@ -424,7 +424,7 @@ TASK_DIE = ("Investigate the die resting in the tray and build a model that pred
 DIE_CONSTRAINTS = ["Submit a ZIP whose entry point predict.py follows the predictor protocol in the task (die.predictor); it may use "
                    "the Python standard library, numpy, scipy, mujoco and files you include."]
 DIE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 34359738368, "task": TASK_DIE, "vision": True,
-       "depth": True, "movecam": True, "wrench": False, "tools": ("sequence", "channel"), "metrics": ["die"], "extra": "",
+       "depth": True, "movecam": True, "wrench": False, "tools": ("sequence", "channel"), "metrics": ["die"], "entrypoint": "predict.py", "extra": "",
        "constraints": DIE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
 ENVS["die_biased"] = (["die"], "")
 RUNS26 = {f"w24-die-{arm}-{model.removeprefix('gemini-4-')}{'-fps100' if rate == 100 else ''}":

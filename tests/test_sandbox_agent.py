@@ -347,7 +347,10 @@ def test_harness_realtime_predictor_task_frames_and_controller_channel(tmp_path)
     task.update(realtime={"frame_rate_hz": 25}, submission={"max_bytes": 1 << 20, "kind": "predictor"},
                 code_channel={"path": str(tmp_path / "controller.sock"), "ops": ["observe", "frames", "throw"]})
     loop = agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.)
-    assert loop.system == agent.SYSTEM_PREDICTOR and loop.guard == agent.GUARD_PREDICTOR
+    assert loop.system == agent.SYSTEM_PREDICTOR % agent.PREDICTOR_WORLDS["realtime"] and loop.guard == agent.GUARD_PREDICTOR
+    lockstep = agent.Agent(Controller([], now=lambda: 1000.), workspace=tmp_path, now=lambda: 1000.)
+    lockstep.task["submission"]["kind"] = "predictor"
+    assert agent.prompts(lockstep.task)[0] == agent.SYSTEM_PREDICTOR % agent.PREDICTOR_WORLDS["lockstep"] and agent.prompts(controller.task)[2] == agent.GUARD_PREDICTOR
     assert "world" not in loop.schemas["throw"]["properties"] and loop.schemas["observe"]["required"] == []
     rendered = loop.render({"ok": True, "frames": [{"rgb": PNG, "frame": 3}, {"rgb": PNG, "frame": 4}]}, "reference")
     reply = json.loads(rendered[0]["text"])
@@ -359,3 +362,13 @@ def test_harness_realtime_predictor_task_frames_and_controller_channel(tmp_path)
     assert output.startswith("exit code 0") and '"ok": true' in output and "rejected op must be one of" in output, output
     assert [r["op"] for r in controller.requests if r["op"] != "progress"] == ["throw"] and loop.channel_requests == 2
     assert not (tmp_path / "controller.sock").exists()
+    # Pausable bash: the channel serves only while the command runs and closes with it.
+    paused = agent.Agent(controller, workspace=tmp_path, bash_mode="pausable", now=time.time)
+    paused.deadline = time.time() + 3600
+    script.write_text("import json, time\nfrom sim2sim.client import Channel\nc = Channel(%r)\nprint(c.request('observe')['ok'], flush=True)\n"
+                      "time.sleep(100)\n" % str(tmp_path / "controller.sock"))
+    before = len(controller.requests)
+    out = paused.bash_start("PYTHONPATH=%s python3 %s" % (Path(agent.__file__).resolve().parents[1] / "src", script), 2)
+    assert out.startswith("paused after") and "True" in out and paused.channel_requests == 1, out
+    assert [r["op"] for r in controller.requests[before:]] == ["observe"] and (tmp_path / "controller.sock").exists()
+    assert paused.bash_end("killed").startswith("killed") and not (tmp_path / "controller.sock").exists()

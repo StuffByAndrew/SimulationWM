@@ -232,7 +232,7 @@ for line in sys.stdin:
 '''
 run = Path(tempfile.mkdtemp(dir=OUT))
 sim_config = {**config(False), "realtime": True, "frame_rate": FRAME_RATE}
-evaluation = {"die": {"trials_per_protocol": 10, "empirical_throws": THROWS}}
+evaluation = {"entrypoint": "predict.py", "die": {"trials_per_protocol": 10, "empirical_throws": THROWS}}
 results = {}
 for index, (name, table, delay) in enumerate((("uniform", None, 0), ("empirical", learned, 0), ("late", learned, .3))):
     bundle = io.BytesIO()
@@ -241,14 +241,14 @@ for index, (name, table, delay) in enumerate((("uniform", None, 0), ("empirical"
 
     @contextmanager
     def predictor():
-        process = subprocess.Popen([sys.executable, "-m", "sim2sim.realtime", str(run / ("predictor-%d" % index))], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        process = subprocess.Popen([sys.executable, "-m", "sim2sim.predictor", "stream", str(run / ("predictor-%d" % index))], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         try:
             yield process
         finally:
             process.kill()
             process.wait()
     began = time.time()
-    report = die.evaluate(bundle.getvalue(), run, run / ("version-%03d" % (index + 1)), scene, sim_config, manifest, evaluation, predictor, 3600. * index)
+    report = die.evaluate(bundle.getvalue(), run, run / ("version-%03d" % (index + 1)), scene, sim_config, manifest, evaluation, predictor, run, 3600. * index)
     results[name] = {key: report["scores"]["die"][key] for key in ("brier", "accuracy", "latency_median_s", "on_time", "late", "malformed", "missing", "baselines")}
     results[name]["seconds"] = round(time.time() - began, 1)
     print(name, json.dumps(results[name]), flush=True)

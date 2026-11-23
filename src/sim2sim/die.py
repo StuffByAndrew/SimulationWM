@@ -3,7 +3,7 @@
 The agent submits a predictor program (a ZIP with predict.py). On the first submission of a run the host simulates fresh
 throws of every public protocol from the trusted source scene (launcher stream 1, the same perturbation distribution as the
 agent's session), plus the baselines; the results are cached under RUN/die/. Each submission's predictor then runs in its own
-isolated container and receives every trial's camera frames in real time (realtime.stream_predictor). Scores: multiclass
+isolated container and receives every trial's camera frames in real time (predictor.py stream mode). Scores: multiclass
 Brier score (sum over faces of (p - outcome)^2; 0 is perfect, the uniform allocation scores 1 - 1/faces), top-face accuracy
 (ties share credit) and answer latency, per protocol and overall. A late, malformed or missing answer is scored as the
 uniform allocation. Baselines on the same trials: uniform; empirical per-protocol face frequencies from separate source throws
@@ -26,7 +26,7 @@ import mujoco
 import numpy as np
 
 from .launcher import Launcher, _mul, _quat
-from .realtime import stream_predictor
+from . import predictor as runner
 
 FACE_GEOM, HULL_GEOM = "face_%02d", "die_shell"   # level contract: face plates face_01.. and the convex hull geom
 SAMPLE_S = .02                                    # trajectory and rest-detection sample period
@@ -52,6 +52,16 @@ PREDICTOR = (
     "scored). Only the first answer per trial counts. Each trial is scored with the multiclass Brier score (the sum over faces "
     "of (probability - outcome)^2, outcome 1 for the face that ends up uppermost and 0 otherwise); top-face accuracy and "
     "answer latency are recorded. A late, malformed or missing answer counts as the uniform allocation.")
+
+
+def valid_probabilities(value, classes):
+    """The normalized allocation, or None unless value is classes finite nonnegative numbers summing to 1 within 1e-3."""
+    if not isinstance(value, list) or len(value) != classes or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in value):
+        return None
+    array = np.asarray(value, float)
+    if not np.isfinite(array).all() or (array < 0).any() or abs(array.sum() - 1) > 1e-3:
+        return None
+    return (array / array.sum()).tolist()
 
 
 def geometry(model, body):
@@ -213,8 +223,15 @@ def score(data, results):
     return {**summary(rows), "protocols": {name: summary([row for row in rows if row["protocol"] == name]) for name in data["empirical"]}}, rows
 
 
-def evaluate(submission, output, version_output, scene, sim_config, manifest, evaluation, predictor, wall_elapsed):
-    """Score one predictor submission; predictor() is a context manager yielding its launched, isolated process."""
+def evaluate_submission(job):
+    """runtime.PREDICTOR_METRICS entry: the program runs in its stream-mode predictor container."""
+    return evaluate(job.data, job.output, job.version_output, job.scene, job.sim_config, job.manifest, job.evaluation,
+                    lambda: job.container("stream"), job.logs, job.wall_elapsed)
+
+
+def evaluate(submission, output, version_output, scene, sim_config, manifest, evaluation, predictor, logs, wall_elapsed):
+    """Score one predictor submission; predictor() is a context manager yielding its launched, isolated stream-mode process
+    (python -m sim2sim.predictor stream); the program's output log goes to logs/predictor-output.jsonl."""
     version_output.mkdir(parents=True, exist_ok=False)
     table = {**manifest["die"], **evaluation.get("die", {})}
     launcher, frame_rate, directory = Launcher(manifest["launcher"]), sim_config["frame_rate"], output / "die"
@@ -225,9 +242,15 @@ def evaluate(submission, output, version_output, scene, sim_config, manifest, ev
              "protocols": launcher.public(), "trials": len(data["trials"])}
     trials = (({"type": "trial", "trial": t["trial"], "protocol": t["protocol"]},
                json.loads((directory / "frames" / ("%04d.json" % t["trial"])).read_text())["frames"]) for t in data["trials"])
+    faces = data["meta"]["faces"]
     with predictor() as proc:
-        ready, results = stream_predictor(proc, submission, start, trials, frame_rate, data["meta"]["deadline_s"],
-                                          version_output / "predictor-output.jsonl", GAP_S)
+        ready, results = runner.stream(proc, submission, evaluation["entrypoint"], start, trials, frame_rate,
+                                       data["meta"]["deadline_s"], lambda m: valid_probabilities(m.get("probabilities"), faces) is not None,
+                                       logs / "predictor-output.jsonl", GAP_S)
+    results = [{"trial": r["trial"], "status": r["status"], "latency_s": r["latency_s"],
+                "probabilities": valid_probabilities(r["message"]["probabilities"], faces) if r["status"] == "on_time" else None,
+                "estimates": r["message"]["estimates"] if r["message"] and isinstance(r["message"].get("estimates"), dict) else None}
+               for r in results]
     summary, rows = score(data, results)
     (version_output / "die-predictions.json").write_text(json.dumps({"wall_elapsed": wall_elapsed, "ready": ready, "trials": rows}))
     report = {"status": "ok", "version": hashlib.sha256(submission).hexdigest(), "scores": {"die": summary}, "predictor_ready": ready,
