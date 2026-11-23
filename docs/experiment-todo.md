@@ -20,6 +20,8 @@ Keep this list current: strike items when a log entry covers them.
   is over its quota (2026-11-23).
 
 ## 2026-11-23 batch (launched; see the log)
+- [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
+  the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
 - [ ] Review holds (4 h checkpoint: resume to 6 h while the agent works on the physics or mechanism) for waves 23–26 and
   the Carbon batch; jobs in `experiments/validation/jobs-20261123.txt`.
 - [ ] Carbon vs Neon/Hydrogen/astra on the five hard levels (`model-compare-20261119.py`, add the Carbon set); record the

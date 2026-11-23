@@ -13,8 +13,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - A fresh `w20-latch-out-carbon-20261123-002` (same config, same job shape) is prepared and launched by
   `experiments/validation/relaunch-latch-carbon.sh` once `63206812` ends. That dashboard job ended after 7 min, so -002
   started (job `63208809`). At the user's request (relayed by the results-explorer session), it was cancelled after 3.4 min
-  to give the dashboard a `test` slot again: another infrastructure cancellation. The run is relaunched as `-003` after
-  the next dashboard job ends.
+  to give the dashboard a `test` slot again: another infrastructure cancellation. The user reserves one `test` slot for
+  the dashboard until they release it (at most 4 strict jobs on `test`), so `-003` runs on sapphire: job `63210168`,
+  prepared inside the job (`experiments/validation/prepare-and-run-strict.sh`), 2-day limit.
 - **Google latency, 22:50 UTC:** the running Gemini runs' clocks advanced only 0.23–0.55× real time over their first
   3.7 h. Provider holds and slow successful calls (about 3–4 run-minutes per call) dominate, and there are no submissions
   yet. A 6 h run clock then needs 11–26 h real; `test` caps jobs at 12 h, and running jobs cannot be extended. The `test`
