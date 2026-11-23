@@ -17,6 +17,26 @@ Keep this list current: strike items when a log entry covers them.
   differs); compare new-prompt runs only with new-prompt baselines.
 - Run on home (hot storage, `--root experiments`); keep ≥10 GB free.
 
+## Wave 24 biased die (user, 2026-11-23): planned, not launched
+- [ ] Configs `experiments/configs/wave24-20261123/` (8 runs): {point grasp without wrench, Franka with joint efforts} ×
+  {25 frames/s baseline, 100 frames/s control} × {gemini-4-neon, gemini-4-hydrogen}.
+  - Every run: real time, RGB-D, movable camera, `sequence` + `channel` tools, die metric.
+  - 6 h wall with the 4 h checkpoint hold, `provider_hold_seconds` 14400, accounting-only caps, pool `gemini-20261123`.
+  - Single factors: the actuator (grasp vs franka at equal frame rate), and the frame rate (25 vs 100 at equal actuator).
+  - The 100 frames/s control keeps the throws, evaluation trials and baselines identical, so it tests whether the agent
+    adapts its modeling approach (e.g. a mechanics model from precise release estimates) to more precise observations.
+- [ ] Before launching:
+  - Merge the die-level worktree and load the image recorded in `experiments/images/trusted-image-die.json` (point
+    `SIM2SIM_TRUSTED_IMAGE_RECORD` at it, or promote it to `trusted-image.json`).
+  - Pack **one die run per strict job**. The controller's real-time physics thread, the agent (4 CPU) and, during
+    evaluation, the predictor container (4 CPU) all need CPUs at once.
+  - Use lab or netscratch storage (`audit_bytes` 32 GiB: every frame batch the agent's code reads is audited).
+- [ ] Review:
+  - Brier score vs experiment time against the uniform, empirical and mechanics baselines (`RUN/die-view.html`).
+  - Whether agents model the throw-dependent outcome distribution, use the controller channel, and report estimates.
+  - Latency and late-answer rates.
+  - Compare at matched wall minutes and tokens.
+
 ## Wave 16 tunnel levels (user, 2026-11-08): standing review rules
 - [ ] When the runs end or hold, review each automatically (audit progress notes, submitted models, `force_profile`):
   1. If an agent never probes or discovers that something is at the far end of the tunnel, rerun that condition with a

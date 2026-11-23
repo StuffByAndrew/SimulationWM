@@ -28,6 +28,8 @@ Every request has an `op` string:
 | `release` | optional `ticks` (default 0) | Disable the grasp, then advance physics. |
 | `reset` | none | Restore initial physical state and release the grasp. |
 | `camera` | `pos: [x, y, z]`, `lookat: [x, y, z]` (only with `simulation.movable_camera = true`) | Re-aim the observation camera (up = +z) without advancing time. Both points within ±4 m, at least 0.05 m apart, and `pos` at least the near-plane frustum reach (`1.5 · znear · extent · corner factor`) from every surface, so the near clip plane can never cut a wall; a camera inside a geom or a small closed cavity is rejected too. |
+| `frames` | optional `since`, `limit` (only with `simulation.realtime`) | Kept camera frames newer than `since`; see [real-time world](#real-time-world-simulationrealtime). |
+| `throw` | `protocol` (only with a real-time `[launcher]`) | Reset, then launch the body with a public protocol's perturbed release state. |
 | `submit` | `project_b64` | Submit a base64 ZIP containing `scene.xml` and local assets. |
 | `inference` | `messages`, optional `tools` | Request inference from the configured host broker. |
 | `finish` | none | End the run. |
@@ -695,3 +697,90 @@ runs, before the private evaluator and while the agent is paused:
 Nothing a predictor returns reaches the agent; the submit reply is only the evaluator status. Predictor metrics need
 `strict_oci`; the development backend fails such an evaluation explicitly. A new predictor metric adds its function
 contract and a `collect_predictions(table, call)` beside its scorer and selects the runner in the runtime's submit path.
+
+## Real-time world (`simulation.realtime`)
+
+`[simulation] realtime = true` with an integer `frame_rate` (frames per simulated second) is a generic environment setting
+for any level and either embodiment (point grasp or robot). The default `false` leaves every lock-step level unchanged.
+It requires `budget.wall_only` and strict OCI. Resolution and modalities are the usual `width`, `height`, `rgb`, `depth`
+and `calibration` settings. `src/sim2sim/realtime.py` implements it.
+
+- **Clock.** A host thread advances the reference world at one simulated second per wall-clock second (`RealtimeWorld`).
+  It keeps running while the agent reasons, while its code runs and between requests. The agent cannot pause it, slow it,
+  step it, or save and restore it. There is no reconstruction world and no `load_reconstruction`. Host-side holds outside
+  the run (budget and provider holds, private evaluation) pause the world with the run clocks.
+- **Actions.** Agent actions take effect in arrival order at the next physics tick boundary. A timed action
+  (`move`, `arm_target`, `hand_target`; `ticks` is its duration) occupies its ticks, and later actions wait for it.
+  Chained actions such as `move` then `release` therefore take effect back to back, whatever the transport latency.
+  Each reply arrives when its action takes effect. `observe` and `release` accept no ticks.
+- **Frames.** Camera frames exist only on a fixed grid: every 1/`frame_rate` simulated seconds since the latest reset
+  (frame 0 is the reset itself). Every image the agent receives is one of these frames. A reply carries the first frame
+  captured at or after its action took effect.
+  - Observations add `frame` (global index), `episode` (resets and launches so far) and `time` (since the episode began).
+  - `frames` (`since`, `limit` 1–100, default 25) returns kept frames newer than `since`, oldest first. It waits up to
+    1 s for the next frame. The latest 20 simulated seconds are kept.
+  - Frames are rendered on request from the state recorded at the frame's tick, in the controller thread, with a second
+    copy of the scene. MuJoCo rendering is bound to its context's thread, so the physics thread never renders.
+- **Privacy.** Replies contain only the usual public observation fields; states stay private.
+- **Audit.** Each action's state when it took effect (`applied` checkpoint) and each frame it returns are audited, and
+  every wire is kept. Per-tick checkpoints are not recorded. `termination.json` adds `realtime_world`: total ticks,
+  frames, launches, the largest lag behind the wall clock in ticks, and any physics-thread error. A physics-thread error
+  ends the run.
+- **Determinism.** A trajectory is fixed by its complete initial state and the recorded application tick of every action.
+
+**Launcher (optional, `src/sim2sim/launcher.py`).** A private manifest `[launcher]` table names one free `body`, a `seed`,
+a `rest` pose and `perturbation` sizes, plus `[[launcher.protocols]]`: each has a `name` and a nominal release
+`position`, `quat` (wxyz), `velocity` (of the body-frame origin) and `angular_velocity` (world axes).
+
+- With a launcher, `reset` restores a perturbed rest pose, and the `throw` action (`protocol`) resets the world and
+  releases the body with the protocol's perturbed state.
+- Launch k of stream s always draws `default_rng([seed, s, k])`. Stream 0 is the agent's session (k counts its resets and
+  throws), 1 is evaluation trials, 2 the empirical baseline and 3 measurement noise.
+- Every launch first resets the whole simulation (zero velocities and solver warm start, robot home, grasp released), so
+  each trajectory is fixed by protocol, stream, index and later actions.
+- The task lists the protocol names and nominal states (`launcher_protocols`). The seed and perturbation sizes stay
+  private.
+- Without a launcher, `reset` restores the scene's initial state and there is no `throw`. A `[launcher]` requires
+  `realtime`.
+
+## Controller channel (`[tools] channel`)
+
+The sandbox harness relays the controller to the agent's own programs, so code can act on a live world and read frames
+with low latency.
+
+- **When.** While a `bash` command runs, the harness serves the Unix socket `task.code_channel.path`
+  (`/tmp/sim2sim-controller.sock`), one connection at a time.
+- **Protocol.** Each request line is a controller action object; the reply line is the controller's reply, including
+  base64 images.
+- **Allowed operations.** Only the physical actions the task offers: `observe`, `frames`, `grasp`, `move`, `release`,
+  `arm_target`, `hand_target`, `camera`, `reset` and `throw`. Submit, inference, progress, finish and sequence are refused.
+- **Client.** `from sim2sim.client import Channel; Channel().request("frames", since=-1)`.
+- **Accounting.** The requests pass through the normal controller, so they are audited and charged as usual.
+
+Without `[tools] channel` the socket never exists. The `sequence` tool remains available alongside and may contain
+`throw`.
+
+## Predictor submissions and real-time evaluation streams
+
+Some evaluations score a submitted program instead of a scene. The die metric (`docs/evaluation.md`) is one;
+`task.submission.kind = "predictor"` marks such tasks. The harness then uses fixed predictor wording for its system,
+compaction and finish-guard texts (`SYSTEM_PREDICTOR`, …); scene conditions keep theirs.
+
+The submission is a ZIP with `predict.py`. `realtime.stream_predictor` runs it in its own container: the agent image,
+the agent's sandbox bounds, no network, no mounts, no source, no controller. The container command
+`python -m sim2sim.realtime /workspace/predictor` unpacks the ZIP and execs `python3 predict.py`.
+
+The stream is JSON lines over stdin/stdout:
+
+1. The host sends the bundle and waits for `loaded`.
+2. The host sends the public `start` message; the program replies `{"type":"ready"}` within 120 s.
+3. Per trial, the host sends the trial header at release, then frame k at k / frame rate seconds after release in real
+   time (only frames before the deadline), then `trial_end` at the deadline.
+4. The program's first `{"type":"prediction","trial":i,...}` line for the trial counts:
+   - `on_time` if it is received by the deadline with valid probabilities;
+   - `malformed` if it is invalid, or if any other line is written during the trial;
+   - `late` if it arrives after the deadline but within the 0.25 s gap before the next trial;
+   - `missing` otherwise.
+
+Every output line is logged with its receipt time. The runner is generic: its classes come from `start.faces` and its
+trials are `(header, frames)` pairs. A level-specific evaluation supplies the trials and the scoring.

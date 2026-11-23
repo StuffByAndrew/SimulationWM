@@ -628,7 +628,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture'})
+                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die'})  # die: host-side, src/sim2sim/die.py
 
 
 def selected_metrics(config):

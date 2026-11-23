@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timezone
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import io
 import hashlib
 import importlib.metadata
@@ -200,7 +200,11 @@ AGENT_TOOLS = {
                          "fresh load give the same observations, and it gives the position of every tactile sensor cell for any hand "
                          "joint positions.",
                          {}),
+    "channel": ("Optional tool: while a bash command runs, programs it starts can send controller actions and read camera frames "
+                "with low latency through the controller channel described under code_channel.",
+                None),
 }
+CHANNEL_SOCKET = "/tmp/sim2sim-controller.sock"  # served by the sandbox harness only while a bash command runs
 
 
 def podman_env():
@@ -1533,12 +1537,24 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     fixture_table = private_manifest.get("fixture")
     if fixture_table:  # private seed of the fixture's reset perturbations (src/sim2sim/fixture.py); never public
         sim_config["fixture_seed"] = secrets.randbits(63)
+    realtime = sim_config.get("realtime", False)
+    die_metric = "die" in config.get("evaluation", {}).get("metrics", [])
+    if realtime not in (True, False) or ("launcher" in private_manifest or die_metric) and not realtime or die_metric and "launcher" not in private_manifest:
+        raise RuntimeFailure("simulation.realtime is a boolean; a manifest [launcher] needs it, and the die metric needs both")
+    if realtime and not (wall_only and type(sim_config.get("frame_rate")) is int and sim_config["frame_rate"] > 0 and backend is None):
+        raise RuntimeFailure("simulation.realtime needs wall_only, a positive integer frame_rate and strict_oci")
     supervisor.check()
     from .simulation import Simulation
     robot = sim_config.get("robot")
     sim = Simulation(scene, sim_config)
+    live = None  # the real-time reference world (realtime.py), started below; it alone touches sim once started
+    launcher = None
+    if realtime:
+        from .launcher import Launcher
+        from .realtime import RealtimeWorld, WorldFailure
+        launcher = Launcher(private_manifest["launcher"]) if "launcher" in private_manifest else None
     supervisor.check()
-    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
+    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "realtime", "frame_rate", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
     public_config.setdefault("width", getattr(sim, "width", 640))
     public_config.setdefault("height", getattr(sim, "height", 480))
     public_config["timestep"] = float(sim._model.opt.timestep) if hasattr(sim, "_model") else float(sim_config.get("timestep", .002))
@@ -1615,8 +1631,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         (output / "hold.json").write_text(json.dumps({"reason": reason, "held_at": datetime.now(timezone.utc).isoformat(),
                                                       "cost_usd": broker.cost, "limits": broker.limits(), **clocks()}) + "\n")
         audit.record({"kind": "inference_hold", "reason": reason, "cost_usd": broker.cost}, reservation=context["token"])
-        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
-        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)), supervisor.hold():
+        with frozen(), supervisor.hold():
             pause = timing["pause_start"] = time.monotonic()
             try:
                 while not decision_path.exists() and time.monotonic() - pause < float(hold_seconds):
@@ -1647,8 +1662,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         deadline += lost
         timing["paused_total"] += lost
         wait = min(PROVIDER_BACKOFF * 2 ** failures, 300.)
-        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
-        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)), supervisor.hold():
+        with frozen(), supervisor.hold():
             pause = timing["pause_start"] = time.monotonic()
             try:
                 time.sleep(wait)
@@ -1720,7 +1734,33 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         if expired:
             supervisor.check()
             raise RuntimeFailure("Active wall-time budget exhausted")
-    sim._callback = recording_callback
+    if not realtime:  # the real-time world records each action's state and every frame it delivers, not every tick
+        sim._callback = recording_callback
+
+    @contextmanager
+    def frozen():
+        """Host-side work outside the run: the agent and candidate containers (and a real-time world) are paused."""
+        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
+        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)), \
+             (live.paused() if live else nullcontext()):
+            yield
+
+    def die_evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor):
+        """Score a predictor submission (die.py): its program runs in its own container with the agent's bounds."""
+        from . import die
+
+        @contextmanager
+        def predictor():
+            predictor_name = "sim2sim-predictor-" + uuid.uuid4().hex
+            process = launch_container(sandbox["image"], ["python", "-m", "sim2sim.realtime", "/workspace/predictor"], sandbox, predictor_name,
+                                       version_output / "predictor.stderr.log", supervisor)
+            try:
+                yield process
+            finally:
+                stop_container(process, predictor_name)
+                supervisor.unregister(process)
+                process.stderr_log.close()
+        return die.evaluate(submission, output, version_output, scene, sim_config, private_manifest, evaluation, predictor, clocks()["wall_elapsed"])
 
     def boundary(direction, raw, complete):
         if direction == "request":
@@ -1767,9 +1807,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         return audit.reserve(size)
 
     try:
+        if realtime:
+            live = RealtimeWorld(sim, Simulation(scene, sim_config), sim_config["frame_rate"], launcher)
         with audit.reserve(public_config["width"] * public_config["height"] * 10 + 1024 * 1024) as initial:
-            observation = full_observation(sim)
-            save_checkpoint("reference", snapshot_simulation(sim), observation, token=initial)
+            if live:
+                entry = live.latest()
+                save_checkpoint("reference", entry["state"], live.render(entry), token=initial)
+            else:
+                save_checkpoint("reference", snapshot_simulation(sim), full_observation(sim), token=initial)
         supervisor.check()
         max_message = int(limits.get("max_message_bytes", 12 * 1024 * 1024))
         robot_files = public_robot_files(source_root / "robot", sim_config["robot"]) if sim_config.get("robot") else None
@@ -1920,6 +1965,48 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 task["observation_contract"]["tactile"] = tactile
                 task["observation_contract"]["modalities"]["tactile"] = True
             task["observation_contract"]["proprioception"] = proprioception
+        if realtime:
+            task["actions"] = [op for op in task["actions"] if op != "load_reconstruction"]
+            for op in ("frames",) + (("throw",) if launcher else ()):
+                task["actions"].insert(task["actions"].index("reset"), op)
+            task["worlds"] = {"default": "reference", "available": ["reference"]}
+            task["action_schema"].pop("load_reconstruction")
+            task["action_schema"].update(
+                observe="returns the latest camera frame; no ticks: the world advances on its own",
+                frames={"since": "frame index; returns kept frames with a larger index, oldest first (default -1: all kept)",
+                        "limit": "1 to 100 frames, default 25", "wait": "waits up to 1 s for the next frame when none is newer"},
+                reset="restores the initial state (robot home, grasp released)")
+            if launcher:
+                task["action_schema"]["throw"] = {"protocol": "one of " + ", ".join(launcher.protocols) + " (task launcher_protocols)",
+                                                  "effect": "resets the world (robot home, grasp released), then the launcher releases the "
+                                                            + launcher.body + " with that protocol's release state"}
+                task["launcher_protocols"] = launcher.public()
+            if "release" in task["action_schema"]:
+                task["action_schema"]["release"] = "releases the grasp; no ticks"
+            task["realtime"] = {
+                "clock": "the world advances continuously at one simulated second per wall-clock second, also while you reason "
+                         "or your code runs; it cannot be paused, slowed, stepped or saved",
+                "actions": "actions take effect in arrival order at the next physics tick; a timed action (ticks = its duration in "
+                           "physics ticks) occupies those ticks and later actions wait for it to finish, so chained actions "
+                           "(for example move then release) take effect back to back; each reply comes when its action takes effect",
+                "frames": "camera frames exist only every 1/frame_rate simulated seconds since the latest reset or throw (frame 0 is "
+                          "the moment of the reset or release); every image is one of them; each carries its frame index, episode "
+                          "(count of resets and throws) and time since that episode began; the latest %d s are kept" % round(live.kept.maxlen / sim_config["frame_rate"]),
+                "frame_rate_hz": sim_config["frame_rate"], "seconds_per_tick": public_config["timestep"]}
+            task["observation_contract"].update(frame="global frame index", episode="resets and throws so far", time="seconds since the episode began")
+        if die_metric:
+            from .die import public_contract
+            task["die"] = public_contract(sim, launcher, {**private_manifest["die"], **config["evaluation"].get("die", {})}, sim_config["frame_rate"])
+            task["submission"] = {"format": "base64 ZIP", "kind": "predictor", "entrypoint": "predict.py",
+                                  "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024)), "protocol": "task die.predictor"}
+            task["action_schema"]["submit"] = {"project_b64": "base64 ZIP of your predictor (predict.py and its files); scores stay private"}
+        if "channel" in tools:
+            task["code_channel"] = {
+                "path": CHANNEL_SOCKET, "availability": "only while a bash command runs; one connection at a time",
+                "protocol": "connect a Unix stream socket; send one JSON request per line, exactly as a controller action "
+                            "({\"op\": ..., fields}), and read one JSON reply per line (the controller's reply, with base64 images)",
+                "ops": [op for op in task["actions"] if op in ("observe", "frames", "grasp", "move", "release", "arm_target", "hand_target", "camera", "reset", "throw")],
+                "python": "from sim2sim.client import Channel; channel = Channel(); reply = channel.request('observe')"}
         if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
             blocked = [op for op in INTERACTIONS + FIXTURE_OPS if op in task["actions"]]
             task["worlds"]["reference"] = ("Observe-only: " + ", ".join(blocked) + " are unavailable in the reference world; "
@@ -1967,9 +2054,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     raise RuntimeFailure("Shared cumulative physics tick budget exceeded")
                 if op not in ("observe", "move", "release", "arm_target", "hand_target", "release_carriage") and ticks:
                     raise RuntimeFailure("This operation does not accept ticks")
-                if op == "camera" and not sim_config.get("movable_camera"):
+                if op == "camera" and not sim_config.get("movable_camera") or op == "frames" and not realtime or op == "throw" and not launcher:
                     raise RuntimeFailure("Unknown operation")
-                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "actuator_targets", "pos", "lookat") if k in request}
+                if realtime and (op == "load_reconstruction" or world != "reference"):
+                    raise RuntimeFailure("The real-time world has no reconstruction world")
+                if realtime and op in ("observe", "release") and ticks:
+                    raise RuntimeFailure("The real-time world advances on its own: ticks only set the duration of a timed action")
+                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "actuator_targets", "pos", "lookat",
+                                                    "protocol", "since", "limit") if k in request}
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
@@ -1984,7 +2076,26 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 if time.monotonic() >= min(deadline, supervisor.deadline):
                     supervisor.check()
                     raise RuntimeFailure("Active wall-time budget exhausted")
-                if op in PHYSICAL:
+                if live and op == "frames":
+                    since, count = request.get("since", -1), request.get("limit", 25)
+                    if type(since) is not int or type(count) is not int or not 1 <= count <= 100:
+                        raise RuntimeFailure("frames needs an integer since and a limit from 1 to 100")
+                    entries = live.frames(since, count, min(time.monotonic() + 1, deadline, supervisor.deadline))
+                    response = {"ok": True, "world": world, "frames": [public_observation(live.render(entry), sim_config) for entry in entries]}
+                elif live and op in ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera", "throw"):
+                    action = {k: v for k, v in resolved.items() if k not in ("world", "ticks")} | ({"ticks": ticks} if ticks else {})
+                    if op == "observe":
+                        entry = live.latest()
+                    else:
+                        state, entry = live.command(action, min(deadline, supervisor.deadline))
+                        save_checkpoint(world, state, None, "applied", token)  # the state when the action took effect
+                        charged[world] = int(state["total_ticks"])
+                    if op in ("reset", "throw"):
+                        episodes[world] += 1
+                    complete_observation = live.render(entry)
+                    save_checkpoint(world, entry["state"], complete_observation, token=token)
+                    response = {"ok": True, "world": world, "observation": public_observation(complete_observation, sim_config), "remaining_ticks": None}
+                elif op in PHYSICAL:
                     action = {k: v for k, v in resolved.items() if k != "world"}
                     if world == "reference":
                         if op == "reset":
@@ -2083,8 +2194,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                         evaluation.setdefault("source_config", dict(sim_config))
                         evaluation["entrypoint"] = resolved["entrypoint"]
                         change_output = output / ("candidate-change-%04d" % candidate_changes)
-                        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
-                        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)):
+                        with frozen():
                             pause = time.monotonic()
                             timing["pause_start"] = pause
                             try:
@@ -2173,8 +2283,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     for key in ("camera", "timestep", "grasp_solref", "grasp_solimp"):
                         if key in sim_config:
                             evaluation.setdefault(key, sim_config[key])
-                    to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
-                    with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)):
+                    with frozen():
                         pause = time.monotonic()
                         timing["pause_start"] = pause
                         try:
@@ -2187,7 +2296,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                                     evaluation["predictions"] = run_predictor(
                                         submission, evaluation["entrypoint"], sandbox, output / ("predictor-%03d" % submissions), supervisor,
                                         lambda call: collect_predictions(fixture_table, call), float(evaluation.get("predictor_timeout_seconds", 900)))
-                                evaluator = evaluate_in_container if backend is None else backend.evaluate
+                                evaluator = die_evaluator if die_metric else evaluate_in_container if backend is None else backend.evaluate
                                 report = evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor)
                             except Exception as exc:
                                 report = {"status": "unevaluated" if supervisor.expired.is_set() else "failed", "version": hashlib.sha256(submission).hexdigest(), "scores": None,
@@ -2214,9 +2323,12 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             except (AuditFailure, SandboxFailure):
                 raise
             except Exception as exc:
+                if live and isinstance(exc, WorldFailure):
+                    raise
                 outcome = "error"
-                response = {"ok": False, "error": str(exc) if isinstance(exc, RuntimeFailure) and op != "submit" else "Operation failed"}
-                if world == "reference" and hasattr(sim, "total_ticks"):
+                visible = isinstance(exc, RuntimeFailure) or live is not None and isinstance(exc, ValueError)  # real-time input checks are public
+                response = {"ok": False, "error": str(exc) if visible and op != "submit" else "Operation failed"}
+                if world == "reference" and hasattr(sim, "total_ticks") and not live:
                     charged[world] = int(sim.total_ticks)
                     if action_started and op in PHYSICAL:
                         save_checkpoint(world, snapshot_simulation(sim), None, "interrupted", token)
@@ -2285,6 +2397,9 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             subprocess.run(["podman", "volume", "rm", "--force", volume], capture_output=True, timeout=15, env=podman_env())
         if backend is not None:
             backend.close_agent()
+        realtime_stats = live.close() if live else None
+        if live:
+            charged["reference"] = realtime_stats["total_ticks"]
         supervisor.close()  # Child work has stopped; only private log/video finalization follows.
         if video:
             video.close()
@@ -2294,7 +2409,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                   "total_ticks": sum(charged.values()), "world_ticks": charged, "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values()), "submissions": submissions, "wall_elapsed": time.monotonic() - run_started - supervisor.held,
                   "execution_wall_elapsed": supervisor.finished_at - run_started - supervisor.held, "held_seconds": supervisor.held, "holds": holds,
                   "remaining_wall_seconds": supervisor.remaining() if supervisor.deadline != float("inf") else None,
-                  "hard_wall_expired": supervisor.expired.is_set() or supervisor.remaining() <= 0}
+                  "hard_wall_expired": supervisor.expired.is_set() or supervisor.remaining() <= 0,
+                  **({"realtime_world": realtime_stats} if live else {})}
         (output / "termination.json").write_text(json.dumps(status, indent=2))
         try:
             audit.record({"kind": "termination", **status}, reservation=emergency)

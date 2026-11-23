@@ -425,37 +425,52 @@ class Simulation:
             return None
         return body, origin + distance * direction
 
-    def _advance(self, ticks, displacement=None):
+    def _push(self, ticks, displacement=None):
+        """Validated (ticks, apply) that moves an active point grasp by displacement in equal per-tick steps."""
         if isinstance(ticks, bool) or int(ticks) != ticks or not 1 <= int(ticks) <= 100000:
             raise ValueError("ticks must be an integer between 1 and 100000")
         ticks = int(ticks)
         delta = np.zeros(3) if displacement is None else np.asarray(displacement, dtype=float)
         if delta.shape != (3,) or not np.isfinite(delta).all():
             raise ValueError("displacement must contain three finite numbers")
-        for _ in range(ticks):
-            self._grasp_controller.move(delta / ticks)
+        return ticks, lambda i: self._grasp_controller.move(delta / ticks)
+
+    def _advance(self, ticks, displacement=None):
+        self._run(*self._push(ticks, displacement))
+
+    def _run(self, ticks, apply):
+        """Step physics ticks times, calling apply(i) before step i."""
+        for i in range(ticks):
+            apply(i)
             mujoco.mj_step(self._model, self._data)
             self.ticks += 1
             self.total_ticks += 1
             if self._callback:
                 self._callback(self)
+
+    def motion(self, action):
+        """A validated timed action (move, arm_target, hand_target) as (ticks, apply), where apply(i) sets its controls before
+        physics step i. Lock-step actions run it at once; the real-time world (realtime.py) interleaves it with wall-clock
+        stepping. Interpolated position targets start from the controls current when motion() is called."""
+        op = action.get("op")
+        if op == "move":
+            if self._grasp is None:
+                raise ValueError("move requires an active grasp")
+            return self._push(action.get("ticks", self.default_ticks), action["displacement"])
+        if op not in ("arm_target", "hand_target"):
+            raise ValueError(f"{op} is not a timed action")
+        ids, end, ticks = (self._arm_target if op == "arm_target" else self._hand_target)(action)
+        start = self._data.ctrl[ids].copy()
+
+        def apply(i):
+            self._data.ctrl[ids] = start + (end - start) * ((i + 1) / ticks)
+        return ticks, apply
 
     def _ticks(self, action):
         ticks = action.get("ticks", self.default_ticks)
         if isinstance(ticks, bool) or not isinstance(ticks, (int, np.integer)) or not 1 <= ticks <= 100000:
             raise ValueError("ticks must be an integer between 1 and 100000")
         return int(ticks)
-
-    def _drive(self, actuator_ids, end, ticks):
-        """Interpolate position targets linearly from the current controls to end over the given ticks."""
-        start = self._data.ctrl[actuator_ids].copy()
-        for i in range(ticks):
-            self._data.ctrl[actuator_ids] = start + (end - start) * ((i + 1) / ticks)
-            mujoco.mj_step(self._model, self._data)
-            self.ticks += 1
-            self.total_ticks += 1
-            if self._callback:
-                self._callback(self)
 
     def _arm_target(self, action):
         if self.robot != "panda":
@@ -469,7 +484,7 @@ class Simulation:
         width = action["gripper_width_m"]
         if isinstance(width, bool) or not isinstance(width, (int, float)) or not np.isfinite(width) or not 0 <= width <= .08:
             raise ValueError("gripper_width_m must be between 0 and 0.08")
-        self._drive(np.append(self._arm_actuators, self._gripper_actuator), np.append(targets, width / .08 * 255), ticks)
+        return np.append(self._arm_actuators, self._gripper_actuator), np.append(targets, width / .08 * 255), ticks
 
     def _hand_target(self, action):
         if self.robot != "shadow_hand":
@@ -481,7 +496,7 @@ class Simulation:
         low, high = self._model.actuator_ctrlrange[self._hand_actuators].T
         if np.any((targets < low) | (targets > high)):
             raise ValueError("actuator_targets exceed Shadow hand control ranges")
-        self._drive(self._hand_actuators, targets, ticks)
+        return self._hand_actuators, targets, ticks
 
     def step(self, op, args=None):
         return self.action(dict(args or {}, op=op))
@@ -490,10 +505,8 @@ class Simulation:
         op = action.get("op", action.get("action", "observe"))
         if self.robot is not None and op in ("grasp", "move", "release"):
             raise ValueError(f"point grasp actions are disabled for robot={self.robot!r}")
-        if op == "arm_target":
-            self._arm_target(action)
-        elif op == "hand_target":
-            self._hand_target(action)
+        if op in ("arm_target", "hand_target", "move"):
+            self._run(*self.motion(dict(action, op=op)))
         elif op == "observe":
             if action.get("ticks", 0):
                 self._advance(action["ticks"])
@@ -504,10 +517,6 @@ class Simulation:
             if hit is not None:
                 body, point = hit
                 self._grasp_controller.attach(body, point)
-        elif op == "move":
-            if self._grasp is None:
-                raise ValueError("move requires an active grasp")
-            self._advance(action.get("ticks", self.default_ticks), action["displacement"])
         elif op == "release":
             self._grasp_controller.release()
             if action.get("ticks", 0):

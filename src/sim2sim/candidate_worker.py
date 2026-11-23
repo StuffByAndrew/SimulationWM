@@ -97,7 +97,7 @@ def allowed_actions(config):
 
 
 def public_observation(complete, config):
-    allowed = {"width", "height", "time", "ticks", "total_ticks", "grasped", "rgb", "rgb_format",
+    allowed = {"width", "height", "time", "ticks", "total_ticks", "frame", "episode", "grasped", "rgb", "rgb_format",
                "depth", "depth_format", "calibration", "wrench", "fixture"}
     if config.get("wrist_camera"):
         allowed.update({"wrist_rgb", "wrist_rgb_format", "wrist_depth", "wrist_depth_format", "wrist_calibration"})

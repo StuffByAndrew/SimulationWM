@@ -36,6 +36,7 @@ Round A — embodiment and sensing (`[simulation]`):
 | Camera | fixed / `movable_camera = true` / + `wrist_camera = "wrist"` (Franka only) | The scene still needs a worldbody perspective camera named `fixed`; evaluation always uses the trusted fixed camera. |
 | Images | none (proprio-only: `rgb = calibration = false`) / RGB / RGB-D (`depth = true`); resolution (default 320×240) | |
 | Force sensing | point grasp `wrench`; Franka `effort` (joint torques, default on), `tactile` | `wrench` defaults false; disabling `effort` means no force sensing at all on Franka. |
+| Time | lock-step (default: physics advances only on action ticks) / real time (`realtime = true`, `frame_rate = N`; generate-waves `o["realtime"] = N`) | Generic, any level or embodiment: the world runs at wall-clock rate, also while the agent thinks; frames only every 1/N s; no pause, ticks-advance, reconstruction world or state access; needs `wall_only`. Pair with `[tools] channel` so code can act on the live world. An optional private manifest `[launcher]` adds perturbed resets and `throw` protocols (docs/protocol.md). |
 
 Round B — interaction, budget and agent capability:
 
@@ -44,7 +45,7 @@ Round B — interaction, budget and agent capability:
 | Reference interaction | allowed / observe-only (`reference_interaction = false`) | |
 | Reset budget | unlimited (current behaviour) / **capped N resets — not implemented** | Today only `[budget]` ticks/submissions/active seconds exist, and only when `wall_only = false` (`physics_ticks`, `submissions`, `active_seconds`). Recent waves are `wall_only = true`. |
 | Code execution | yes (current: `bash` + python with mujoco/numpy/scipy in the sandbox) / **no code — not implemented** | A no-code condition removes `bash` and changes the harness `SYSTEM` prompt, which is otherwise identical across conditions; its baseline must be rerun with the same harness image. |
-| Optional tools | `[tools]` `sequence`, `planning` (Franka), `segmentation` (tools image), `sam3d` (GPU service) | Each adds a fixed sentence from `AGENT_TOOLS`; omit for the control. |
+| Optional tools | `[tools]` `sequence`, `channel` (code reaches the controller during bash), `planning` (Franka), `segmentation` (tools image), `sam3d` (GPU service) | Each adds a fixed sentence from `AGENT_TOOLS`; omit for the control. |
 | Task hints | none / stated values / mechanism hint | Hints are public text appended to `TASK_CONVERGE`. Never state hidden values unless that disclosure *is* the condition. |
 | Budget | wall seconds (recent: 21600 + `hold` 129600), per-run cost cap | Costs and caps never appear in agent-visible text. |
 | Perturbation | none / `colors`, `physics = "nonround"`, `pose = "jitter"` | See run-experiment. |
@@ -58,6 +59,7 @@ Then pick metrics from what the level is about, and note what each needs in the 
 | `dynamics` | `[[probes]]` (point grasp) or `[[arm_probes]]` (Franka) |
 | `hinges` | `[hinge_correspondence]` or config `hinge_matching = "single"` |
 | `force_profile` | `[force_profile]` (see `src/sim2sim/force_profile.py`, tunnel manifests) |
+| `die` (predictor submission, real time) | `[launcher]` and `[die]` (see `src/sim2sim/die.py`, `environments/die_biased`) |
 | `friction`, `expert`, `policy_transfer` | see `docs/evaluation.md`; `expert` needs `[[expert_trajectories]]`, `policy_transfer` is point-grasp only with `[[transfer_tasks]]` |
 
 Finish the round with a one-screen summary: levels × conditions, each condition's single factor, metrics, wall

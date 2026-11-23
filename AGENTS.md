@@ -57,6 +57,13 @@ Do not launch local simulations to investigate a failed compute job.
 - `src/sim2sim/predictor.py`: generic isolated runner for agent-submitted predictor programs (one evaluator-image
   container per submission, no network/mounts/source; per-call alarm, 1 MiB JSON values, prints to stderr). A metric
   supplies its function contract and `collect_predictions(table, call)`; see `docs/protocol.md`. Strict OCI only.
+- `src/sim2sim/client.py`: agent-facing versioned JSON client (and `Channel`, the code channel during bash).
+- `src/sim2sim/realtime.py`: generic real-time world (`[simulation] realtime`, `frame_rate`; any level, either
+  embodiment): host thread at wall-clock rate, FIFO actions on the live world, fixed frame grid rendered from recorded
+  states, no pause/tick-advance/state access; also the real-time predictor stream (`stream_predictor`) and its container
+  entry. `launcher.py`: optional private `[launcher]` (perturbed resets, `throw` protocols, seeded streams).
+  `die.py`: biased-die metric `die` (host-generated fresh throws, baselines, predictor scoring, `RUN/die-view.html`).
+  Keep die-specific logic out of the generic real-time and launcher modules.
 - `src/sim2sim/sam3d.py`: optional `[tools] sam3d` relay. The strict controller forwards the agent's validated
   image+mask over a private 0700 spool to a researcher GPU service (`scripts/sam3d-service.slurm`,
   `kempner_gpu_priority`, A100 only, never H100/H200; env/weights under netscratch `SAM3D_ROOT`). A missing,

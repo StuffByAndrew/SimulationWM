@@ -403,11 +403,36 @@ FIXTURE_CONSTRAINTS = ["Submit a ZIP project with predictor.py at its root, writ
                        "Any MuJoCo model you load into the reconstruction world must include the provided Panda robot fixture unchanged."]
 FIXTURE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 17179869184, "task": FIXTURE_TASK,
            "vision": True, "depth": True, "movecam": True, "tools": ("sequence",), "metrics": ["fixture"], "entrypoint": "predictor.py",
-           "candidate_changes": False, "eval_timeout": 1800, "eval_extra": "", "constraints": FIXTURE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
+           "candidate_changes": False, "eval_timeout": 1800, "extra": "", "constraints": FIXTURE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
 RUNS25 = {f"w23-{level.replace('_', '-')}-{model.removeprefix('gemini-4-')}": (
     "panda_small/" + level, f"positioning fixture, {level[8:]} pad; Franka with joint torques, RGBD, movable camera, sequence tool; {model}",
     {**FIXTURE, "model": model}) for level in FIXTURE_LEVELS for model in ("gemini-4-neon", "gemini-4-hydrogen")}
 WAVES["wave23-20261123"] = ("Wave 23", "gemini-20261123", 1e6, RUNS25)
+
+# Wave 24 (user, 2026-11-23; planned, not launched): reconstruct and predict a biased d12 die (experiments/validation/die-scenes.py,
+# environments/[panda_small/]die_biased). Generic real-time world (o["realtime"] = frame rate: [simulation] realtime = true,
+# frame_rate) and the die's launcher protocols; the submission is a predictor program scored by the `die` metric on fresh
+# throws streamed to it in real time. RGB-D, movable camera, sequence tool + controller channel (code acts on the live world).
+# Franka with joint efforts, or point grasp without wrench. Control condition, one factor: frame_rate 100 instead of 25
+# (more precise observations; throws, protocols, evaluation trials and baselines identical). Gemini neon and hydrogen; 6 h
+# with the 4 h checkpoint, provider holds; accounting-only caps (AGENTS.md "Gemini models").
+TASK_DIE = ("Investigate the die resting in the tray and build a model that predicts which face ends up uppermost when the launcher "
+            "throws it with each of its protocols (task launcher_protocols; your throw action runs them). Submit the model as a "
+            "predictor program (task die.predictor): during evaluation it watches new throws through the fixed camera in real time and "
+            "must give its confidence allocation across the faces before the deadline after release. The world runs in real time "
+            "(task realtime). Resubmit whenever your predictor improves, and call finish when you believe it cannot be improved further.")
+DIE_CONSTRAINTS = ["Submit a ZIP whose entry point predict.py follows the predictor protocol in the task (die.predictor); it may use "
+                   "the Python standard library, numpy, scipy, mujoco and files you include."]
+DIE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 34359738368, "task": TASK_DIE, "vision": True,
+       "depth": True, "movecam": True, "wrench": False, "tools": ("sequence", "channel"), "metrics": ["die"], "extra": "",
+       "constraints": DIE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
+ENVS["die_biased"] = (["die"], "")
+RUNS26 = {f"w24-die-{arm}-{model.removeprefix('gemini-4-')}{'-fps100' if rate == 100 else ''}":
+          (env, f"biased die; {label}; real time at {rate} frames/s{' (control: more precise observations)' if rate == 100 else ''}",
+           {**DIE, "realtime": rate, "model": model})
+          for model in ("gemini-4-neon", "gemini-4-hydrogen") for rate in (25, 100)
+          for arm, env, label in (("grasp", "die_biased", "point grasp without force sensing"), ("franka", "panda_small/die_biased", "Franka with joint efforts"))}
+WAVES["wave24-20261123"] = ("Wave 24", "gemini-20261123", 1e6, RUNS26)
 
 
 def q(value):
@@ -435,7 +460,7 @@ def config(wave, pool, cap, env, factor, o):
     hinged = panda and "hinges" in ENVS.get(env.split("/")[1], ([], ""))[0]
     metrics, extra = ((["dynamics", "hinges", "image_mse"], ENVS[env.split("/")[1]][1]) if hinged else
                       (["dynamics", "chamfer", "center_of_mass", "image_mse"], RECON)) if panda else (["dynamics", "chamfer", "center_of_mass"], RECON) if hand else ENVS[env]
-    metrics, extra = o.get("metrics", metrics), o.get("eval_extra", extra)
+    metrics, extra = o.get("metrics", metrics), o.get("extra", extra)
     source_dir, entry = ("environments/" + env.split("/")[0], env.split("/", 1)[1] + "/") if panda or hand else ("environments/" + env, "")
     vision = o.get("vision", not panda and not hand)
     wrench = o.get("wrench", vision and not panda)
@@ -491,7 +516,7 @@ event_log_bytes = 67108864
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}
-{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
+{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}default_ticks = 20

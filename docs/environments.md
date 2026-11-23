@@ -244,6 +244,96 @@ release). `experiments/validation/box-check.py` checks every source probe (grasp
 held, release speed, landing, inner motion, determinism) and the composite-COM
 comparison between all level pairs.
 
+## Biased-die levels (real time)
+
+`experiments/validation/die-scenes.py` writes `environments/die_biased` (point grasp) and
+`environments/panda_small/die_biased` (Franka with the unchanged fixture; 2026-11-23). Both share the tray, die,
+camera, lighting and launcher; only the actuator differs.
+
+**Die.** A regular dodecahedron (d12), 40 mm across parallel faces, of resin (1150 kg/m³), with twelve colored face
+plates. Face k has outward normal n_k, given in the task. Face 1 is +z in the die frame and opposite faces sum to 13.
+The concealed bias is a 12 mm tungsten slug sealed 11 mm off centre toward faces 12 and 8. Its geom density is the excess
+over the displaced resin, it has no contacts, sits in hidden geom group 3 and is enclosed by the opaque die. The die
+weighs 67.5 g, and its centre of mass is 2.68 mm off the geometric centre ((0, −1.04, −2.47) mm in the die frame).
+
+**Tray and contacts.**
+
+- The die rests in a 300 mm square tray with 80 mm walls, 0.48 m in front of the Franka base.
+- Die–tray contacts are explicit pairs: friction 0.45, `solref 0.004 0.3`, a bouncy contact with restitution about 0.35.
+  This is why the scene steps at 1 ms (at least 4 steps per impact).
+- The die's own geom is grippy (friction 1.2, condim 4, elliptic cones with impratio 10) for the weak fixture gripper,
+  as on the sealed boxes.
+- The fixed camera looks down at the tray from the front, with the Franka behind it.
+
+**Real time and launcher.** The levels set `[simulation] realtime = true` (`docs/protocol.md`). The private `[launcher]`
+(seed 20261123) restores a perturbed rest pose on face 1 at every reset: 10 mm in x and y, 0.3 rad of yaw. `throw`
+releases the die with one of four public protocols, perturbed by Gaussian noise of 3 mm, 0.05 rad, 0.03 m/s and
+0.8 rad/s per axis:
+
+| Protocol | Nominal release (above the tray floor) |
+| --- | --- |
+| `drop` | 130 mm, tilted 0.35 rad about x, at rest |
+| `roll` | 60 mm, 0.9 m/s along +x with 30 rad/s about +y |
+| `toss` | 120 mm, lob (−0.5, −0.4, 0.6) m/s with tumble (10, −14, 6) rad/s |
+| `spin` | 100 mm, (0.3, 0.9, 0.4) m/s with (30, 10, 40) rad/s into the walls |
+
+`[die]` sets the prediction deadline (0.15 s after release), 30 evaluation trials per protocol, 200 empirical-baseline
+throws per protocol, and the mechanics baseline's measurement noise (`docs/evaluation.md`).
+
+**Variants and conditions** (`experiments/configs/wave24-20261123/`):
+
+- Point grasp without wrench, or Franka with joint efforts.
+- RGB-D 320×240, movable camera, `sequence` and `channel` tools.
+- 25 frames/s, with a single-factor control at 100 frames/s: more precise observations of the same throws.
+
+**Check** (`experiments/validation/die-check.py`, 150 throws per protocol). Slurm job `62998950` passed both levels and
+the metric sanity check; job `62998993` re-ran the Franka level with an in-tray toss. Results for both levels:
+
+- Files equal the generator output.
+- The die rests on face 1. The slug changes neither RGB nor depth at the same states (0 mismatches) and is never hit by
+  any of 726 grasp rays through die pixels.
+- Launches are bit-identical in separately built simulations.
+- No die left the tray, and every throw came to rest within 6 s. Die-at-rest times are 0.68–0.98 s; 0–2 of 30 rested
+  cocked against a wall.
+- The die is still moving at the deadline in 30/30 trials of every protocol. The face up at the deadline matched the
+  final outcome in only 9, 0, 3 and 6 of 30 (drop, roll, toss, spin).
+
+Outcome counts over faces 1–12, 150 throws each, biased vs fair die (same scene without the slug):
+
+| Protocol | Biased | Fair | Bias χ² p |
+| --- | --- | --- | --- |
+| drop | 38 10 5 15 34 19 6 10 2 2 2 7 | 26 7 11 14 15 16 9 9 7 10 16 10 | 5.5e−4 |
+| roll | 28 11 8 5 25 38 0 0 17 12 4 2 | 22 20 4 4 4 44 7 6 23 8 4 4 | 1.8e−4 |
+| toss | 25 5 5 28 47 12 5 0 0 7 14 2 | 12 2 10 29 14 6 14 12 7 11 16 17 | 2.0e−9 |
+| spin | 31 12 10 21 37 16 7 1 4 7 4 0 | 15 15 10 13 11 14 9 12 14 10 15 12 | 5.1e−8 |
+
+The distributions differ strongly between protocols (homogeneity χ² p = 5e−16). The bias shows on every protocol
+(pooled against the fair die, p = 2e−22). The Franka scene gives the same distributions to within one or two throws;
+its arm at home is never touched.
+
+**Actuation.**
+
+- Point grasp: the die is grasped at its projected pixel, lifted 113 mm, moved and released at 0.50 m/s, and comes to
+  rest in the tray.
+- Franka: the scripted planner IK grip uses fingertips down, with the jaws closing horizontally 8 mm above the die centre
+  so the pads press on the upward-tilted upper faces. It lifted the die 134 mm. A 0.2 rad base-yaw toss, with the
+  gripper opening mid-swing, released it at 0.55 m/s, and it landed in the tray.
+- Tilted antipodal grasps put one finger into the tray floor, and the gripper closes slowly at the 1 ms step (ramp
+  ≥ 1 s).
+
+**Metric sanity** (10 trials per protocol, local predictor processes through the real-time stream):
+
+| Predictor or baseline | Brier score | Note |
+| --- | --- | --- |
+| Uniform predictor | 0.917 | 40/40 on time |
+| Empirical predictor (frequencies learned from 150 session-stream throws per protocol) | 0.825 | |
+| Always-late predictor | 0.917 | 40/40 late, scored uniform |
+| Evaluator baseline: empirical | 0.837 | |
+| Evaluator baseline: mechanics | 1.40 | noisy release; the throws are chaotic |
+| Evaluator baseline: oracle | 0 | |
+
+Trial generation and baselines take seconds (point grasp) to about half a minute (Franka) per run.
+
 ## Cloth levels
 
 `experiments/validation/cloth-scenes.py` writes seven point-grasp cloth levels (2026-11-16), `environments/cloth_*`.

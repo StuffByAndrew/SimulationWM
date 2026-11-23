@@ -233,6 +233,71 @@ absolute-error lift-force maps) and `drop_NNN/side_by_side.mp4` (source left, ca
 interaction with any flex is described in `docs/environments.md` (Cloth levels). Mask-based metrics (`appearance`,
 `dynamics`, `expert` silhouettes/centroids) count geoms only and ignore flexes; use `image_mse` and `cloth` for cloth levels.
 
+## Die prediction (`die`)
+
+The real-time die levels (`docs/environments.md`) score a **predictor program**, not a scene. `src/sim2sim/die.py`
+implements the metric; the stream itself is described in `docs/protocol.md`.
+
+**Trials.** At a run's first submission the host simulates fresh throws from the trusted source scene and caches them in
+`RUN/die/` with the baselines. This takes a few minutes, inside the paused private evaluation:
+
+- `[die] trials_per_protocol` throws of each public launcher protocol, from launcher stream 1: new perturbation draws
+  from the same distribution as the agent's session (stream 0).
+- Each trial records the true release state, its frames before the deadline (the agent's modalities, from the trusted
+  fixed camera at its initial pose), the trajectory at 50 Hz until rest, the outcome, and the state at the deadline.
+- The die is at rest when it is slower than 10 mm/s and 0.2 rad/s for 0.2 s, or after 6 s. The outcome is the face
+  whose normal is closest to +z, also for a die resting cocked against a tray wall (top cosine < 0.995, flagged `cocked`;
+  about 2 % of throws).
+
+**Scoring.** Each submission's program runs in its own container (agent image and bounds, nothing else mounted). It
+receives every trial in real time and gives one allocation per trial.
+
+- **Brier score:** the multiclass Brier score Σₖ (pₖ − yₖ)², from 0 (perfect) to 2. The uniform allocation scores
+  1 − 1/F (11/12 for the d12).
+- **Accuracy:** top-face accuracy; a tie shares the credit equally.
+- **Latency:** the median answer time after release, over on-time answers.
+- **Status counts:** `on_time`, `late`, `malformed` and `missing`.
+- **Missed answers:** late, malformed and missing answers are scored as the uniform allocation. They carry no
+  information, but are never better than uniform. `predictor_ready: false` means the program never started; every trial
+  then counts as uniform.
+- Results are reported overall and per protocol, with the face probabilities depending on how the die is thrown.
+
+**Baselines,** on the same trials:
+
+- `uniform`.
+- `empirical`: per-protocol face frequencies from `[die] empirical_throws` separate source throws (stream 2).
+- `mechanics`, the fitted deterministic mechanics model: the true source rigid-body model, i.e. the best possible fit
+  of geometry, mass distribution and contact. It is simulated once from the release state *as observed* with Gaussian
+  error (`[die] mechanics_noise`: 1 mm, 0.02 rad, 0.02 m/s, 0.5 rad/s per axis; stream 3), and it predicts that outcome
+  with certainty. It measures how much an exact model gains from an imperfectly measured release.
+- `oracle`: the same model from the exact release state, in a separately built simulation. It scores Brier 0 exactly
+  when the source is deterministic, so every evaluation re-checks determinism.
+
+**Artifacts** (researcher-only):
+
+- `RUN/die/trials.json`: release states, trajectories, outcomes, baselines and geometry.
+- `RUN/die/frames/NNNN.json`: the streamed frames and the final image.
+- Per version: `die-predictions.json` (per-trial status, latency, allocation, estimates, Brier and accuracy for every
+  allocation), `predictor-output.jsonl` (every output line with its time), `predictor.stderr.log` and `evaluation.json`.
+
+**View.** `RUN/die-view.html` is self-contained and rewritten after every evaluation; regenerate it with
+`python -m sim2sim.die RUN`. It shows:
+
+- predicted versus observed face frequencies, with the empirical baseline;
+- a calibration plot of binned allocations;
+- Brier score versus experiment wall time over the run's checkpoints, with the baseline levels and a table;
+- a protocol and checkpoint selector;
+- replay of individual trials: the die wireframe projected through the trusted camera over the release or final frame;
+- evaluator-only overlays: true COM, release velocity and angular velocity, and the agent's optional `estimates`
+  (dashed).
+
+**Limitations.**
+
+- Trials are fixed per run, so checkpoints are compared on identical throws.
+- The mechanics noise is a researcher choice, not an estimate of what the frames allow.
+- Wall-clock streaming makes latency depend on the node's load: CPU starvation of the predictor container shows up as
+  late answers.
+
 ## Trivial baselines and normalization
 
 `sim2sim.baselines` gives error metrics a scale that compares across
