@@ -14,6 +14,7 @@ import json
 import os
 import re
 from pathlib import Path
+import secrets
 import selectors
 import stat
 import subprocess
@@ -26,6 +27,8 @@ import urllib.request
 import urllib.parse
 import uuid
 import zipfile
+
+from .robots import HAND_ACTUATORS, HAND_JOINTS, ROBOTS
 
 
 class RuntimeFailure(RuntimeError):
@@ -72,6 +75,12 @@ class WallClock:
             self.deadline += duration
             self.held += duration
             self.hold_started = None
+
+    def credit(self, seconds):
+        """Give back time already spent that belongs outside the run (a provider-failed inference attempt), as if held."""
+        assert seconds >= 0 and self.hold_started is None
+        self.deadline += seconds
+        self.held += seconds
 
     def check(self):
         if self.expired.is_set() or self.remaining() <= 0:
@@ -138,10 +147,11 @@ def _inference_process(config, request, timeout, connection):
     """Trusted host-only network process; no agent code or hidden state is passed."""
     try:
         # This worker only performs the HTTP exchange; budget and cost-pool accounting stay in the parent broker.
-        connection.send((True, InferenceBroker({k: v for k, v in config.items() if k not in POOL_SETTINGS})._call(request, timeout)))
+        connection.send((True, InferenceBroker({k: v for k, v in config.items() if k not in POOL_SETTINGS})._call(request, timeout), False))
     except Exception as exc:
         message = str(exc) if isinstance(exc, RuntimeFailure) else "Inference provider request failed (%s)" % type(exc).__name__
-        connection.send((False, message))
+        # Transport errors (timeouts, resets, truncated bodies) and ProviderUnavailable are outages; other failures are not.
+        connection.send((False, message, isinstance(exc, ProviderUnavailable) or not isinstance(exc, RuntimeFailure)))
     finally:
         connection.close()
 
@@ -430,21 +440,21 @@ def validate_effective_limits(observed, limits):
         raise RuntimeFailure("OCI resource verification failed: CPU/memory/process limits must be finite and enforced; observed memory.max=" + str(observed.get("memory.max")) + ", cpu.max=" + str(observed.get("cpu.max")))
 
 
-def public_robot_files(robot_dir):
-    """Hashed public Panda fixture: allowlisted files, IMPORT.md cut before its private scene notes."""
+def public_robot_files(robot_dir, robot="panda"):
+    """Hashed public robot fixture: allowlisted files, IMPORT.md cut before its private scene notes."""
     robot_dir = Path(robot_dir)
     if not robot_dir.is_dir() or robot_dir.is_symlink():
-        raise RuntimeFailure("Public Panda fixture unavailable")
+        raise RuntimeFailure("Public robot fixture unavailable")
     files = {}
     for item in sorted(robot_dir.rglob("*")):
         relative = item.relative_to(robot_dir)
-        if item.is_symlink() or not (item.is_file() or item.is_dir()) or (relative.as_posix() not in ("panda.xml", "LICENSE", "IMPORT.md") and relative.parts[0] != "assets"):
-            raise RuntimeFailure("Unexpected public Panda fixture entry")
+        if item.is_symlink() or not (item.is_file() or item.is_dir()) or (relative.as_posix() not in (ROBOTS[robot][0], "LICENSE", "IMPORT.md") and relative.parts[0] != "assets"):
+            raise RuntimeFailure("Unexpected public robot fixture entry")
         if item.is_file():
             files[relative.as_posix()] = item.read_bytes()
     files["IMPORT.md"] = files["IMPORT.md"].decode().split("\n\nThe sibling scenes ", 1)[0].rstrip("\n").encode() + b"\n"
-    if re.search(r"sibling|block|cube|proprio|lever|spring|boat|assembly|tetrahedral|probe", files["IMPORT.md"].decode(), re.I):
-        raise RuntimeFailure("Public Panda IMPORT.md still describes private scenes")
+    if re.search(r"sibling|block|cube|proprio|lever|spring|boat|assembly|tetrahedral|probe|prism|spik|smooth", files["IMPORT.md"].decode(), re.I):
+        raise RuntimeFailure("Public robot IMPORT.md still describes private scenes")
     return files
 
 
@@ -726,13 +736,21 @@ def decode_submission(value, max_bytes):
 TOOL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}\Z")
 INFERENCE_SETTINGS = {"endpoint", "model", "provider", "metadata", "reasoning_effort", "reasoning_summary", "api_key_env", "max_calls",
                       "max_total_tokens", "max_cost_usd", "max_output_tokens", "max_request_bytes", "max_response_bytes", "timeout_seconds",
-                      "cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd", "budget_hold_seconds"}
+                      "cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd", "budget_hold_seconds",
+                      "checkpoint_wall_seconds", "api", "price_usd_per_mtok",
+                      "provider_hold_seconds"}
+# "responses": the aqinference gateway's normalized Responses route (reports cost). "gemini": Google's native
+# generateContent, which reports no cost, so the host prices its token counts from the configured list prices.
+INFERENCE_APIS = ("responses", "gemini")
+GEMINI_PRICES = {"input", "cached_input", "output"}  # USD per million tokens; thinking tokens bill as output
 # Spend-cap reasons a budget hold may resume from; other stops (call/token caps, missing accounting) always suspend.
 HOLDABLE = ("Run inference cost budget exhausted", "Shared inference cost pool exhausted")
 INFERENCE_ACCOUNTING = ("model", "finish_reason", "usage", "cost_usd", "calls", "remaining_calls", "cumulative_tokens",
                         "remaining_tokens", "cumulative_cost_usd", "remaining_cost_usd")
 CONTEXT_USAGE = ("promptTokens", "cacheReadTokens", "cacheWriteTokens")  # context size, for harness compaction only
-INTERACTIONS = ("grasp", "move", "release", "arm_target")  # blocked in the reference world when reference_interaction=false
+INTERACTIONS = ("grasp", "move", "release", "arm_target", "hand_target")  # every physical action; blocked in the reference world when reference_interaction=false
+FIXTURE_OPS = ("reset_carriage", "release_carriage")  # positioning-fixture levels only (manifest [fixture]); reference world only
+PHYSICAL = ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera") + FIXTURE_OPS
 POOL_SETTINGS = {"cost_pool", "cost_pool_usd", "cost_ledger_dir", "call_reserve_usd"}
 POOL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 TOOL_TRANSPORT_NOTE = ("This API transport cannot carry native tool-call or tool-result items, so the host reports each genuine function "
@@ -744,6 +762,13 @@ USAGE_FIELDS = ("promptTokens", "completionTokens", "totalTokens", "cacheReadTok
 
 def _count(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+PROVIDER_BACKOFF = 15.  # seconds before the first host-side retry after a provider outage; doubles per failure, max 300
+
+
+class ProviderUnavailable(RuntimeFailure):
+    """The provider did not answer in time or was overloaded (timeout, HTTP 429/5xx, transport failure), not a model output."""
 
 
 class BudgetStop(RuntimeFailure):
@@ -792,9 +817,23 @@ class InferenceBroker:
         if endpoint and (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment):
             raise RuntimeFailure("Inference endpoint must be a fixed HTTPS URL")
         metadata = config.get("metadata", {})
-        if endpoint and not (isinstance(config.get("model"), str) and isinstance(config.get("api_key_env"), str) and isinstance(metadata, dict)
-                             and {"project", "feature"} <= set(metadata) and all(isinstance(value, str) and value for value in metadata.values())):
-            raise RuntimeFailure("Inference requires model, api_key_env and string metadata project/feature")
+        api = config.get("api", "responses")
+        if api not in INFERENCE_APIS:
+            raise RuntimeFailure("Unknown inference api")
+        if endpoint and not (isinstance(config.get("model"), str) and isinstance(config.get("api_key_env"), str)):
+            raise RuntimeFailure("Inference requires model and api_key_env")
+        if endpoint and api == "responses" and not (isinstance(metadata, dict) and {"project", "feature"} <= set(metadata)
+                                                    and all(isinstance(value, str) and value for value in metadata.values())):
+            raise RuntimeFailure("Gateway inference requires string metadata project/feature")
+        prices = config.get("price_usd_per_mtok")
+        if endpoint and api == "gemini" and not (
+                parsed.path == "/v1beta/models/%s:generateContent" % config["model"] and not parsed.query and "metadata" not in config
+                and "provider" not in config and isinstance(prices, dict) and set(prices) == GEMINI_PRICES
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in prices.values())):
+            raise RuntimeFailure("Gemini inference requires the model's own generateContent endpoint and positive input/cached_input/output "
+                                 "list prices, and takes no gateway metadata or provider")
+        if api == "responses" and prices is not None:
+            raise RuntimeFailure("The gateway reports its own cost; price_usd_per_mtok is only for the gemini api")
         if config.get("reasoning_summary") not in (None, "auto", "concise", "detailed"):
             raise RuntimeFailure("Invalid reasoning_summary")
         self.stopped = None
@@ -879,10 +918,12 @@ class InferenceBroker:
             if not parent.poll(allowance):
                 with self.budget_lock:
                     self.cost += self.reserve  # An abandoned request may still be billed; charge its worst case.
-                raise RuntimeFailure("Inference wall-time budget exhausted")
-            ok, value = parent.recv()
+                # Only the provider's own per-call limit is an outage; the run's remaining time running out is not.
+                raise (ProviderUnavailable if allowance >= float(self.config.get("timeout_seconds", 60)) else RuntimeFailure)(
+                    "Inference wall-time budget exhausted")
+            ok, value, outage = parent.recv()
             if not ok:
-                raise RuntimeFailure(value)
+                raise (ProviderUnavailable if outage else RuntimeFailure)(value)
             return self.charge(value)
         finally:
             if process.is_alive():
@@ -981,7 +1022,7 @@ class InferenceBroker:
                 raise RuntimeFailure("Inference messages must not be empty")
             inputs.append({"role": "user" if role == "tool" else role, "content": parts})
         payload = {"model": cfg["model"], "input": inputs, "max_output_tokens": int(cfg.get("max_output_tokens", 4096)),
-                   "store": False, "metadata": dict(cfg["metadata"])}
+                   "store": False, "metadata": dict(cfg.get("metadata", {}))}
         if cfg.get("provider"):
             payload["provider"] = cfg["provider"]
         if functions:
@@ -1022,37 +1063,115 @@ class InferenceBroker:
         return {"content": content, "tool_calls": calls, "finish_reason": result.get("finishReason") if isinstance(result.get("finishReason"), str) else None,
                 "model": result["model"], "usage": usage, "cost_usd": cost, "summaries": [summary] if isinstance(summary, str) and summary.strip() else []}
 
+    def gemini_payload(self, payload):
+        """The same validated transcript as the gateway route (tool calls and results as labelled text turns), so both APIs see
+        identical conversations; only the wire format differs."""
+        cfg = self.config
+        system, contents = [], []
+        for item in payload["input"]:
+            parts = [{"text": part["text"]} if part["type"] == "input_text" else
+                     {"inlineData": {"mimeType": part["imageUrl"][5:].split(";", 1)[0], "data": part["imageUrl"].split(",", 1)[1]}}
+                     for part in item["content"]]
+            if item["role"] == "system":
+                assert not contents, "system messages must precede the conversation"
+                system += parts
+            else:
+                contents.append({"role": "model" if item["role"] == "assistant" else "user", "parts": parts})
+        thinking = {"includeThoughts": bool(cfg.get("reasoning_summary"))}
+        if cfg.get("reasoning_effort"):
+            thinking["thinkingLevel"] = cfg["reasoning_effort"]
+        body = {"contents": contents, "generationConfig": {"maxOutputTokens": payload["max_output_tokens"], "thinkingConfig": thinking}}
+        if system:
+            body["systemInstruction"] = {"parts": system}
+        if "tools" in payload:
+            body["tools"] = [{"functionDeclarations": [{"name": tool["function"]["name"], "description": tool["function"]["description"],
+                                                        "parametersJsonSchema": tool["function"]["parameters"]} for tool in payload["tools"]]}]
+        return body
+
+    def parse_gemini(self, result, names):
+        cfg = self.config
+        if not isinstance(result, dict) or result.get("modelVersion") != cfg["model"]:
+            raise RuntimeFailure("Provider returned an unexpected model; no substitution is allowed")
+        candidates = result.get("candidates")
+        if not (isinstance(candidates, list) and len(candidates) == 1 and isinstance(candidates[0], dict)):
+            blocked = (result.get("promptFeedback") or {}).get("blockReason") if isinstance(result.get("promptFeedback"), dict) else None
+            raise RuntimeFailure("Provider returned no candidate (%s)" % (blocked if isinstance(blocked, str) else "no reason given"))
+        candidate = candidates[0]
+        content = candidate.get("content", {})  # absent when the output budget ran out during thinking
+        parts = content.get("parts", []) if isinstance(content, dict) else None
+        if not isinstance(parts, list):
+            raise RuntimeFailure("Provider returned invalid public output")
+        text, summaries, calls = [], [], []
+        for part in parts:
+            call = part.get("functionCall") if isinstance(part, dict) else None
+            if call is not None:
+                if not (isinstance(call, dict) and call.get("name") in names and isinstance(call.get("args", {}), dict)):
+                    raise RuntimeFailure("Provider returned an invalid tool call")
+                # Gemini ids are optional; the broker issues unique ones because transcripts must not repeat a call id.
+                calls.append({"id": "call_" + uuid.uuid4().hex[:16], "name": call["name"], "arguments": json.dumps(call.get("args", {}))})
+            elif isinstance(part, dict) and isinstance(part.get("text"), str):
+                (summaries if part.get("thought") is True else text).append(part["text"])
+            elif not (isinstance(part, dict) and set(part) <= {"thoughtSignature"}):
+                raise RuntimeFailure("Provider returned an unsupported output part")
+        meta = result.get("usageMetadata")
+        counts = {key: meta.get(key, 0) for key in ("promptTokenCount", "cachedContentTokenCount", "candidatesTokenCount", "thoughtsTokenCount")} \
+            if isinstance(meta, dict) and _count(meta.get("promptTokenCount")) else None
+        usage = cost = None
+        if counts and all(_count(value) for value in counts.values()) and counts["cachedContentTokenCount"] <= counts["promptTokenCount"]:
+            # Same fields as the gateway: promptTokens excludes cached reads; completion includes thinking (billed as output).
+            fresh, cached = counts["promptTokenCount"] - counts["cachedContentTokenCount"], counts["cachedContentTokenCount"]
+            output = counts["candidatesTokenCount"] + counts["thoughtsTokenCount"]
+            usage = {"promptTokens": fresh, "completionTokens": output, "totalTokens": fresh + output, "cacheReadTokens": cached,
+                     "cacheWriteTokens": 0, "reasoningTokens": counts["thoughtsTokenCount"], "accountedTokens": fresh + output + cached}
+            prices = cfg["price_usd_per_mtok"]
+            cost = (fresh * prices["input"] + cached * prices["cached_input"] + output * prices["output"]) / 1e6
+        summary = "\n\n".join(s for s in summaries if s.strip()) if cfg.get("reasoning_summary") else ""
+        return {"content": "".join(text), "tool_calls": calls, "finish_reason": candidate.get("finishReason") if isinstance(candidate.get("finishReason"), str) else None,
+                "model": result["modelVersion"], "usage": usage, "cost_usd": cost, "summaries": [summary] if summary.strip() else []}
+
     def _call(self, request, timeout):
         cfg = self.config
         if not cfg.get("endpoint"):
             raise RuntimeFailure("Inference is disabled")
+        gemini = cfg.get("api", "responses") == "gemini"
         payload, names = self.payload(request)
-        body = json.dumps(payload).encode()
+        body = json.dumps(self.gemini_payload(payload) if gemini else payload).encode()
         if len(body) > int(cfg.get("max_request_bytes", 4 * 1024 * 1024)):
             raise RuntimeFailure("Inference request exceeds byte limit")
         key = os.environ.get(cfg["api_key_env"], "")
         if not key:
             raise RuntimeFailure("Host inference credential is missing")
-        req = urllib.request.Request(cfg["endpoint"], data=body,
-                                     headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+        req = urllib.request.Request(cfg["endpoint"], data=body, headers={"x-goog-api-key" if gemini else "Authorization": key if gemini else "Bearer " + key,
+                                                                          "Content-Type": "application/json"})
         opener = urllib.request.build_opener(NoRedirect())
         inference_deadline = time.monotonic() + max(0, min(timeout, float(cfg.get("timeout_seconds", 60))))
         limit = int(cfg.get("max_response_bytes", 1048576))
-        try:
-            response = opener.open(req, timeout=max(0.001, inference_deadline - time.monotonic()))
-        except urllib.error.HTTPError as exc:
+        attempt = 0
+        while True:
             try:
-                error = json.loads(exc.read(65536)).get("error")
-            except (ValueError, AttributeError, OSError):
-                error = None
-            error = error.replace(key, "") if isinstance(error, str) else "no gateway error text"
-            raise RuntimeFailure("Inference provider HTTP %d: %s" % (exc.code, error[:500])) from None
+                response = opener.open(req, timeout=max(0.001, inference_deadline - time.monotonic()))
+                break
+            except urllib.error.HTTPError as exc:
+                # Unbilled overload/rate errors are retried host-side within this call's deadline (the model sees nothing).
+                wait = 5 * 2 ** attempt
+                if exc.code in (429, 500, 503, 504) and time.monotonic() + wait + 60 < inference_deadline:
+                    attempt += 1
+                    time.sleep(wait)
+                    continue
+                try:
+                    error = json.loads(exc.read(65536)).get("error")
+                except (ValueError, AttributeError, OSError):
+                    error = None
+                error = error.get("message") if isinstance(error, dict) else error  # Google nests {code, message, status}
+                error = error.replace(key, "") if isinstance(error, str) else "no gateway error text"
+                raise (ProviderUnavailable if exc.code in (429, 500, 503, 504) else RuntimeFailure)(
+                    "Inference provider HTTP %d: %s" % (exc.code, error[:500])) from None
         with response:
             chunks = []
             length = 0
             while length <= limit:
                 if time.monotonic() >= inference_deadline:
-                    raise RuntimeFailure("Inference wall-time budget exhausted")
+                    raise ProviderUnavailable("Inference wall-time budget exhausted")
                 chunk = response.read1(min(65536, limit + 1 - length))
                 if not chunk:
                     break
@@ -1062,7 +1181,7 @@ class InferenceBroker:
         if len(raw) > limit:
             raise RuntimeFailure("Inference response exceeds byte limit")
         # Expose only generated content, tool calls, accounting and documented summaries; never headers or route internals.
-        return self.parse(json.loads(raw), names)
+        return (self.parse_gemini if gemini else self.parse)(json.loads(raw), names)
 
 
 def zip_directory(directory, max_bytes=64 * 1024 * 1024):
@@ -1392,17 +1511,22 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         raise RuntimeFailure("simulation.reference_interaction must be a boolean")
     if sim_config.get("movable_camera", False) not in (True, False):
         raise RuntimeFailure("simulation.movable_camera must be a boolean")
-    if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or sim_config.get("robot") != "panda"):
-        raise RuntimeFailure("simulation.effort is a boolean for robot = \"panda\" (false hides actuator_effort_nm: no force sensing)")
+    if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or not sim_config.get("robot")):
+        raise RuntimeFailure("simulation.effort is a boolean for a robot (false hides actuator_effort_nm: no force sensing)")
     source_manifest = Path(scene).resolve().parent / config["source"].get("manifest", "manifest.toml")
+    private_manifest = {}
     if source_manifest.is_file():
         with source_manifest.open("rb") as handle:
             private_manifest = tomllib.load(handle)
         for key in ("camera", "graspable_bodies"):
             if key in private_manifest:
                 sim_config.setdefault(key, private_manifest[key])
+    fixture_table = private_manifest.get("fixture")
+    if fixture_table:  # private seed of the fixture's reset perturbations (src/sim2sim/fixture.py); never public
+        sim_config["fixture_seed"] = secrets.randbits(63)
     supervisor.check()
     from .simulation import Simulation
+    robot = sim_config.get("robot")
     sim = Simulation(scene, sim_config)
     supervisor.check()
     public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
@@ -1461,6 +1585,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     deadline = float("inf") if wall_only else timing["active_start"] + seconds
 
     hold_seconds = inference_config.get("budget_hold_seconds")
+    # Provider outages (timeouts, 429/5xx) are not the model's doing: with provider_hold_seconds set, each failed attempt's
+    # time is given back and the backoff before the retry runs with containers paused and clocks stopped, up to this total.
+    provider_hold = inference_config.get("provider_hold_seconds")
+    provider_held = 0.
+    # Orchestrator review point inside the visible wall budget (user: "4 h extendable to 6 h"): the agent sees the full
+    # budget from the start; at the checkpoint the run holds exactly like a spend-cap hold, and is resumed or stopped.
+    checkpoint = inference_config.get("checkpoint_wall_seconds")
+    assert checkpoint is None or hold_seconds is not None, "checkpoint_wall_seconds requires budget_hold_seconds"
     holds = []
 
     def budget_hold(reason):
@@ -1498,6 +1630,27 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         holds.append({"reason": reason, "held_seconds": duration, "decision": decision})
         audit.record({"kind": "inference_hold_decision", **holds[-1]}, reservation=context["token"])
         return decision["action"] == "resume"
+
+    def provider_pause(reason, lost, failures):
+        """Credit a provider-failed attempt's time and wait out a backoff outside the run; the agent never sees the outage."""
+        nonlocal deadline, provider_held
+        supervisor.credit(lost)
+        deadline += lost
+        timing["paused_total"] += lost
+        wait = min(PROVIDER_BACKOFF * 2 ** failures, 300.)
+        to_pause = [name] + ([candidate.name] if candidate and not candidate.closed else [])
+        with (paused_containers(to_pause, sandbox.get("process_limit_backend", "cgroup")) if backend is None else backend.paused(to_pause)), supervisor.hold():
+            pause = timing["pause_start"] = time.monotonic()
+            try:
+                time.sleep(wait)
+            finally:
+                duration = time.monotonic() - pause
+                deadline += duration
+                timing["paused_total"] += duration
+                timing["pause_start"] = None
+        provider_held += lost + duration
+        audit.record({"kind": "provider_hold", "reason": reason, "failed_attempt_seconds": lost, "backoff_seconds": duration,
+                      "consecutive_failures": failures + 1, "provider_held_total_seconds": provider_held}, reservation=context["token"])
 
     def progress_note(text, source, origin, model=None):
         nonlocal progress_used
@@ -1610,7 +1763,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             save_checkpoint("reference", snapshot_simulation(sim), observation, token=initial)
         supervisor.check()
         max_message = int(limits.get("max_message_bytes", 12 * 1024 * 1024))
-        robot_files = public_robot_files(source_root / "robot") if sim_config.get("robot") == "panda" else None
+        robot_files = public_robot_files(source_root / "robot", sim_config["robot"]) if sim_config.get("robot") else None
         if robot_files is not None:
             audit.record({"kind": "public_fixture", "path": PUBLIC_ROBOT if backend is None else "robot",
                           "files_sha256": {relative: hashlib.sha256(data).hexdigest() for relative, data in robot_files.items()}})
@@ -1669,7 +1822,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             "remaining_wall_seconds": supervisor.remaining() if supervisor.deadline != float("inf") else None,
                             "physics_ticks": max_ticks, "physics_ticks_scope": "shared across both worlds; resets/loads never refund; uncertain worker failure conservatively charges requested ticks",
                             "submissions": max_submissions, "audit_bytes": audit.limit},
-                "submission": {"format": "base64 ZIP", "entrypoint": "scene.xml", "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024))},
+                "submission": {"format": "base64 ZIP", "entrypoint": config.get("evaluation", {}).get("entrypoint", "scene.xml"),
+                               "max_bytes": int(limits.get("submission_bytes", 4 * 1024 * 1024))},
                 "observation": public_observation(cache["reference"]["observation"], sim_config)}
         if sim_config.get("movable_camera"):
             task["actions"].insert(task["actions"].index("reset"), "camera")
@@ -1682,33 +1836,50 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             task["action_schema"]["sequence"] = {
                 "world": "reference or reconstruction; every step runs in this world",
                 "steps_file": "sandbox path of a JSON array of 1 to 2000 action objects, each {\"op\": observe, grasp, move, release, "
-                              "arm_target, camera or reset (as offered), plus that action's own fields, no world}",
+                              "arm_target, hand_target, camera or reset (as offered), plus that action's own fields, no world}",
                 "images": "last (default): return the final step's images; none: return none",
                 "execution": "the sandbox harness sends the steps in order as ordinary controller actions, each charged and recorded as "
                              "usual, and stops at the first rejected step",
                 "outputs": "/workspace/sequences/NNNN.json: per step its index, op and all non-image observation fields"}
+        if fixture_table:
+            from .fixture import PREDICTOR_FUNCTIONS
+            from .predictor import CONTRACT
+            for op in FIXTURE_OPS:
+                task["actions"].insert(task["actions"].index("reset"), op)
+            task["action_schema"]["reset_carriage"] = (
+                "reference world only: the fixture's cocking cycle. It retracts the plunger to the compression set on the compression "
+                "dial, latches it with the carriage against it, sets the brake pad's spring preload from the pressure dial, and re-seats "
+                "the pad, which settles for a fixed number of physics ticks (charged); the dials and the robot are untouched. Dial "
+                "changes take effect at the next reset_carriage")
+            task["action_schema"]["release_carriage"] = {"ticks": "optional nonnegative integer, physics ticks to advance after the release",
+                                                         "effect": "reference world only: opens the latch of a cocked carriage (after reset_carriage)"}
+            task["observation_contract"]["fixture"] = ("fixture instrument readings: compression_dial and pressure_dial positions in scale "
+                                                      "divisions (0 to 10, as on the dial scales) and carriage_cocked")
+            if "fixture" in config.get("evaluation", {}).get("metrics", ()):
+                task["submission"]["predictor"] = {**CONTRACT, "functions": PREDICTOR_FUNCTIONS}
+            if "sequence" in task["action_schema"]:
+                sequence = task["action_schema"]["sequence"]
+                sequence["steps_file"] = sequence["steps_file"].replace("camera or reset", "camera, reset, reset_carriage or release_carriage")
+                assert "release_carriage" in sequence["steps_file"]
         if sam3d_relay:
             task["actions"].insert(task["actions"].index("progress"), "sam3d")
             task["action_schema"]["sam3d"] = {"image_png_b64": "8-bit RGB(A) PNG, at most 2048x2048", "mask_png_b64": "grayscale PNG, same size, nonzero = object",
                                               "seed": "optional integer, default 0", "returns": "mesh_ply_b64 (binary PLY, vertex colors), vertices, faces, layout, frame"}
-        if sim_config.get("robot") == "panda":
+        if robot:
+            fixture, robot_op = ROBOTS[robot][0], ROBOTS[robot][2]
             task["actions"] = [op for op in task["actions"] if op not in ("grasp", "move", "release")]
-            task["actions"].insert(1, "arm_target")
+            task["actions"].insert(1, robot_op)
             for op in ("grasp", "move", "release"):
                 task["action_schema"].pop(op)
-            task["action_schema"]["arm_target"] = {
-                "joint_targets": "seven finite joint position targets in radians, Panda joints 1 through 7",
-                "gripper_width_m": "finite parallel-finger opening width in meters, 0 through 0.08",
-                "ticks": "positive integer; default " + str(sim_config["default_ticks"]),
-            }
-            task["action_schema"]["load_reconstruction"]["robot"] = "Include public robot/panda.xml using <include file=\"robot/panda.xml\"/>; preserve the supplied robot and copy robot/assets with it"
+            task["action_schema"][robot_op] = {
+                "arm_target": {"joint_targets": "seven finite joint position targets in radians, Panda joints 1 through 7",
+                               "gripper_width_m": "finite parallel-finger opening width in meters, 0 through 0.08"},
+                "hand_target": {"actuator_targets": "20 finite position targets in this actuator order: " + ", ".join(HAND_ACTUATORS)
+                                + "; each within that actuator's ctrlrange in robot/shadow_hand.xml (radians; a coupled *J0 target is "
+                                  "the sum of its finger's J1 and J2 angles); interpolated linearly from the current targets over the ticks"},
+            }[robot_op] | {"ticks": "positive integer; default " + str(sim_config["default_ticks"])}
+            task["action_schema"]["load_reconstruction"]["robot"] = f"Include public robot/{fixture} using <include file=\"robot/{fixture}\"/>; preserve the supplied robot and copy robot/assets with it"
             task["public_robot_path"] = PUBLIC_ROBOT
-        if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
-            blocked = [op for op in INTERACTIONS if op in task["actions"]]
-            task["worlds"]["reference"] = ("Observe-only: " + ", ".join(blocked) + " are unavailable in the reference world; "
-                                           "observe and reset work there, and every action works in the reconstruction world.")
-            for op in blocked:
-                task["action_schema"][op] = {**task["action_schema"][op], "world": "reconstruction only"}
             if backend is not None:
                 robot_destination = Path(backend.public_dir) / "robot"
                 robot_destination.mkdir(exist_ok=False)
@@ -1719,13 +1890,31 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             if sim_config.get("wrist_camera"):
                 task["observation_contract"]["wrist_camera"] = "wrist_rgb, wrist_depth and wrist_calibration follow enabled global modalities; camera moves with Panda hand, same dimensions and formats"
             task["observation_contract"].pop("wrench", None)
+            effort = sim_config.get("effort", True)
+            if robot == "panda":
+                tactile = ("left/right finger: pad_normal_force_n 3x3 taxels over the fingertip pad (rows distal to proximal, columns "
+                           "across the finger) and finger_normal_force_n over the whole finger, newtons; any contact on the finger counts")
+                proprioception = ("joint_positions_rad[7], joint_velocities_rad_s[7], " + ("actuator_effort_nm[7], " if effort else "")
+                                  + "finger_positions_m[2], finger_velocities_m_s[2], gripper_width_m, gripper_opening (0..1); robot sensors only")
+            else:
+                tactile = ("thumb, first, middle, ring, little: pad_normal_force_n 3x3 taxels over the palmar side (body y <= 1 mm) of that "
+                           "finger's distal phalanx body (rh_thdistal, rh_ffdistal, ...), body x -9.5..9.5 mm in 3 columns (increasing x) by "
+                           "body z 34..4 mm in 3 rows (distal first), and total_normal_force_n over the whole distal phalanx; palm: "
+                           "pad_normal_force_n 4x3 taxels over the palmar face of rh_palm (body y <= -4 mm), body z 96..-12 mm in 4 rows "
+                           "(distal first) by body x -42..44 mm in 3 columns (increasing x), and total_normal_force_n over the whole palm "
+                           "body; contact normal force in newtons summed per taxel; any contact on the body counts")
+                proprioception = ("joint_positions_rad[24] and joint_velocities_rad_s[24] in joint order " + ", ".join(HAND_JOINTS)
+                                  + ("; actuator_effort_nm[20] in hand_target actuator order" if effort else "") + "; robot sensors only")
             if sim_config["tactile"]:
-                task["observation_contract"]["tactile"] = ("left/right finger: pad_normal_force_n 3x3 taxels over the fingertip pad "
-                    "(rows distal to proximal, columns across the finger) and finger_normal_force_n over the whole finger, newtons; "
-                    "any contact on the finger counts")
+                task["observation_contract"]["tactile"] = tactile
                 task["observation_contract"]["modalities"]["tactile"] = True
-            task["observation_contract"]["proprioception"] = ("joint_positions_rad[7], joint_velocities_rad_s[7], " + ("actuator_effort_nm[7], " if sim_config.get("effort", True) else "")
-                + "finger_positions_m[2], finger_velocities_m_s[2], gripper_width_m, gripper_opening (0..1); robot sensors only")
+            task["observation_contract"]["proprioception"] = proprioception
+        if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
+            blocked = [op for op in INTERACTIONS + FIXTURE_OPS if op in task["actions"]]
+            task["worlds"]["reference"] = ("Observe-only: " + ", ".join(blocked) + " are unavailable in the reference world; "
+                                           "observe and reset work there, and every action works in the reconstruction world.")
+            for op in blocked:
+                task["action_schema"][op] = {**task["action_schema"][op], "world": "reconstruction only"}
         with audit.reserve(len(json.dumps(task)) * 3 + 65536) as token:
             context["token"] = token
             transport.send(task, min(deadline, supervisor.deadline))
@@ -1752,27 +1941,28 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 context["world"] = world
                 if not isinstance(op, str):
                     raise RuntimeFailure("Operation must be a string")
-                panda = sim_config.get("robot") == "panda"
-                if (panda and op in ("grasp", "move", "release")) or (not panda and op == "arm_target"):
+                if op in INTERACTIONS and op not in ((ROBOTS[robot][2],) if robot else ("grasp", "move", "release")):
                     raise RuntimeFailure("Operation unavailable for configured robot")
-                if world == "reference" and op in INTERACTIONS and not sim_config["reference_interaction"]:
+                if op in FIXTURE_OPS and (not fixture_table or world != "reference"):
+                    raise RuntimeFailure("Unknown operation" if not fixture_table else f"{op} works only in the reference world")
+                if world == "reference" and op in INTERACTIONS + FIXTURE_OPS and not sim_config["reference_interaction"]:
                     raise RuntimeFailure("The reference world is observe-only: %s works only in the reconstruction world" % op)
-                ticks = request.get("ticks", sim_config["default_ticks"] if op in ("move", "arm_target") else 0)
+                ticks = request.get("ticks", sim_config["default_ticks"] if op in ("move", "arm_target", "hand_target") else 0)
                 if isinstance(ticks, bool) or not isinstance(ticks, int) or ticks < 0:
                     raise RuntimeFailure("ticks must be a nonnegative integer")
-                if op in ("move", "arm_target") and ticks < 1:
+                if op in ("move", "arm_target", "hand_target") and ticks < 1:
                     raise RuntimeFailure(f"{op} requires at least one tick")
                 if max_ticks is not None and ticks > max_ticks - sum(charged.values()):
                     raise RuntimeFailure("Shared cumulative physics tick budget exceeded")
-                if op not in ("observe", "move", "release", "arm_target") and ticks:
+                if op not in ("observe", "move", "release", "arm_target", "hand_target", "release_carriage") and ticks:
                     raise RuntimeFailure("This operation does not accept ticks")
                 if op == "camera" and not sim_config.get("movable_camera"):
                     raise RuntimeFailure("Unknown operation")
-                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "pos", "lookat") if k in request}
+                resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "actuator_targets", "pos", "lookat") if k in request}
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
-                token = reserve_for(request, world, ticks)
+                token = reserve_for(request, world, ticks + (sim.fixture.settle_ticks if op == "reset_carriage" else 0))
                 context["token"] = token
                 private = cache.get(world) or {}
                 audit.record({"kind": "action_begin", "action_id": context["action_id"], "world": world,
@@ -1783,7 +1973,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 if time.monotonic() >= min(deadline, supervisor.deadline):
                     supervisor.check()
                     raise RuntimeFailure("Active wall-time budget exhausted")
-                if op in ("observe", "grasp", "move", "release", "reset", "arm_target", "camera"):
+                if op in PHYSICAL:
                     action = {k: v for k, v in resolved.items() if k != "world"}
                     if world == "reference":
                         if op == "reset":
@@ -1908,9 +2098,20 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     response = {"ok": True, "world": world, "version": candidate_version,
                                 "observation": public_observation(packet["observation"], public_config), "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values())}
                 elif op == "inference":
-                    while True:
+                    stopped = False
+                    if checkpoint is not None and clocks()["wall_elapsed"] >= float(checkpoint):
+                        checkpoint, stopped = None, not budget_hold("Wall-time checkpoint reached")
+                    failures = 0
+                    while not stopped:
+                        attempt = time.monotonic()
                         try:
                             inference = broker.call(request, min(deadline, supervisor.deadline) - time.monotonic())
+                        except ProviderUnavailable as exc:
+                            if provider_hold is None or provider_held >= float(provider_hold):
+                                raise
+                            provider_pause(str(exc), time.monotonic() - attempt, failures)
+                            failures += 1
+                            continue
                         except BudgetStop as exc:
                             if hold_seconds is not None and str(exc) in HOLDABLE and budget_hold(str(exc)):
                                 continue
@@ -1920,6 +2121,10 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             audit.record({"kind": "inference_suspended", "reason": suspended})
                             inference = {"budget_stop": True, "reason": "host stop"}
                         break
+                    if stopped:
+                        suspended = "Wall-time checkpoint stop"
+                        audit.record({"kind": "inference_suspended", "reason": suspended})
+                        inference = {"budget_stop": True, "reason": "host stop"}
                     if not inference.get("budget_stop"):
                         audit.record({"kind": "inference_accounting", **{key: inference.get(key) for key in INFERENCE_ACCOUNTING}})
                         for summary in inference.get("summaries", []):
@@ -1963,6 +2168,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                         timing["pause_start"] = pause
                         try:
                             try:
+                                if "fixture" in evaluation.get("metrics", ()):  # predictor submission: run it in isolation first
+                                    if backend is not None:
+                                        raise RuntimeFailure("Predictor evaluation requires strict_oci")
+                                    from .fixture import collect_predictions
+                                    from .predictor import run_predictor
+                                    evaluation["predictions"] = run_predictor(
+                                        submission, evaluation["entrypoint"], sandbox, output / ("predictor-%03d" % submissions), supervisor,
+                                        lambda call: collect_predictions(fixture_table, call), float(evaluation.get("predictor_timeout_seconds", 900)))
                                 evaluator = evaluate_in_container if backend is None else backend.evaluate
                                 report = evaluator(submission, evaluation, sandbox, version_output, source_bundle, supervisor)
                             except Exception as exc:
@@ -1994,7 +2207,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 response = {"ok": False, "error": str(exc) if isinstance(exc, RuntimeFailure) and op != "submit" else "Operation failed"}
                 if world == "reference" and hasattr(sim, "total_ticks"):
                     charged[world] = int(sim.total_ticks)
-                    if action_started and op in ("observe", "grasp", "move", "release", "reset", "arm_target", "camera"):
+                    if action_started and op in PHYSICAL:
                         save_checkpoint(world, snapshot_simulation(sim), None, "interrupted", token)
             finally:
                 if response is not None:

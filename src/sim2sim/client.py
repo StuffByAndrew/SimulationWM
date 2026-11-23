@@ -34,6 +34,9 @@ class Client:
         return self.request("arm_target", joint_targets=list(joint_targets),
                             gripper_width_m=gripper_width_m, ticks=ticks, world=world)["observation"]
 
+    def hand_target(self, actuator_targets, ticks=20, *, world="reference"):
+        return self.request("hand_target", actuator_targets=list(actuator_targets), ticks=ticks, world=world)["observation"]
+
     def grasp(self, pixel, *, world="reference"):
         return self.request("grasp", pixel=list(pixel), world=world)["observation"]
 

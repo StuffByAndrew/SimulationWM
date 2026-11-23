@@ -322,7 +322,7 @@ def _verify_physics(o, m, physics, sims, manifest, report, pose=None):
     assert np.array_equal(m.jnt_pos, o.jnt_pos) and np.array_equal(m.jnt_axis, o.jnt_axis), 'joint anchors/axes changed'
     assert np.array_equal(m.geom_size[others], o.geom_size[others]), 'non-object geom sizes changed'
     original, perturbed = sims
-    if perturbed.robot == 'panda':
+    if perturbed.robot is not None:
         for probe in manifest.get('arm_probes', []):
             targets = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, n) for n in [probe['target_body']]] if 'target_body' in probe \
                 else [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, n) for n in manifest['object_bodies']]

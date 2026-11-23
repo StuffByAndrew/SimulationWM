@@ -1,0 +1,47 @@
+name = "cloth_holes"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = []   # no rigid objects: the point grasp attaches to the cloth (flex vertex bodies)
+
+# Private cloth metric (selector `cloth`, src/sim2sim/cloth.py): a local stiffness map from vertical lifts at a grid of points of
+# the flat cloth, then drops of the cloth from seeded random orientations onto a bar and over a cone.
+[cloth]
+samples = 8192
+seed = 20261116
+lift_grid = 4
+lift_margin_m = 0.05
+lift_height_m = 0.04
+lift_speed_m_s = 0.1
+sample_ticks = 25
+drop_ticks = 750
+frame_ticks = 20
+
+[[cloth.drops]]
+obstacle = "bar"
+yaw_deg = 42.4
+tilt_deg = 15.9
+tilt_axis_deg = 144.2
+
+[[cloth.drops]]
+obstacle = "bar"
+yaw_deg = 126.9
+tilt_deg = 14.4
+tilt_axis_deg = 34.8
+
+[[cloth.drops]]
+obstacle = "bar"
+yaw_deg = 11.9
+tilt_deg = 9.3
+tilt_axis_deg = 129.5
+
+[[cloth.drops]]
+obstacle = "cone"
+yaw_deg = 129.9
+tilt_deg = 6.0
+tilt_axis_deg = 48.9
+
+[[cloth.drops]]
+obstacle = "cone"
+yaw_deg = 133.1
+tilt_deg = 9.8
+tilt_axis_deg = 95.4

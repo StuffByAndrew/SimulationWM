@@ -26,7 +26,7 @@ Validation: Slurm test-partition job 56020252 passed the then-current full suite
 
 The two seeded assembly manifests enable `[reconstruction]` with `samples = 2048` and their construction seed. The same table in trusted evaluation configuration overrides the manifest. `samples` accepts 128 through 32768, and `seed` controls deterministic sampling. Metrics reset both simulations and compare geometry in the **reset world coordinate frame**, without rigid alignment or scale fitting, so position and orientation errors count. Floor geometry and synthetic grasp targets are excluded.
 
-`scores.reconstruction.chamfer_distance_m` is the symmetric mean **unsquared** nearest-neighbor distance in meters: half the sum of each sampled surface's mean distance to the other sampled surface. Samples represent the **exposed union surface** of supported object primitives (sphere, box, ellipsoid, cylinder and capsule); proposal points strictly inside another constituent primitive are rejected. They are area weighted across constituents, and ellipsoid samples use the sphere-transform area Jacobian. Ellipsoid area weights use deterministic numerical quadrature. Internal overlap surfaces and floor surfaces do not enter the Chamfer calculation. This is a finite sampled-surface estimate; increasing samples improves spatial resolution. Canonical geometry ordering excludes names, density and color, so identical geometry with renamed or reordered constituents yields the same samples and zero distance within numerical precision.
+`scores.reconstruction.chamfer_distance_m` is the symmetric mean **unsquared** nearest-neighbor distance in meters: half the sum of each sampled surface's mean distance to the other sampled surface. Samples represent the **exposed union surface** of supported object primitives (sphere, box, ellipsoid, cylinder, capsule, and mesh geoms taken as the convex hull of their compiled vertices, which is what MuJoCo collides); proposal points strictly inside another constituent primitive are rejected. They are area weighted across constituents, and ellipsoid samples use the sphere-transform area Jacobian. Ellipsoid area weights use deterministic numerical quadrature. Internal overlap surfaces and floor surfaces do not enter the Chamfer calculation. This is a finite sampled-surface estimate; increasing samples improves spatial resolution. Canonical geometry ordering excludes names, density and color, so identical geometry with renamed or reordered constituents yields the same samples and zero distance within numerical precision.
 
 `center_of_mass_error_m` is the norm of predicted minus source compiled object COM, with the signed difference in `center_of_mass_error_vector_m` and both COM positions retained. Each COM uses compiled body mass and reset-world inertial positions. It therefore honors explicit body inertial overrides. COM remains available independently when primitive surface or density evaluation is unavailable.
 
@@ -65,9 +65,13 @@ until a declared pair or unambiguous single-hinge pair exists.
 
 ## Panda object and arm evaluation
 
-Panda submissions include an unchanged copy of the public robot fixture.
+Panda and Shadow hand submissions include an unchanged copy of the public robot fixture.
 The evaluator compares it byte-for-byte to the trusted public fixture and
-requires a single `robot/panda.xml` include. The arm is an instrument, not a
+requires a single `robot/panda.xml` (or `robot/shadow_hand.xml`) include. Shadow hand
+levels use the same object selectors, fixture exclusion (the `rh_forearm` subtree) and
+`[[arm_probes]]`, whose steps carry `hand_target` fields (`actuator_targets`, `ticks`);
+the probe score then compares joint positions, velocities and efforts and adds
+`tactile_mae_n`, the mean absolute difference over every taxel and body total. The arm is an instrument, not a
 reconstruction target: private object selectors exclude it from surface,
 density and compiled COM metrics. A fixed cube is retained as a jointless
 nonworld body so its box enters target geometry sampling. Single-hinge matching
@@ -200,6 +204,35 @@ Scores: `rms_resistance_error_n`, `max_resistance_error_n`, `source_rms_resistan
 against the model's; loading and unloading strokes stay separate, so latch hysteresis and damping are plottable. A
 candidate handle the ray misses is `missed_grasp` with null errors (a gap). The empty baseline has no handle.
 
+## Cloth (2D flex)
+
+`cloth` (selector; needs a private manifest `[cloth]`, see `src/sim2sim/cloth.py` and the `cloth_*` manifests) compares
+cloths independently of mesh resolution or MJCF layout. A model's cloth is the union of its 2D flexes, whose vertex
+bodies must move on three orthogonal slide joints (flexcomp `dof="full"` or explicit vertex bodies); a candidate without a
+2D flex, or with another vertex parameterization, is `unavailable` (with the error), never zero. Fresh source and
+candidate worlds gain two researcher-only static fixtures far from the scene (a horizontal bar and a cone, 1.5 m either
+side of the source cloth's reset centre, their tops 0.6 m above it); placements and probe points come from the source and
+apply to both worlds in the world frame, without alignment.
+
+- `stiffness_map`: on a `lift_grid`² grid over the source cloth's reset bounding box (inset `lift_margin_m`), a vertical
+  ray from above grasps the cloth as an agent's point grasp does (nearest vertex of the hit flex face, at the hit offset)
+  and lifts it `lift_height_m` at `lift_speed_m_s`, recording the grasp's vertical reaction every `sample_ticks`. A
+  stiffer cloth lifts a wider tent, so the final lift force and the force/height slope map local bending stiffness (plus
+  the lifted weight). Reports both per-point maps, raw curves, `lift_force_mae_n`, `lift_force_rms_error_n`,
+  `lift_force_relative_error` (MAE over the mean source force), `stiffness_mae_n_m`, `stiffness_rms_error_n_m`,
+  `probed_points` and `candidate_missed_points`. Source-ray misses (holes, outside the outline) are gaps.
+- `drops`: each `[[cloth.drops]]` (seeded in the generator: three bar, two cone) rotates the reset layout by `yaw_deg`
+  about z and `tilt_deg` about a horizontal axis at `tilt_axis_deg`, releases it at rest 5 cm above the bar or the cone
+  apex, and runs `drop_ticks`. Every `frame_ticks` the symmetric mean Chamfer distance between `samples` area-weighted
+  barycentric surface points of each cloth (fixed on each mesh) gives `chamfer_series_m`, `mean_chamfer_m`,
+  `final_chamfer_m` (the drape at rest) and `max_chamfer_m`; `drop_mean_chamfer_m` and `drop_final_chamfer_m` average the
+  drops. `rest_chamfer_m` compares the two flat cloths at reset.
+
+Private artifacts under `artifacts/<digest>/cloth/`: `stiffness_map.json`, `stiffness_map.png` (source, candidate and
+absolute-error lift-force maps) and `drop_NNN/side_by_side.mp4` (source left, candidate right, real time). Point-grasp
+interaction with any flex is described in `docs/environments.md` (Cloth levels). Mask-based metrics (`appearance`,
+`dynamics`, `expert` silhouettes/centroids) count geoms only and ignore flexes; use `image_mse` and `cloth` for cloth levels.
+
 ## Trivial baselines and normalization
 
 `sim2sim.baselines` gives error metrics a scale that compares across
@@ -216,3 +249,42 @@ of a baseline: 1 is no better than the trivial scene and 0 is exact. A baseline
 that cannot produce a value (an empty scene's Chamfer or COM, hinges without a
 hinge, or a zero baseline error) leaves a gap, never a ratio. Hinge relative
 errors already compare with the zero-parameter default.
+
+## Positioning fixture (`fixture`)
+
+`fixture` (selector; needs a private manifest `[fixture]` table and a predictor submission, see
+[predictor submissions](protocol.md#predictor-submissions-srcsim2simpredictorpy); `src/sim2sim/fixture.py`) scores a
+calibrated model of the positioning-fixture levels and combines with no scene metric. The isolated predictor first
+answers `settings()` and `predict(compression, pressure, n = samples)` at every held-out setting and at each chosen
+setting. The evaluator then releases the fresh source fixture repeatedly: each trial starts from a world reset, sets both
+dials directly to the setting (joint positions, at rest), runs `reset_carriage` with a perturbation drawn from
+`numpy.random.default_rng([seed, setting index, trial])` (the same distribution as the agent's resets, a different
+stream), releases, and runs until the carriage moves slower than 1 mm/s for 0.1 s (or `max_release_ticks`). The stop is
+the carriage index in ruler mm.
+
+- `prediction`: at the `settings` grid (25 seeded points, one per cell of a 5 × 5 grid over both dials, `repeats` = 16
+  releases each): `crps_mm`, the mean sample CRPS `mean_y(E|X − y|) − E|X − X'|/2` of the predicted samples against each
+  release; baselines from the same releases: `oracle_crps_mm` (the CRPS the true distribution would get, half the mean
+  pairwise release difference), `mean_only_crps_mm` (a point mass at each setting's true mean), `pooled_crps_mm` (all grid
+  releases pooled, a settings-blind predictor) and `crps_skill_vs_pooled = 1 − crps / pooled`. `brier[target]` scores
+  the predicted hit probability (fraction of samples inside the region) against each release's hit, with `mean_only`
+  (1 if the true mean lies inside) and `oracle` (`p(1 − p)` at the true rate). Any failed or malformed query makes
+  `status = failed` with null predicted scores (`failed_queries`, first `error`), never a partial average.
+- `targets[name]`: the chosen setting released `chosen_repeats` = 40 times: `measured_hit_fraction`, `hits`, `trials`,
+  `wilson95`, and `predicted_hit_fraction` from the predictor at that setting. Context from the grid releases:
+  `grid_best_hit_fraction` and `mean_choice_hit_fraction` (the grid setting whose mean is nearest the region centre, the
+  choice a mean-only model would make). A missing or invalid `settings()` gives null hit fractions with `error`.
+- `view`: `{path, sha256}` of the researcher view.
+
+Private artifacts under `artifacts/<digest>/fixture/`: `trials.json` (every release's stop, settle-and-release
+trajectory sampled every `trajectory_every` ticks, the predicted samples, call errors and all scores) and `view.html`
+(`src/sim2sim/fixture_view.py`, self-contained, no network): per target the predicted distribution (line) over the
+histogram of measured stops with the target band and predicted vs measured hit-rate bars with the Wilson interval; a
+2-D map of all held-out and chosen settings coloured by predicted success, measured success or their difference (toggles;
+target selector); clicking a setting shows its histograms and replays all its trials together, carriage trajectories
+overlaid in time and as moving markers on a rail strip. The dashboard links each submission's view under "Verified
+original recordings" after checking its hash against the audited report; otherwise open
+`RUN/version-NNN/evaluation/artifacts/<digest>/fixture/view.html` directly. Evaluation cost: 480 releases of a
+Panda scene at 22–31 µs per step (about 0.2–3 s of simulated time each), plus the predictor's own calls; configs allow
+1800 s. The strict end-to-end path (agent → fixture actions → predictor container → evaluator container) is covered by
+`tests/test_oci.py::test_fixture_level_predictor_submission_end_to_end` with a reduced table.

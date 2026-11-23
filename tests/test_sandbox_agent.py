@@ -95,7 +95,7 @@ def test_gateway_rejections():
                     {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}]}]}):
         with pytest.raises(RuntimeFailure):
             broker.payload(request)
-    for config in ({**CONFIG, "api": "responses"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
+    for config in ({**CONFIG, "api": "chat"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
         with pytest.raises(RuntimeFailure):
             InferenceBroker(config)
 
@@ -246,7 +246,7 @@ def test_shared_cost_pool_ledger_threshold_and_monitor(tmp_path, capsys):
     parent, child = multiprocessing.Pipe(duplex=False)
     with patch.object(InferenceBroker, "_call", lambda self, request, timeout: {"ledger": self.ledger}):
         _inference_process(config, {}, 1, child)
-    assert parent.recv() == (True, {"ledger": None})
+    assert parent.recv() == (True, {"ledger": None}, False)
     assert InferenceBroker({**CONFIG, "max_cost_usd": 5., "call_reserve_usd": 3.}).stop_reason() == "Run inference cost budget exhausted"
 
 

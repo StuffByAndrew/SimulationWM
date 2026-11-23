@@ -11,6 +11,8 @@ import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 
+from .robots import ROBOTS
+
 MAX_ZIP = 8 * 1024 * 1024
 MAX_EXPANDED = 32 * 1024 * 1024
 MAX_FILES = 256
@@ -65,7 +67,8 @@ def extract_submission(data: bytes, destination: Path, entrypoint='scene.xml'):
     scene = destination.joinpath(*_relative(entrypoint).parts)
     if not scene.is_file():
         raise ValueError('missing scene entrypoint')
-    pending = [scene] + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
+    # Every XML file is checked as MJCF, and so is the entrypoint unless it is a predictor program (src/sim2sim/predictor.py).
+    pending = [scene] * (scene.suffix != '.py') + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
     checked = set()
     while pending:
         xml = pending.pop()
@@ -426,12 +429,12 @@ def _save_frames(path, frames):
         Image.fromarray(frame['_mask'].astype('uint8')*255).save(path / f'{i:03d}_mask.png')
 
 
-def _verify_panda_fixture(source_root, candidate_root):
-    """The public robot is a fixed experimental instrument, not a target."""
+def _verify_panda_fixture(source_root, candidate_root, robot='panda'):
+    """The public robot (Panda or Shadow hand) is a fixed experimental instrument, not a target."""
     expected=Path(source_root)/'robot'
     supplied=Path(candidate_root)/'robot'
     if not expected.is_dir() or not supplied.is_dir():
-        raise ValueError('Panda submission requires the supplied public robot fixture')
+        raise ValueError(f'{robot} submission requires the supplied public robot fixture')
     # Physics files must match; attribution docs are excluded because the public IMPORT.md is sanitized.
     docs={'IMPORT.md','LICENSE'}
     source_files={p.relative_to(expected).as_posix():hashlib.sha256(p.read_bytes()).digest()
@@ -439,11 +442,11 @@ def _verify_panda_fixture(source_root, candidate_root):
     candidate_files={p.relative_to(supplied).as_posix():hashlib.sha256(p.read_bytes()).digest()
                      for p in supplied.rglob('*') if p.is_file() and p.relative_to(supplied).as_posix() not in docs}
     if not source_files or source_files!=candidate_files:
-        raise ValueError('Panda robot fixture must be copied unchanged')
+        raise ValueError(f'{robot} robot fixture must be copied unchanged')
     root=ET.parse(Path(candidate_root)/'scene.xml').getroot()
     includes=[node.get('file') for node in root.iter('include')]
-    if includes.count('robot/panda.xml')!=1:
-        raise ValueError('Panda candidate scene must include robot/panda.xml exactly once')
+    if includes.count('robot/'+ROBOTS[robot][0])!=1:
+        raise ValueError(f'{robot} candidate scene must include robot/{ROBOTS[robot][0]} exactly once')
 
 
 def _panda_contact_ticks(sim, target_bodies):
@@ -470,7 +473,8 @@ def _free_object_bodies(sim):
 
 
 def _panda_probe(sim, probe, target_bodies, with_rgb):
-    """Observations after each step, robot-target contact ticks, and the composite COM of the free object bodies at ticks
+    """Robot probe (each step holds the robot action fields: Panda arm_target or Shadow hand_target). Observations after each step,
+    robot-target contact ticks, and the composite COM of the free object bodies at ticks
     0, COM_SAMPLE_TICKS, ... (MuJoCo's xipos from the step's own forward pass is the state at the start of that step);
     the COM samples are None without positive free mass."""
     import numpy as np
@@ -486,10 +490,9 @@ def _panda_probe(sim, probe, target_bodies, with_rgb):
     sim._callback=record
     try:
         for step in probe['steps']:
-            sim.action({'op':'arm_target','joint_targets':step['joint_targets'],
-                        'gripper_width_m':step['gripper_width_m'],'ticks':step['ticks']},render=False)
+            sim.action({**step,'op':ROBOTS[sim.robot][2]},render=False)
             if not np.isfinite(sim._data.qpos).all() or not np.isfinite(sim._data.qvel).all():
-                raise ValueError('nonfinite Panda probe state')
+                raise ValueError('nonfinite robot probe state')
             observations.append(sim.observe() if with_rgb else sim.observe())
     finally:
         sim._callback=old_callback
@@ -515,14 +518,14 @@ def _panda_dynamics(source,candidate,config,artifacts):
     import numpy as np
     probes=config.get('arm_probes')
     if not isinstance(probes,list) or not probes:
-        raise ValueError('Panda dynamics requires private arm_probes')
+        raise ValueError('Robot dynamics requires private arm_probes')
     names=config.get('object_bodies')
     if not isinstance(names,list) or not names:
-        raise ValueError('Panda dynamics requires target object bodies')
+        raise ValueError('Robot dynamics requires target object bodies')
     source_ids=[]
     for name in names:
         body=mujoco.mj_name2id(source._model,mujoco.mjtObj.mjOBJ_BODY,name)
-        if body<0: raise ValueError('unknown Panda target body')
+        if body<0: raise ValueError('unknown robot target body')
         source_ids.append(body)
     from .primitive_metrics import _robot_bodies
     candidate_robot=_robot_bodies(candidate)
@@ -536,11 +539,11 @@ def _panda_dynamics(source,candidate,config,artifacts):
         else:
             body=mujoco.mj_name2id(source._model,mujoco.mjtObj.mjOBJ_BODY,named_target)
             if body not in source_ids:
-                raise ValueError('Panda arm probe target must be a declared object body')
+                raise ValueError('Robot probe target must be a declared object body')
             probe_source_ids=[body]
         a,source_contacts,source_com=_panda_probe(source,probe,probe_source_ids,with_rgb)
         b,candidate_contacts,candidate_com=_panda_probe(candidate,probe,candidate_ids,with_rgb)
-        if len(a)!=len(b): raise ValueError('Panda probe trajectory length mismatch')
+        if len(a)!=len(b): raise ValueError('Robot probe trajectory length mismatch')
         keys={'joint_positions_rad':'joint_position_mae_rad',
               'joint_velocities_rad_s':'joint_velocity_mae_rad_s',
               'actuator_effort_nm':'actuator_effort_mae_nm',
@@ -553,8 +556,13 @@ def _panda_dynamics(source,candidate,config,artifacts):
                 'target_contact_tick_difference':abs(source_contacts-candidate_contacts),
                 'object_com':_com_comparison(source_com,candidate_com)}
         for field,label in keys.items():
-            record[label]=float(np.mean([np.mean(np.abs(np.asarray(x['proprioception'][field])-np.asarray(y['proprioception'][field])))
-                                         for x,y in zip(a,b)]))
+            if field in a[0]['proprioception']:
+                record[label]=float(np.mean([np.mean(np.abs(np.asarray(x['proprioception'][field])-np.asarray(y['proprioception'][field])))
+                                             for x,y in zip(a,b)]))
+        if 'tactile' in a[0]:
+            # Every taxel and body total of every pad, as one flat vector per step.
+            def taxels(o): return np.concatenate([np.ravel(pad[key]) for pad in o['tactile'].values() if isinstance(pad,dict) for key in sorted(pad)])
+            record['tactile_mae_n']=float(np.mean([np.mean(np.abs(taxels(x)-taxels(y))) for x,y in zip(a,b)]))
         if with_rgb:
             record['rgb_error']=float(np.mean([np.mean(np.abs(_pixels(x,'rgb')-_pixels(y,'rgb')))/255 for x,y in zip(a,b)]))
         path=artifacts/f'arm_probe_{index:03d}'
@@ -562,6 +570,7 @@ def _panda_dynamics(source,candidate,config,artifacts):
         (path/'trajectory.json').write_text(json.dumps({'steps':probe['steps'],
             'source_proprioception':[x['proprioception'] for x in a],
             'candidate_proprioception':[x['proprioception'] for x in b],
+            **({'source_tactile':[x['tactile'] for x in a],'candidate_tactile':[x['tactile'] for x in b]} if 'tactile' in a[0] else {}),
             'source_target_contact_ticks':source_contacts,
             'candidate_target_contact_ticks':candidate_contacts,
             'com_sample_ticks':COM_SAMPLE_TICKS,'source_object_com':source_com,'candidate_object_com':candidate_com},allow_nan=False))
@@ -619,7 +628,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer', 'force_profile'})
+                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture'})
 
 
 def selected_metrics(config):
@@ -650,7 +659,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
-                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile'):
+                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -669,6 +678,15 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             if key in config:
                 simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)
+        if 'fixture' in selection:
+            # A predictor submission (src/sim2sim/predictor.py ran it in isolation; config['predictions'] holds its answers):
+            # scored against fresh source releases only, with no candidate scene.
+            assert selection == {'fixture'}, 'the fixture metric scores a predictor program and combines with no scene metric'
+            from .fixture import evaluate as fixture
+            scores = {'fixture': fixture(source, config['fixture'], config['predictions'], output / 'artifacts' / version / 'fixture')}
+            json.dumps(scores, allow_nan=False)
+            report.update(status='ok', scores=scores)
+            return report
         import mujoco
         camera_quat = np.zeros(4)
         mujoco.mju_mat2Quat(camera_quat, source._data.cam_xmat[source._camera_id])
@@ -685,8 +703,8 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             from .force_profile import evaluate
             assert config.get('force_profile'), 'force_profile metric requires a private [force_profile] probe'
             return evaluate(source_path, candidate_path, simconfig, candidate_config, config['force_profile'])
-        if simconfig.get('robot')=='panda':
-            _verify_panda_fixture(config['source_dir'],target/'project')
+        if simconfig.get('robot'):
+            _verify_panda_fixture(config['source_dir'],target/'project',simconfig['robot'])
             scores=_evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path)
             if 'force_profile' in selection:
                 scores['force_profile']=force_profile()
@@ -749,6 +767,10 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
                     'density': {'status': 'unavailable', 'per_primitive': []}}
         if 'force_profile' in selection:
             scores['force_profile'] = force_profile()
+        if 'cloth' in selection:
+            from .cloth import evaluate as cloth
+            assert config.get('cloth'), 'cloth metric requires a private [cloth] probe table'
+            scores['cloth'] = cloth(source_path, candidate_path, simconfig, candidate_config, config['cloth'], artifacts / 'cloth')
         hook = config.get('metrics_hook')
         if hook:
             import importlib

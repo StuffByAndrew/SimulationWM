@@ -21,7 +21,11 @@ cd "${SIM2SIM_ROOT:-${SLURM_SUBMIT_DIR:?}}"
 source scripts/podman-job.sh
 load_trusted_image  # fails closed before any controller starts
 export MUJOCO_GL="${MUJOCO_GL:-egl}" MPLBACKEND=Agg OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONUNBUFFERED=1
-export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+# Freeze the controller code at launch: the controller re-imports sim2sim in spawned children (every inference call), so
+# editing src/ in the checkout during a run once crashed a child mid-merge and hung the run (w20-msd-spring-visible-001).
+frozen="$(mktemp -d "${TMPDIR:-/tmp}/sim2sim-src-$SLURM_JOB_ID-XXXX")"
+cp -r src/sim2sim "$frozen/"
+export PYTHONPATH="$frozen${PYTHONPATH:+:$PYTHONPATH}"
 # Host credentials enter only the controller environment, after the pause process exists;
 # every container step is launched with an explicit minimal environment.
 set +x

@@ -1,0 +1,170 @@
+name = "tetra_spring_block"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["cluster", "spring_base", "spring_top", "block"]
+
+object_bodies = ["cluster", "spring_base", "spring_top", "block"]
+object_geoms = ["sphere_1kg", "sphere_2kg", "sphere_4kg", "sphere_8kg", "spring_base_plate", "spring_top_plate", "block"]
+
+[correspondence]
+cluster = "cluster"
+spring_base = "spring_base"
+spring_top = "spring_top"
+block = "block"
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261031
+
+[[probes]]
+name = "cluster_lift_swing_drop"
+body = "cluster"
+local_point = [0, -0.05206329, 0]
+displacement = [0.0, 0.0, 0.14]
+ticks = 240
+
+[[probes]]
+name = "spring_hang_drop"
+body = "spring_top"
+local_point = [0, 0, 0.004]
+displacement = [0.0, 0.0, 0.14]
+ticks = 240
+
+# Private expert scripts (metric `expert`): weigh the target (and the block) on the spring in the hole.
+[[expert_trajectories]]
+name = "weigh_cluster"
+frame_ticks = 20
+actions = [{op = "grasp", body = "spring_top", local_point = [0, 0, 0.004]},
+           {op = "move", displacement = [0, 0, 0.0008906], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0051355], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.010941], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0160598], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0189938], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0189938], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0160598], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.010941], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0051355], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0008906], ticks = 40},
+           {op = "move", displacement = [-0.0032495, -0.0001712, 0], ticks = 80},
+           {op = "move", displacement = [-0.0187379, -0.0009872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0399205, -0.0021032, 0], ticks = 80},
+           {op = "move", displacement = [-0.0585976, -0.0030872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0693028, -0.0036512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0693028, -0.0036512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0585976, -0.0030872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0399205, -0.0021032, 0], ticks = 80},
+           {op = "move", displacement = [-0.0187379, -0.0009872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0032495, -0.0001712, 0], ticks = 80},
+           {op = "move", displacement = [0, 0, -0.001447], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0083439], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0177764], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0260932], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0308602], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0308602], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0260932], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0177764], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0083439], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.001447], ticks = 60},
+           {op = "release", ticks = 100},
+           {op = "grasp", body = "cluster", local_point = [0, 0, 0.06327328]},
+           {op = "move", displacement = [0, 0, 0.0010272], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0059232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0126192], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0185232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0219072], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0219072], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0185232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0126192], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0059232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0010272], ticks = 30},
+           {op = "move", displacement = [-0.0014552, 0.0019688, 0], ticks = 80},
+           {op = "move", displacement = [-0.0083912, 0.0113528, 0], ticks = 80},
+           {op = "move", displacement = [-0.0178772, 0.0241868, 0], ticks = 80},
+           {op = "move", displacement = [-0.0262412, 0.0355028, 0], ticks = 80},
+           {op = "move", displacement = [-0.0310352, 0.0419888, 0], ticks = 80},
+           {op = "move", displacement = [-0.0310352, 0.0419888, 0], ticks = 80},
+           {op = "move", displacement = [-0.0262412, 0.0355028, 0], ticks = 80},
+           {op = "move", displacement = [-0.0178772, 0.0241868, 0], ticks = 80},
+           {op = "move", displacement = [-0.0083912, 0.0113528, 0], ticks = 80},
+           {op = "move", displacement = [-0.0014552, 0.0019688, 0], ticks = 80},
+           {op = "move", displacement = [0, 0, -0.0010272], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0059232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0126192], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0185232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0219072], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0219072], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0185232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0126192], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0059232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0010272], ticks = 40},
+           {op = "release", ticks = 1000}]
+
+[[expert_trajectories]]
+name = "weigh_block"
+frame_ticks = 20
+actions = [{op = "grasp", body = "spring_top", local_point = [0, 0, 0.004]},
+           {op = "move", displacement = [0, 0, 0.0008906], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0051355], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.010941], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0160598], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0189938], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0189938], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0160598], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.010941], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0051355], ticks = 40},
+           {op = "move", displacement = [0, 0, 0.0008906], ticks = 40},
+           {op = "move", displacement = [-0.0032495, -0.0001712, 0], ticks = 80},
+           {op = "move", displacement = [-0.0187379, -0.0009872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0399205, -0.0021032, 0], ticks = 80},
+           {op = "move", displacement = [-0.0585976, -0.0030872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0693028, -0.0036512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0693028, -0.0036512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0585976, -0.0030872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0399205, -0.0021032, 0], ticks = 80},
+           {op = "move", displacement = [-0.0187379, -0.0009872, 0], ticks = 80},
+           {op = "move", displacement = [-0.0032495, -0.0001712, 0], ticks = 80},
+           {op = "move", displacement = [0, 0, -0.001447], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0083439], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0177764], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0260932], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0308602], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0308602], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0260932], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0177764], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.0083439], ticks = 60},
+           {op = "move", displacement = [0, 0, -0.001447], ticks = 60},
+           {op = "release", ticks = 100},
+           {op = "grasp", body = "block", local_point = [0, 0, 0.015]},
+           {op = "move", displacement = [0, 0, 0.0010272], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0059232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0126192], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0185232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0219072], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0219072], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0185232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0126192], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0059232], ticks = 30},
+           {op = "move", displacement = [0, 0, 0.0010272], ticks = 30},
+           {op = "move", displacement = [-0.0031672, 0.0027392, 0], ticks = 80},
+           {op = "move", displacement = [-0.0182632, 0.0157952, 0], ticks = 80},
+           {op = "move", displacement = [-0.0389092, 0.0336512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0571132, 0.0493952, 0], ticks = 80},
+           {op = "move", displacement = [-0.0675472, 0.0584192, 0], ticks = 80},
+           {op = "move", displacement = [-0.0675472, 0.0584192, 0], ticks = 80},
+           {op = "move", displacement = [-0.0571132, 0.0493952, 0], ticks = 80},
+           {op = "move", displacement = [-0.0389092, 0.0336512, 0], ticks = 80},
+           {op = "move", displacement = [-0.0182632, 0.0157952, 0], ticks = 80},
+           {op = "move", displacement = [-0.0031672, 0.0027392, 0], ticks = 80},
+           {op = "move", displacement = [0, 0, -0.0010272], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0059232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0126192], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0185232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0219072], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0219072], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0185232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0126192], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0059232], ticks = 40},
+           {op = "move", displacement = [0, 0, -0.0010272], ticks = 40},
+           {op = "release", ticks = 1000}]
+

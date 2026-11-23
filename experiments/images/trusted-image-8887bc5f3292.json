@@ -1,6 +1,6 @@
 {
   "image_id": "8887bc5f3292c2a5c87a0ac8d896ecfe486ed2eedb0fa16c5d4f69e977690421",
-  "archive": "experiments/images/sim2sim-8887bc5f3292.tar",
+  "archive": "/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-images/sim2sim-8887bc5f3292.tar",
   "archive_sha256": "eb59b526587b32c0ee8c8a3af2906a2d4bac6b93a50e50085ad1600bece919d8",
   "archive_bytes": 953040384,
   "built_job": "60338360",

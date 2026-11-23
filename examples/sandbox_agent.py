@@ -39,6 +39,30 @@ COMPACT = """Your context is nearly full, so older turns will now be removed. Wr
 
 GUARD = """finish was not executed yet (%s of wall time remain). Before ending, list every aspect of your reconstruction that you have NOT validated by a direct comparison experiment between the reference and reconstruction worlds. If any remain, design and run those experiments and resubmit when the reconstruction improves. If none remain, call finish again in a later turn and it will be executed."""
 
+# Predictor tasks (the task's submission names a predictor contract): characterize a device and submit a predictor program.
+# The same structure as SYSTEM, COMPACT and GUARD, which stay byte-identical for scene reconstruction tasks.
+SYSTEM_PREDICTOR = """You are an autonomous research agent working inside an isolated Linux sandbox. Your job is to characterize an unknown simulated device by experiment and submit a predictor program, as the task statement specifies, using only the observations and interactions offered by the controller. The task statement, action contract and first observation follow in the first user message.
+
+Environment
+- You act only through function tools. `bash` runs shell commands in /workspace. python3 with mujoco, numpy, scipy and matplotlib is installed; there is no network. Files in /workspace and /tmp cannot be executed directly, so run scripts as `python3 file.py` or `bash file.sh`. Use code freely: analyze observations quantitatively, write your predictor and any models it uses, and test them offscreen.
+- Controller tools act on two independent worlds: "reference" (the device) and "reconstruction" (your most recently loaded MuJoCo model, if you choose to build one). Device-specific actions work only where their contract says.
+- Any image a controller tool returns is also saved under /workspace/observations/ for analysis with code; only the most recent files are kept. `view_image` shows you any PNG or JPEG file, including renders you produce yourself.
+- Only recent turns and images stay in your context; older history is replaced by a summary. Keep a running notes file at /workspace/NOTES.md (hypotheses, experiments, measurements, and what is still unverified) and re-read it whenever you need it.
+
+How your work is evaluated
+- Only submitted projects are evaluated, by hidden tests that run your predictor program in isolation, at conditions you may not have tried, and compare its answers with the device's actual behavior there, as the task statement describes. You never see scores.
+- First-pass models of a device are almost always wrong in respects that were not directly tested. Treat every part of your predictor as a hypothesis until measurements on the reference world support it.
+
+How to work
+- Every tool result reports the remaining wall time; the session ends automatically at the deadline.
+- Work in cycles: form hypotheses, design experiments that discriminate between them, run them, compare your predictor's answers with the measurements quantitatively, update your project, and resubmit whenever it improves. A submission is a checkpoint, not an ending: keep testing after every submission.
+- `finish` is irreversible. Call it when you believe your predictor's answers match the device: every part of it has been checked against measurements, and no experiment you can still design would reveal a discrepancy. Work that was not submitted is lost, so keep your best current project submitted.
+- In each turn, write one or two sentences of public status describing what you are testing and why, alongside your tool calls. Use only the provided tools and your own sandbox."""
+
+COMPACT_PREDICTOR = """Your context is nearly full, so older turns will now be removed. Write a complete, self-contained summary of the work so far for your future self: the current predictor and where its files are, every experiment you ran with its measured outcome, what each result established, which aspects are still unverified, which submissions you made, and your plan. Reply with text only; do not call tools in this reply. Also update /workspace/NOTES.md in your next turn."""
+
+GUARD_PREDICTOR = """finish was not executed yet (%s of wall time remain). Before ending, list every aspect of your predictor that you have NOT validated against measurements in the reference world. If any remain, design and run those experiments and resubmit when your predictor improves. If none remain, call finish again in a later turn and it will be executed."""
+
 WORLD = {"type": "string", "enum": ["reference", "reconstruction"]}
 STRING = {"type": "string"}
 INTEGERS = lambda n: {"type": "array", "items": {"type": "integer"}, "minItems": n, "maxItems": n}
@@ -50,7 +74,10 @@ ACTIONS = {
     "release": ({"world": WORLD, "ticks": {"type": "integer", "minimum": 0}}, ["world"]),
     "arm_target": ({"world": WORLD, "joint_targets": NUMBERS(7), "gripper_width_m": {"type": "number"},
                     "ticks": {"type": "integer", "minimum": 1}}, ["world", "joint_targets", "gripper_width_m"]),
+    "hand_target": ({"world": WORLD, "actuator_targets": NUMBERS(20), "ticks": {"type": "integer", "minimum": 1}}, ["world", "actuator_targets"]),
     "camera": ({"world": WORLD, "pos": NUMBERS(3), "lookat": NUMBERS(3)}, ["world", "pos", "lookat"]),
+    "reset_carriage": ({"world": WORLD}, ["world"]),
+    "release_carriage": ({"world": WORLD, "ticks": {"type": "integer", "minimum": 0}}, ["world"]),
     "reset": ({"world": WORLD}, ["world"]),
     "load_reconstruction": ({"project_dir": STRING, "entrypoint": STRING, "camera": STRING}, []),
     "submit": ({"project_dir": STRING}, []),
@@ -58,7 +85,7 @@ ACTIONS = {
     "sequence": ({"world": WORLD, "steps_file": STRING, "images": {"type": "string", "enum": ["last", "none"]}}, ["world", "steps_file"]),
     "finish": ({}, []),
 }
-SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "camera", "reset")  # physical actions a sequence may contain
+SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "hand_target", "camera", "reset", "reset_carriage", "release_carriage")  # physical actions a sequence may contain
 SEQUENCE_STEPS = 2000
 LOCAL = {
     "bash": ("Run a bash command in /workspace and return its exit status and combined stdout/stderr (long output is truncated in the middle). "
@@ -126,6 +153,8 @@ class Agent:
         self.compact_tokens, self.keep_turns, self.max_images = compact_tokens, keep_turns, max_images
         self.reserve, self.output_chars, self.keep_image_files = reserve_seconds, output_chars, keep_image_files
         self.tools = tool_schemas(self.task)
+        predictor = "predictor" in self.task["submission"]
+        self.system, self.compact_prompt, self.guard = (SYSTEM_PREDICTOR, COMPACT_PREDICTOR, GUARD_PREDICTOR) if predictor else (SYSTEM, COMPACT, GUARD)
         self.schemas = {tool["name"]: tool["parameters"] for tool in self.tools}
         self.turns, self.summary, self.saved, self.images = [], None, [], 0
         self.turn, self.submissions, self.intercepted = 0, 0, None
@@ -144,7 +173,7 @@ class Agent:
         self.client.progress(message[:1000], origin=origin)
 
     def messages(self):
-        head = [{"role": "system", "content": SYSTEM}, self.task_message]
+        head = [{"role": "system", "content": self.system}, self.task_message]
         if self.summary is not None:
             head.append({"role": "user", "content": "Summary of earlier work (older turns were removed from context):\n" + self.summary})
         return head + [message for turn in self.turns for message in turn]
@@ -192,7 +221,7 @@ class Agent:
         self.client.finish()
 
     def compact(self):
-        reply = self.infer(self.messages() + [{"role": "user", "content": COMPACT + " " + self.stamp()}])
+        reply = self.infer(self.messages() + [{"role": "user", "content": self.compact_prompt + " " + self.stamp()}])
         if reply.get("budget_stop"):
             return
         self.summary = reply["content"].strip() or "(No summary was produced; consult /workspace/NOTES.md.)"
@@ -257,7 +286,7 @@ class Agent:
         if left > max(900, .1 * self.budget) and self.intercepted in (None, self.turn):
             self.intercepted = self.turn
             self.note("Intercepted an early finish request with %s remaining." % clock(left))
-            return [text(GUARD % clock(left))], False
+            return [text(self.guard % clock(left))], False
         self.note("Model ended the session with %s remaining." % clock(left))
         self.client.finish()
         return [], True

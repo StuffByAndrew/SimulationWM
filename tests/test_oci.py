@@ -170,6 +170,127 @@ input()
             subprocess.run(["podman", "volume", "rm", "--force", volume], capture_output=True, timeout=15, env=podman_env())
 
 
+    def test_predictor_runner_is_isolated_bounded_and_timed(self):
+        """An agent's predictor program in its own worker container: no source, network, credentials or writable root;
+        a per-call alarm it cannot swallow, a 1 MiB value bound, and a session timeout that fails every later call."""
+        import io, zipfile
+        from sim2sim.predictor import run_predictor
+        from sim2sim.runtime import WallClock
+        program = r'''
+import json, os, signal, socket
+from pathlib import Path
+def probe():
+    hidden = [str(p) for p in ("/opt/sim2sim/environments", "/workspace/source", "/workspace/output", "/opt/public") if Path(p).exists()]
+    try:
+        socket.create_connection(("1.1.1.1", 53), timeout=1); network = True
+    except OSError:
+        network = False
+    try:
+        Path("/opt/x").write_text("x"); writable = True
+    except OSError:
+        writable = False
+    print("printed text never reaches the protocol")
+    return {"hidden": hidden, "network": network, "writable": writable, "secret": "SIM2SIM_TEST_SECRET" in os.environ,
+            "files": sorted(p.name for p in Path(__file__).parent.iterdir()), "uid": os.getuid()}
+def slow():
+    try:
+        while True:
+            pass
+    except Exception:
+        return "swallowed"
+def huge():
+    return [0.5] * 400000
+def block():
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})
+    while True:
+        pass
+'''
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            archive.writestr("predictor.py", program)
+        sandbox = {"process_limit_backend": BACKEND, "evaluator_image": IMAGE, "memory": "1g", "cpus": 1, "pids": 64}
+        output = Path(__file__).resolve().parents[1] / "experiments/validation/sandbox-backend" / ("predictor-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        supervisor = WallClock(600)
+        try:
+            with patch.dict(os.environ, {"SIM2SIM_TEST_SECRET": "host-only"}):
+                replies = run_predictor(data.getvalue(), "predictor.py", sandbox, output / "a", supervisor,
+                                        lambda call: [call("probe"), call("slow"), call("huge"), call("probe")], 120, call_seconds=3)
+                blocked = run_predictor(data.getvalue(), "predictor.py", sandbox, output / "b", supervisor,
+                                        lambda call: [call("block"), call("probe")], 20, call_seconds=3)
+        finally:
+            supervisor.close()
+        probe = replies[0]["value"]
+        self.assertEqual((probe["hidden"], probe["network"], probe["writable"], probe["secret"], probe["uid"]), ([], False, False, False, 65532))
+        self.assertIn("predictor.py", probe["files"])
+        self.assertIn("CallTimeout", replies[1]["error"])
+        self.assertIn("exceeds", replies[2]["error"])
+        self.assertTrue(replies[3]["ok"])
+        self.assertEqual([r["ok"] for r in blocked], [False, False])
+        self.assertTrue(all("predictor worker failed" in r["error"] for r in blocked), blocked)
+        self.assertIn("printed text never reaches the protocol", (output / "a/predictor.stderr.log").read_text())
+        print("predictor isolation: " + json.dumps(probe))
+
+
+    def test_fixture_level_predictor_submission_end_to_end(self):
+        """A strict run on the rigid fixture: fixture actions, a predictor submission run by the isolated predictor worker and
+        scored by the evaluator container against real releases (a reduced private table keeps it short)."""
+        import shutil
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/sandbox-backend" / ("fixture-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        source = output.with_name(output.name + "-source")
+        for name in ("robot", "fixture_rigid"):
+            shutil.copytree(root / "environments/panda_small" / name, source / name)
+        manifest = (source / "fixture_rigid/manifest.toml").read_text()
+        manifest = manifest[:manifest.index("settings = [")] + 'settings = [[8.0, 3.0], [5.0, 5.0]]\nrepeats = 2\nchosen_repeats = 2\nsamples = 20\n' + \
+            manifest[manifest.index("max_release_ticks"):]
+        (source / "fixture_rigid/manifest.toml").write_text(manifest)
+        agent = r'''
+import json
+from pathlib import Path
+from sim2sim.client import Client
+client = Client()
+task = client.task
+assert task["submission"]["entrypoint"] == "predictor.py" and set(task["submission"]["predictor"]["functions"]) == {"predict", "settings"}
+cocked = client.request("reset_carriage")["observation"]
+assert cocked["fixture"]["carriage_cocked"] and set(cocked["fixture"]) == {"compression_dial", "pressure_dial", "carriage_cocked"}
+released = client.request("release_carriage", ticks=300)["observation"]
+assert not released["fixture"]["carriage_cocked"] and "seed" not in json.dumps(task) + json.dumps(released)
+project = Path("/workspace/project")
+project.mkdir()
+(project / "predictor.py").write_text("def predict(compression, pressure, n):\n    return [12.0 * compression - 4.0 * pressure] * n\n"
+                                      "def settings():\n    return {'target': {'compression': 8, 'pressure': 3}, 'narrow_target': {'compression': 5, 'pressure': 5}}\n")
+client.submit(project)
+client.finish()
+'''
+        config = {
+            "source": {"scene": str(source / "fixture_rigid/scene.xml")},
+            "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                        "command": ["python", "-c", agent], "memory": "2g", "cpus": 1, "pids": 64},
+            "output_dir": str(output), "record_video": False,
+            "budget": {"active_seconds": 300, "physics_ticks": 2000, "submissions": 1, "wall_seconds": 1200},
+            "simulation": {"robot": "panda", "rgb": False, "depth": False, "calibration": False},
+            "evaluation": {"source_dir": str(source), "source_entrypoint": "fixture_rigid/scene.xml", "manifest": "fixture_rigid/manifest.toml",
+                           "entrypoint": "predictor.py", "metrics": ["fixture"], "timeout_seconds": 600},
+        }
+        try:
+            result = run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual((result["status"], result["submissions"]), ("finished", 1))
+        report = json.loads((output / "version-001/evaluation.json").read_text())
+        self.assertEqual(report["status"], "ok", report)
+        scores = report["scores"]["fixture"]
+        self.assertEqual(scores["prediction"]["status"], "ok")
+        self.assertEqual(scores["targets"]["target"]["trials"], 2)
+        calls = json.loads((output / "predictor-001/predictor-calls.json").read_text())
+        self.assertEqual([c["function"] for c in calls], ["<load>", "settings", "predict", "predict", "predict", "predict"])
+        self.assertTrue((output / "version-001/evaluation" / scores["view"]["path"]).is_file())
+        print("fixture end to end: " + json.dumps({k: scores["prediction"][k] for k in ("crps_mm", "oracle_crps_mm")}))
+
+
 # Runs as the agent in a strict container: a tool is usable exactly when enabled, and otherwise absent.
 TOOLS_AGENT = r'''
 import base64, importlib.util, json, resource, shutil, subprocess, sys, time

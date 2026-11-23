@@ -36,7 +36,9 @@ Pixel origin is the image's top left, with coordinates inside the image. An
 occluded object cannot be grasped through the visible surface. Only one grasp
 exists at a time; release it before grasping again. The point constraint supplies
 force without an orientation target, so off-center pulling can rotate a body.
-Ray hits and body identity stay private.
+A cloth (any MuJoCo flex, from `flexcomp` or `<deformable><flex>`) is grasped at
+the vertex of the hit flex nearest the ray hit, held at the hit point's offset;
+the wrench then reports that vertex's pull. Ray hits and body identity stay private.
 
 Ticks must be nonnegative integers for `observe` and `release`, and positive for
 `move`. Move defaults to the configured duration (runtime default 20). The core
@@ -129,7 +131,7 @@ For `rlimit` and `slurm_step`, `pids` is a hard `RLIMIT_NPROC` set by `prlimit`
 for threads and processes sharing the fixed nonroot subordinate real UID across
 all containers on the node; this may cause shared-slot starvation. Optional
 `[sandbox.worker]` keys bound the evaluator and candidate worker separately.
-Panda runs see the public robot fixture read-only at `/opt/public/robot`.
+Robot runs (Panda or Shadow hand) see the public robot fixture read-only at `/opt/public/robot`.
 
 Optional agent tools (`[tools] segmentation = true`, `planning = true`; both
 default false; strict OCI only) are real ablations. An enabled tool is staged
@@ -141,7 +143,7 @@ pinned weights sha256 `6dbb9052…6c2f`) needs the tools image, whose label the
 runtime checks before launch; `planning` (IK, interpolation, collision-checked
 straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `sequence` (no files) adds a `sequence` action that the
 sandbox harness executes itself: the agent's code writes a JSON array of at most 2000 physical action objects
-(`observe`, `grasp`, `move`, `release`, `arm_target`, `camera`, `reset`, as offered, without `world`), the harness
+(`observe`, `grasp`, `move`, `release`, `arm_target`, `hand_target`, `camera`, `reset`, and on fixture levels `reset_carriage` and `release_carriage`, as offered, without `world`), the harness
 sends them in order to one world as ordinary controller actions (each charged and audited as usual), stops at the
 first rejected step, saves every step's non-image observation fields to `/workspace/sequences/NNNN.json` and returns
 the final step's images (or none). The controller never receives a `sequence` request.
@@ -165,7 +167,7 @@ rgb = true
 depth = false
 calibration = true
 wrench = false         # optional 6-axis grasp-point reading
-tactile = false        # optional Panda finger-pad normal forces (robot = "panda" only)
+tactile = false        # optional robot taxel normal forces (robot = "panda" or "shadow_hand" only)
 default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # timestep = 0.002      # optional override; otherwise scene timestep
 # graspable_bodies = ["block_red", "block_blue"] # otherwise source manifest/auto discovery
@@ -403,6 +405,48 @@ max_request_bytes = 12582912
 timeout_seconds = 300
 ```
 
+`api = "gemini"` (default `"responses"`, the gateway above) sends the same
+validated transcript, including labelled tool turns, to Google's native
+`generateContent`, so both APIs see identical conversations. The endpoint must
+be `.../v1beta/models/<model>:generateContent`, and the key travels in
+`x-goog-api-key`. No `metadata` or `provider` is allowed. The reasoning effort
+becomes `thinkingConfig.thinkingLevel`, and a summary setting becomes
+`includeThoughts` (thought parts are provider summaries). Schemas go as
+`parametersJsonSchema`. The broker requires `modelVersion == model`.
+
+Usage maps to the gateway's fields:
+
+- `promptTokens` = prompt minus cached;
+- `cacheReadTokens` = cached;
+- `completionTokens` = candidates plus thoughts;
+- `cacheWriteTokens` = 0.
+
+Google returns no cost, so the host prices these counts at the required
+`price_usd_per_mtok = { input, cached_input, output }` list prices. Any API
+retries HTTP 429/500/503/504 host-side within the call's deadline.
+
+Provider outages are a separate failure class, `ProviderUnavailable`: a call that hits the provider's own timeout, still gets
+HTTP 429/5xx after those retries, or fails in transport. With `provider_hold_seconds = N` the controller holds the outage
+outside the run:
+
+- The failed attempt's time is credited back to both clocks.
+- The backoff (15 s, doubling to at most 300 s) runs with the containers paused and the clocks stopped.
+- The identical request is then retried. Each hold is audited as `provider_hold`.
+- After N held seconds, outages reach the agent as ordinary failures again.
+
+A successful call's latency always counts as run time.
+
+```toml
+[inference]
+api = "gemini"
+endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-neon:generateContent"
+model = "gemini-4-neon"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+api_key_env = "GEMINI_API_KEY"
+price_usd_per_mtok = { input = 3.0, cached_input = 0.15, output = 15.0 }
+```
+
 `Client.progress(text, origin="agent")` emits a concise public note, maximum
 4096 characters. `origin` is `model`, `adapter` or `agent`; the host always records
 the sender as `source="agent"`. Actual provider summaries are host-recorded as
@@ -527,6 +571,38 @@ include `robot/panda.xml` once in root `scene.xml`, and set its compiler mesh
 directory to `robot/assets`. The evaluator verifies the fixture bytes before
 scoring. Source object XML and private manifests are not copied to that path.
 
+## Opt-in Shadow hand protocol
+
+With `[simulation] robot = "shadow_hand"` the scene includes the public fixture `robot/shadow_hand.xml` (MuJoCo
+Menagerie Shadow Hand E3M5, right hand, unchanged except for its compiler line; see `robot/IMPORT.md`). The forearm is
+welded at the world origin with the palm facing +z and the fingers along +x. The task offers `hand_target` in place of
+`grasp`, `move` and `release` (and never `arm_target`). Send the 20 position-actuator targets in fixture order
+`rh_A_WRJ2, rh_A_WRJ1, rh_A_THJ5 … rh_A_THJ1, rh_A_FFJ4, rh_A_FFJ3, rh_A_FFJ0, rh_A_MFJ4 …, rh_A_RFJ4 …, rh_A_LFJ5,
+rh_A_LFJ4, rh_A_LFJ3, rh_A_LFJ0` (each within its `ctrlrange`; a coupled `*J0` target is the sum of that finger's J1
+and J2 angles) and a positive tick duration:
+
+```json
+{"op":"hand_target","actuator_targets":[0,0,0.3,0.4,0,0,0,0,0.25,0.3,0,0.25,0.3,0,0.25,0.3,0,0,0.25,0.3],"ticks":100}
+```
+
+The host interpolates the targets linearly from the current ones over the ticks, rejects out-of-range targets and
+charges every executed tick across both worlds. `reset` restores the home pose (all joints 0 except J3 = 0.25 and
+J2 = J1 = 0.15 rad on the four fingers, THJ5 = 0.3 and THJ4 = 0.4 rad, with matching targets) and the scene's initial
+object state, and never refunds ticks. `Client.hand_target(actuator_targets, ticks, world=...)` wraps the action.
+
+`observation.proprioception` holds `joint_positions_rad[24]` and `joint_velocities_rad_s[24]` in qpos order
+(`rh_WRJ2, rh_WRJ1, rh_FFJ4 … rh_FFJ1, rh_MFJ4 …, rh_RFJ4 …, rh_LFJ5 … rh_LFJ1, rh_THJ5 … rh_THJ1`) and
+`actuator_effort_nm[20]` in action order (absent with `effort = false`). With `tactile = true`, `observation.tactile`
+has `thumb`, `first`, `middle`, `ring`, `little` and `palm`, each with `pad_normal_force_n` (a rows × columns grid) and
+`total_normal_force_n` (all contacts on that body), plus `unit` and `layout`. A fingertip grid is 3 × 3 over the
+palmar side (body y ≤ 1 mm) of the distal phalanx: body x −9.5…9.5 mm in columns of increasing x, body z 34…4 mm in rows,
+distal first. The palm grid is 4 × 3 over the palmar face of `rh_palm` (body y ≤ −4 mm): z 96…−12 mm in rows, distal
+first, x −42…44 mm in columns. Normal contact force is binned by contact position in the body frame; like the Panda
+taxels it counts any contact on the body, and contact positions and identities are never exposed. Hand scenes expose no
+images, calibration, wrench or point-grasp state. Candidate projects copy `robot/` unchanged, include
+`robot/shadow_hand.xml` once and set `<compiler angle="radian" autolimits="true" meshdir="robot/assets"/>`; object meshes
+are written inline (`<mesh vertex="..."/>`, collided as the convex hull of the vertices).
+
 ## Optional Panda wrist camera
 
 `simulation.wrist_camera = "wrist"` enables a second camera fixed directly to
@@ -560,3 +636,48 @@ termination), and `termination.json` lists `holds` and `held_seconds`. Every inf
 `deadline_unix`, which the sandbox harness adopts (never shown to the model), so the agent's remaining wall time is
 unaffected by a hold. A resumed run is therefore the same run it would have been with the higher cap from the start;
 the agent sees the full `wall_seconds` budget from its first message. Call/token caps and missing accounting never hold.
+
+
+## Positioning-fixture actions
+
+Levels whose private manifest has a `[fixture]` table (`environments/panda_small/fixture_*`, see
+[environments](environments.md#spring-powered-positioning-fixture-levels)) add two reference-world actions, also allowed in
+`sequence` step lists. Both are host-enforced, charged and audited like other physical actions; in the reconstruction world
+they are rejected, and an observe-only reference world (`reference_interaction = false`) blocks them.
+
+| op | Fields | Behavior |
+| --- | --- | --- |
+| `reset_carriage` | none | The fixture's cocking cycle: retract the spring plunger to the compression set on the compression dial, latch it with the carriage against it, set the brake pad's spring preload from the pressure dial (dial changes take effect here), and re-seat the pad, which then settles for a fixed number of physics ticks (executed, recorded and charged). Dials and robot are untouched. |
+| `release_carriage` | optional `ticks` (default 0) | Open the latch of a cocked carriage, then advance physics. Rejected unless `reset_carriage` cocked it since the last release. |
+
+Every observation on these levels has `fixture`: `{"compression_dial": d, "pressure_dial": d, "carriage_cocked": bool}`,
+the two dial positions in scale divisions (0 to 10, as printed on the dial scales). The agent moves the dials only with
+the robot (`arm_target`). The carriage position is not reported: it is read from images against the ruler. The pad's
+contact state, the seed of the reset perturbations, the compression and pressure mappings and every other fixture value
+stay private. A world `reset` restores the initial state (carriage uncocked, dials at 5).
+
+## Predictor submissions (`src/sim2sim/predictor.py`)
+
+A metric may score a program instead of a scene. Its configuration sets `[evaluation] entrypoint` to the program (e.g.
+`predictor.py`), the task's `submission.entrypoint` names it, and `submission.predictor` states the contract: the runner
+description and the metric's functions (for `fixture`: `predict(compression, pressure, n)` returning `n` stopping
+positions in ruler mm, and `settings()` returning `{target name: {"compression", "pressure"}}`). On `submit` the host
+runs, before the private evaluator and while the agent is paused:
+
+1. `run_predictor(submission, entrypoint, sandbox, output, supervisor, collect, timeout, call_seconds)` starts one
+   container per submission from the evaluator image (`python -m sim2sim.predictor`) with the `[sandbox.worker]` limits,
+   `--network=none`, a read-only root, no mounts and no source scene, manifest or credentials.
+2. Wire, one JSON line each way: `{"op":"load","project_b64","entrypoint","call_seconds"}` extracts the ZIP with the
+   submission checks (XML files are still MJCF-validated) and imports the entrypoint; `{"op":"call","function","kwargs"}`
+   returns `{"ok":true,"value"}` or `{"ok":false,"error"}`. Each load or call has `call_seconds` (default 60) of wall
+   time, enforced by an alarm that agent code cannot catch with `except Exception`; a value must be JSON with finite
+   numbers, at most 1 MiB. Anything the program prints goes to the worker's stderr log, never the protocol.
+3. The metric's `collect(call)` (for `fixture`, `fixture.collect_predictions(manifest[fixture], call)`) decides the
+   calls; one failed call is that call's error. A timeout of the whole session (`[evaluation]
+   predictor_timeout_seconds`, default 900), a crash or an oversized reply marks the worker broken and fails every later
+   call. The result goes to the evaluator as `evaluation["predictions"]`; the call log (arguments, values, errors,
+   seconds) is written to `RUN/predictor-NNN/predictor-calls.json` and the program's stderr to `predictor.stderr.log`.
+
+Nothing a predictor returns reaches the agent; the submit reply is only the evaluator status. Predictor metrics need
+`strict_oci`; the development backend fails such an evaluation explicitly. A new predictor metric adds its function
+contract and a `collect_predictions(table, call)` beside its scorer and selects the runner in the runtime's submit path.

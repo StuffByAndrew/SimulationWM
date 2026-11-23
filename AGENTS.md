@@ -46,7 +46,17 @@ Do not launch local simulations to investigate a failed compute job.
   (opacity in the viewer; mass, friction via a worker `set` op on the live
   MjModel + `mj_setConst`) and an object CoM marker (non-welded, non-robot
   bodies). Edits never touch recorded runs, audits or scores.
+- `src/sim2sim/robots.py`: public robot fixture registry (Panda `arm_target`, Shadow hand `hand_target`: include file,
+  fixture root body, actuator/joint order, home pose); no MuJoCo import so the host runtime can use it. Robot levels
+  expose only proprioception and optional taxels (`simulation.TACTILE`); the fixture is verified byte-for-byte.
 - `src/sim2sim/client.py`: agent-facing versioned JSON client.
+- `src/sim2sim/fixture.py`, `fixture_view.py`: positioning-fixture levels (`environments/panda_small/fixture_*`): the
+  private carriage mechanism behind `reset_carriage`/`release_carriage` (seeded reset perturbation of the pad; the seed,
+  pad state and mappings never reach a public observation, which carries only the dial readings), and the `fixture` metric
+  (held-out releases vs predictor samples: CRPS, Brier, hit rates at the chosen settings) with its researcher HTML view.
+- `src/sim2sim/predictor.py`: generic isolated runner for agent-submitted predictor programs (one evaluator-image
+  container per submission, no network/mounts/source; per-call alarm, 1 MiB JSON values, prints to stderr). A metric
+  supplies its function contract and `collect_predictions(table, call)`; see `docs/protocol.md`. Strict OCI only.
 - `src/sim2sim/sam3d.py`: optional `[tools] sam3d` relay. The strict controller forwards the agent's validated
   image+mask over a private 0700 spool to a researcher GPU service (`scripts/sam3d-service.slurm`,
   `kempner_gpu_priority`, A100 only, never H100/H200; env/weights under netscratch `SAM3D_ROOT`). A missing,
@@ -172,6 +182,16 @@ the lab root `/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments`, via
 `/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-images` (paths in `experiments/images/*.json`).
 Run directories must not be symlinks.
 
+Out of storage (2026-11-16, user): if a storage location fills up, explore the other storage locations this user has on the
+cluster (lab storage, netscratch, home; see the FASRC/Kempner docs linked in CLAUDE.md) and continue there. Try not to stop
+running work, and never delete anything to make space.
+
+Frozen controller code (2026-11-16): the strict controller re-imports `sim2sim` in a spawned child on every inference
+call. A merge that briefly left `runtime.py` importing a not-yet-copied module crashed one child and hung
+`w20-msd-spring-visible-20261116-001` for 13 h; the 6 h wall watchdog did not end it. `scripts/experiment-strict.slurm`
+now copies `src/sim2sim` to a job-private temp dir at launch and puts it first on `PYTHONPATH`. Still avoid editing
+`src/` in the main checkout while runs that predate this change are active; develop in a worktree and merge when idle.
+
 Partitions (2026-11-03, user): strict experiments and tests may also run on `sapphire` (same `holy8a` nodes, QoS
 `normal`, no 5-job/112-CPU per-user cap). Strict OCI passed there (job `57583004`). Never use GPU partitions for this.
 Dashboard generation and inspection may run on the login node.
@@ -180,6 +200,33 @@ API spend is orchestrator-only. Agents under investigation must never see dollar
 remaining budgets: not in the task, replies, tool results or container memory. Caps are host-enforced.
 Exhaustion suspends the run (`budget_suspended`); the orchestrator may resume it later with
 `[continuation]`.
+
+## Gemini models (user, 2026-11-20)
+
+`GEMINI_API_KEY` (in `~/.env`) reaches Google's API directly through `[inference] api = "gemini"` (see
+docs/protocol.md). The models are `gemini-4-neon` and `gemini-4-hydrogen`.
+
+- **Limits:**
+  - Spend is unlimited: there is no dollar cap on this key.
+  - The key's rate limits are 200 requests/min, 2M tokens/min and 100K requests/day.
+  - Keep concurrent runs within these limits. Each run makes about 1 call/min, with up to about 100K context tokens per
+    call before the harness compacts.
+  - The broker retries HTTP 429/5xx within each call's deadline.
+  - Gemini configs still carry a host-priced `max_cost_usd`/pool for accounting only; answer their holds with resume.
+- **Fair comparison:** despite unlimited spend, compare Gemini fairly with the existing gpt-6-astra runs.
+  - Use the astra original's config, changing only the model route and the cost lines.
+  - Keep the same harness, image, task, tools, observations, `reasoning_effort`, `max_output_tokens` and wall budget.
+    Never give Gemini a longer budget or extra prompting.
+  - Report at matched wall minutes and matched cumulative tokens, including astra's final budget where astra stopped at
+    its spend cap (e.g. w11 at $44).
+  - Tokens are each provider's own count.
+  - Report malformed-call and timeout rates.
+- **Provider outages:** Google's latency can spike from 2 s to more than 290 s per call. Four consecutive timeouts kill the
+  harness.
+  - Set `[inference] provider_hold_seconds` so outages are held outside the run: the failed attempt is credited back and
+    the backoff runs paused.
+  - Successful-call latency still counts.
+  - Treat a run that died of provider outages as an infrastructure failure and rerun it.
 
 ## Repository experiment skills
 

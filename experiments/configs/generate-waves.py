@@ -24,6 +24,9 @@ CONSTRAINTS = ["Use standard MuJoCo primitives and joints.",
                "Submit a self-contained scene.xml ZIP using only local assets, without native plugins."]
 PANDA_CONSTRAINTS = ["Use standard MuJoCo primitives and joints for the target object; preserve the provided Panda robot fixture unchanged.",
                      CONSTRAINTS[1]]
+HAND_CONSTRAINTS = ["Model the target object with standard MuJoCo primitives, joints and inline convex meshes (<mesh vertex=\"...\"/>, "
+                    "each collided as the convex hull of its vertices); preserve the provided Shadow hand robot fixture unchanged.",
+                    CONSTRAINTS[1]]
 RECON = "\n[evaluation.reconstruction]\nsamples = 2048\nseed = 20261029\n"
 ENVS = {  # name: (metrics, evaluation extras)
     "blocks": (["chamfer", "center_of_mass", "image_mse"], RECON),
@@ -297,21 +300,147 @@ RUNS21 = {f"w19-{name}-hint": (RUNS20[f"w18-{name}"][0], RUNS20[f"w18-{name}"][1
 WAVES["wave19-20261114"] = ("Wave 19", "sim2sim-20261114", 44.0, RUNS21)
 
 
+def lighting(env):
+    """Ground-truth lighting sentence for a prompt (user, 2026-11-16): the scene's exact <light> elements and headlight,
+    read from its scene.xml, so the agent need not fit appearance lighting. Nothing about geometry, materials or physics."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(f"environments/{env}/scene.xml").getroot()
+    lights = " ".join(ET.tostring(light, encoding="unicode").strip() for light in root.iter("light"))
+    assert lights, env
+    headlight = root.find("visual/headlight")
+    head = ("its headlight is " + ET.tostring(headlight, encoding="unicode").strip() if headlight is not None else
+            "it sets no <headlight>, so MuJoCo's default headlight applies (ambient 0.1 0.1 0.1, diffuse 0.4 0.4 0.4, specular 0.5 0.5 0.5)")
+    return f" The reference scene's lighting is exactly these MJCF lights: {lights}; {head}."
+
+
+# Wave 20 (user, 2026-11-16). All: point grasp (no robot), RGB + depth, sequence tool (code-written action lists), plain
+# TASK_CONVERGE ("find everything that differs"), 6 h visible budget with a 4 h orchestrator checkpoint and the $44 hold.
+# (a) tunnel spring / latch with the stick starting outside the bore, in a trough (tunnel-scenes.py `_out`): wrench, fixed
+# camera. (c) 1D mass on an ideal spring, frictionless, looks / does not look like one, without / with a damper
+# (msd-scenes.py): wrench, movable camera. Lighting ablation: the basic level of each family also runs with the ground-truth
+# lighting stated (lighting()), to measure time spent fitting lighting instead of physics.
+W20 = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "audit": 17179869184, "task": TASK_CONVERGE, "depth": True,
+       "tools": ("sequence",)}
+MSD_METRICS = ["chamfer", "center_of_mass", "image_mse", "parameters", "dynamics", "force_profile"]
+ENVS.update({f"tunnel_{k}_out": (TUNNEL_METRICS, RECON) for k in ("spring", "latch")})
+ENVS.update({f"msd_{k}_{v}": (MSD_METRICS, RECON) for k in ("spring", "damper") for v in ("visible", "hidden")})
+RUNS22 = {**{f"w20-{level[7:]}-out": (f"tunnel_{level[7:]}_out", "stick starts outside the bore; point grasp with wrench, RGBD, sequence tool",
+                                    {**W20, "metrics": TUNNEL_METRICS}) for level in ("tunnel_spring", "tunnel_latch")},
+          **{f"w20-msd-{kind}-{look}": (f"msd_{kind}_{look}", f"1D mass on an ideal spring{' + damper' if kind == 'damper' else ''}, "
+                                       f"{'looks like one' if look == 'visible' else 'does not look like one'}; point grasp with wrench, "
+                                       "RGBD, movable camera, sequence tool", {**W20, "movecam": True, "metrics": MSD_METRICS})
+             for kind in ("spring", "damper") for look in ("visible", "hidden")}}
+RUNS22.update({f"{name}-lit": (env, factor + ", ground-truth lighting stated", {**o, "task": o["task"] + lighting(env)})
+               for name, (env, factor, o) in list(RUNS22.items()) if name in ("w20-spring-out", "w20-msd-spring-visible")})
+# (b) tetrahedral cluster / cube of unknown mass + ideal spring (+ block of stated mass), point grasp WITHOUT force sensing,
+# RGBD, movable camera, sequence tool (tetra-spring-scenes.py point-grasp levels; k = 21.7 N/m, block 0.0235 kg). The prompt
+# stresses the target's inertial properties; spring levels state k, block levels state the block mass instead.
+TETRA_INERTIA = " The inertial properties (mass, centre of mass and inertia) of the tetrahedral cluster are important to identify."
+CUBE_INERTIA = " The cube's mass is unknown; its inertial properties (mass, centre of mass and inertia) are important to identify."
+IDEAL_K = " The spring between the two plates is an ideal linear spring (Hooke's law only, no damping) with a stiffness of exactly 21.7 N/m."
+IDEAL_BLOCK = (" The spring between the two plates is an ideal linear spring (Hooke's law only, no damping). The purple block has a mass "
+               "of exactly 0.0235 kg.")
+TETRA_METRICS = ["chamfer", "center_of_mass", "density", "image_mse", "dynamics", "expert"]
+ENVS.update({f"{t}_spring{b}": (TETRA_METRICS, RECON) for t in ("tetra", "cube") for b in ("", "_block")})
+RUNS22.update({f"w20-{t}-spring{b.replace('_', '-')}": (f"{t}_spring{b}", f"{'tetrahedral cluster' if t == 'tetra' else 'cube of unknown mass'} "
+               f"+ ideal spring{' + block of stated mass' if b else ', k stated'}; point grasp without force, RGBD, movable camera, sequence tool",
+               {**W20, "movecam": True, "wrench": False, "metrics": TETRA_METRICS, "eval_timeout": 600,
+                "task": TASK_CONVERGE + (TETRA_INERTIA if t == "tetra" else CUBE_INERTIA) + (IDEAL_BLOCK if b else IDEAL_K)})
+               for t in ("tetra", "cube") for b in ("", "_block")})
+RUNS22.update({f"{name}-lit": (RUNS22[name][0], RUNS22[name][1] + ", ground-truth lighting stated",
+                               {**RUNS22[name][2], "task": RUNS22[name][2]["task"] + lighting(RUNS22[name][0])})
+               for name in ("w20-tetra-spring", "w20-cube-spring")})
+WAVES["wave20-20261116"] = ("Wave 20", "sim2sim-20261116", 44.0, RUNS22)
+# Wave 21 (user, 2026-11-16): a palm-up Shadow hand (environments/shadow_hand, experiments/validation/hand-scenes.py) cradles
+# one object at reset: a uniform box, the same box with an off-centre COM, a smooth convex mesh, a box with two sharp spikes.
+# Touch only (hand_target, joint proprioception and efforts, fingertip and palm taxels; no images, no point grasp), code
+# allowed (sequence tool); the task says reset restores the object if it falls out of the hand. 6 h with the 4 h checkpoint.
+HAND_LEVELS = ("hand_prism", "hand_prism_offset_com", "hand_smooth_mesh", "hand_spiky")
+HAND_RESET = (" The object starts resting in the robot hand. If it falls out of the hand, use reset to restore that world's "
+              "initial state.")
+HAND = {**W20, "depth": False, "tactile": True, "task": TASK_CONVERGE + HAND_RESET, "metrics": ["dynamics", "chamfer", "center_of_mass"]}
+RUNS23 = {f"w21-{level.replace('_', '-')}": ("shadow_hand/" + level, "Shadow hand, proprioception + fingertip/palm tactile, no images, "
+                                             "sequence tool", HAND) for level in HAND_LEVELS}
+WAVES["wave21-20261116"] = ("Wave 21", "sim2sim-20261116", 44.0, RUNS23)
+# Wave 22 (user, 2026-11-16): cloth (experiments/validation/cloth-scenes.py; RoboSimStudio-style triangle-mesh sheet as a
+# MuJoCo 2D flex): base square, quadrant stiffnesses (plain, quadrant colors, diagonal colors), irregular with holes and cuts,
+# center hole with a stiff or a soft rim. Point grasp with wrench (attaches to cloth vertices), RGBD, movable camera, sequence
+# tool. Metric `cloth` (stiffness map, drops over a bar and a cone with side-by-side videos, rest shape) + image_mse.
+CLOTH_CONSTRAINTS = ["Model the cloth as a MuJoCo 2D flex (for example <flexcomp dim=\"2\" dof=\"full\"> or explicit vertex bodies with "
+                     "three slide joints each) and everything else with standard MuJoCo primitives and joints.", CONSTRAINTS[1]]
+CLOTH_LEVELS = ("cloth_base", "cloth_quadrants", "cloth_quadrants_colored", "cloth_quadrants_diagonal_colors", "cloth_holes",
+                "cloth_center_hole_stiff_rim", "cloth_center_hole_soft_rim")
+CLOTH = {**W20, "movecam": True, "metrics": ["image_mse", "cloth"], "eval_timeout": 600, "constraints": CLOTH_CONSTRAINTS}
+ENVS.update({level: (CLOTH["metrics"], "") for level in CLOTH_LEVELS})
+RUNS24 = {f"w22-{level.replace('_', '-')}": (level, "cloth; point grasp with wrench, RGBD, movable camera, sequence tool", CLOTH)
+          for level in CLOTH_LEVELS}
+RUNS24.update({"w22-cloth-base-lit": ("cloth_base", RUNS24["w22-cloth-base"][1] + ", ground-truth lighting stated",
+                                      {**CLOTH, "task": CLOTH["task"] + lighting("cloth_base")})})
+WAVES["wave22-20261116"] = ("Wave 22", "sim2sim-20261116", 44.0, RUNS24)
+# Wave 23 (user, 2026-11-23; planned, not launched): calibrate a spring-powered positioning fixture
+# (experiments/validation/fixture-scenes.py): a carriage launched along a rail by a spring, braked by a pad in a closed
+# caliper; the Franka slides a compression dial and a pad-pressure dial. Pads: rigid shoe (repeatable), rubber flap on a
+# rocking holder (settle-dependent spread, stick-slip), two-faced flap that tucks under or folds back (two stopping ranges).
+# The submission is a predictor program (src/sim2sim/predictor.py runs it in isolation) plus chosen settings per target;
+# metric `fixture` (CRPS at held-out settings, measured vs predicted hit rates at the chosen settings). Gemini models
+# (AGENTS.md): unlimited spend, provider outages held outside the run; 6 h visible wall with the 4 h checkpoint hold.
+FIXTURE_LEVELS = ("fixture_rigid", "fixture_rubber", "fixture_bimodal")
+FIXTURE_TASK = ("Calibrate the spring-powered positioning fixture on the table. A small carriage rides a rail. reset_carriage cocks "
+                "its spring launcher at the compression set on the yellow compression dial and re-seats the brake pad, whose pressing "
+                "force is set by the blue pressure dial; release_carriage releases the carriage, which slides along the rail until the "
+                "brake stops it. Both dials are sliders on tick scales reading 0 to 10 (the observation's fixture field reports their "
+                "exact readings); move them with the robot arm by pushing their pegs along their tracks. The ruler beside the rail "
+                "reads the carriage position in mm at the carriage's red index line: zero is the red tick, major ticks every 50 mm and "
+                "minor ticks every 10 mm, up to 250 mm. Two coloured bands on the ruler mark target regions: target (green, 70 to "
+                "100 mm) and narrow_target (orange, 18 to 22 mm). Characterize the fixture and find dial settings that stop the "
+                "carriage inside each target region. Submit a ZIP project whose predictor.py defines predict(compression, pressure, n) "
+                "and settings() as the submission's predictor contract specifies; it may use other files in the project, such as your "
+                "own MuJoCo model of the fixture. Hidden tests run predict at other dial settings and compare it with repeated releases "
+                "there, and release the carriage repeatedly at your chosen settings to count how often it stops in each target region. "
+                "Call finish when you believe your predictor matches the fixture.")
+FIXTURE_CONSTRAINTS = ["Submit a ZIP project with predictor.py at its root, written in Python with numpy, scipy and mujoco available; "
+                       "it may read other local files of the project but no native code.",
+                       "Any MuJoCo model you load into the reconstruction world must include the provided Panda robot fixture unchanged."]
+FIXTURE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 17179869184, "task": FIXTURE_TASK,
+           "vision": True, "depth": True, "movecam": True, "tools": ("sequence",), "metrics": ["fixture"], "entrypoint": "predictor.py",
+           "candidate_changes": False, "eval_timeout": 1800, "eval_extra": "", "constraints": FIXTURE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
+RUNS25 = {f"w23-{level.replace('_', '-')}-{model.removeprefix('gemini-4-')}": (
+    "panda_small/" + level, f"positioning fixture, {level[8:]} pad; Franka with joint torques, RGBD, movable camera, sequence tool; {model}",
+    {**FIXTURE, "model": model}) for level in FIXTURE_LEVELS for model in ("gemini-4-neon", "gemini-4-hydrogen")}
+WAVES["wave23-20261123"] = ("Wave 23", "gemini-20261123", 1e6, RUNS25)
+
+
 def q(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 
+# Google's native API reports no cost; the host prices tokens at these list prices (USD per 1M tokens: input, cached input,
+# output incl. thinking), from https://aistudio.google.com/docs/pricing (Standard tier), read 2026-11-19.
+GEMINI_PRICES = {"gemini-4-neon": (3.0, 0.15, 15.0), "gemini-4-hydrogen": (1.5, 0.075, 7.5)}
+
+
+def route(model):
+    """[inference] lines (before and after the reasoning settings) that select the model; the rest is model-independent."""
+    if model == "gpt-6-astra":
+        return ('endpoint = "https://api.aqinference.com/v1/responses"\nprovider = "openai"\nmodel = "gpt-6-astra"\n',
+                'metadata = { project = "amish-research", feature = "sim2sim-agent-eval" }\napi_key_env = "INFERENCE_API_KEY"\n')
+    price = GEMINI_PRICES[model]
+    return (f'api = "gemini"\nendpoint = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"\nmodel = "{model}"\n',
+            f'api_key_env = "GEMINI_API_KEY"\nprice_usd_per_mtok = {{ input = {price[0]}, cached_input = {price[1]}, output = {price[2]} }}\n')
+
+
 def config(wave, pool, cap, env, factor, o):
     panda = env.split("/")[0] in ("panda", "panda_small")
+    hand = env.split("/")[0] == "shadow_hand"
     hinged = panda and "hinges" in ENVS.get(env.split("/")[1], ([], ""))[0]
     metrics, extra = ((["dynamics", "hinges", "image_mse"], ENVS[env.split("/")[1]][1]) if hinged else
-                      (["dynamics", "chamfer", "center_of_mass", "image_mse"], RECON)) if panda else ENVS[env]
-    metrics = o.get("metrics", metrics)
-    source_dir, entry = ("environments/" + env.split("/")[0], env.split("/", 1)[1] + "/") if panda else ("environments/" + env, "")
-    vision = o.get("vision", not panda)
+                      (["dynamics", "chamfer", "center_of_mass", "image_mse"], RECON)) if panda else (["dynamics", "chamfer", "center_of_mass"], RECON) if hand else ENVS[env]
+    metrics, extra = o.get("metrics", metrics), o.get("eval_extra", extra)
+    source_dir, entry = ("environments/" + env.split("/")[0], env.split("/", 1)[1] + "/") if panda or hand else ("environments/" + env, "")
+    vision = o.get("vision", not panda and not hand)
     wrench = o.get("wrench", vision and not panda)
     return f"""# Generated by generate.py — researcher-only; never mount in the agent image.
-evaluate_candidate_changes = true
+evaluate_candidate_changes = {str(o.get("candidate_changes", True)).lower()}
 record_video = false
 plot_checkpoints = false
 task = {q(o.get("task", TASK))}
@@ -320,8 +449,8 @@ task = {q(o.get("task", TASK))}
 name = {q(f"{wave} · {env} · {factor}")}
 environment = {q(env.replace("/", "_"))}
 execution_mode = "strict_oci"
-model = "gpt-6-astra"
-model_constraints = [{", ".join(q(c) for c in (PANDA_CONSTRAINTS if panda else CONSTRAINTS))}]
+model = {q(o.get("model", "gpt-6-astra"))}
+model_constraints = [{", ".join(q(c) for c in o.get("constraints", PANDA_CONSTRAINTS if panda else HAND_CONSTRAINTS if hand else CONSTRAINTS))}]
 evaluation_metrics = [{", ".join(q(m) for m in metrics)}]
 
 [experiment.physical_parameters]
@@ -358,7 +487,7 @@ audit_bytes = {o.get("audit", 8589934592)}
 event_log_bytes = 67108864
 
 [simulation]
-{'robot = "panda"' + chr(10) if panda else ""}rgb = {str(vision).lower()}
+{'robot = "panda"' + chr(10) if panda else 'robot = "shadow_hand"' + chr(10) if hand else ""}rgb = {str(vision).lower()}
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}
@@ -371,31 +500,26 @@ camera = "fixed"
 manifest = "{entry}manifest.toml"
 source_dir = "{source_dir}"
 source_entrypoint = "{entry}scene.xml"
-entrypoint = "scene.xml"
+entrypoint = "{o.get("entrypoint", "scene.xml")}"
 camera = "fixed"
 width = 320
 height = 240
-timeout_seconds = 180
+timeout_seconds = {o.get("eval_timeout", 180)}
 {extra}
 {(chr(10) + "[tools]" + chr(10) + "".join(f"{k} = true" + chr(10) for k in o["tools"])) if o.get("tools") else ""}[inference]
-endpoint = "https://api.aqinference.com/v1/responses"
-provider = "openai"
-model = "gpt-6-astra"
-reasoning_effort = "medium"
+{route(o.get("model", "gpt-6-astra"))[0]}reasoning_effort = "medium"
 reasoning_summary = "auto"
-metadata = {{ project = "amish-research", feature = "sim2sim-agent-eval" }}
-api_key_env = "INFERENCE_API_KEY"
-max_calls = 2000
+{route(o.get("model", "gpt-6-astra"))[1]}max_calls = 2000
 max_cost_usd = {o.get("cost", cap)}
 cost_pool = "{pool}"
-cost_pool_usd = {o.get("pool_usd", 500.0 if pool <= "sim2sim-20261104" or pool == "sim2sim-500" else 700.0 if pool <= "sim2sim-20261105" else 1000.0)}
+cost_pool_usd = {o.get("pool_usd", 500.0 if pool <= "sim2sim-20261104" or pool == "sim2sim-500" else 700.0 if pool <= "sim2sim-20261105" else 2000.0 if pool in ("sim2sim-20261116", "sim2sim-20261117") else 1000.0)}
 cost_ledger_dir = "experiments/cost-ledger"
 call_reserve_usd = 2.0
 max_output_tokens = 16384
 max_request_bytes = 12582912
 max_response_bytes = 1048576
 timeout_seconds = 300
-{f"budget_hold_seconds = {o['hold']}" + chr(10) if o.get("hold") else ""}"""
+{f"budget_hold_seconds = {o['hold']}" + chr(10) if o.get("hold") else ""}{f"checkpoint_wall_seconds = {o['checkpoint']}" + chr(10) if o.get("checkpoint") else ""}{f"provider_hold_seconds = {o['provider_hold']}" + chr(10) if o.get("provider_hold") else ""}"""
 
 
 for directory, (wave, pool, cap, runs) in WAVES.items():
@@ -417,11 +541,52 @@ CAMERA = [("wave11-20261106", "w11-tetra-spring-k"), ("wave11-20261106", "w11-te
 REPLICATES = {"rep-20261104": ("sim2sim-20261104", 2, FORCE[:3]), "rep-20261105": ("sim2sim-20261105", 2, FORCE[3:] + ANCHOR),
               "rep-20261106": ("sim2sim-20261106", 3, FORCE + ANCHOR),
               "rep-20261107": ("sim2sim-20261107", 2, CAMERA), "rep3-20261107": ("sim2sim-20261107", 3, CAMERA)}
+# 2026-11-16 (user: use the $2000 day fully, with repeats where needed): second replicates of the lighting-ablation pairs,
+# the box levels whose agents found the contents, the cloth color-cue levels and the touch-only hand levels.
+LIGHT = [("wave20-20261116", f"w20-{n}{s}") for n in ("spring-out", "tetra-spring", "cube-spring", "msd-spring-visible") for s in ("", "-lit")]
+LIGHT += [("wave22-20261116", f"w22-cloth-base{s}") for s in ("", "-lit")]
+FOUND = [("wave19-20261114", "w19-marble-heavy-hint"), ("wave19-20261114", "w19-marble-equal-hint"), ("wave18-20261113", "w18-cylinder")]
+CUES = [("wave22-20261116", f"w22-cloth-quadrants{s}") for s in ("", "-colored", "-diagonal-colors")]
+TOUCH = [("wave21-20261116", f"w21-{level.replace('_', '-')}") for level in HAND_LEVELS]
+REPLICATES["rep-20261116"] = ("sim2sim-20261116", 2, LIGHT + FOUND + CUES + TOUCH)
+# 2026-11-17 ($200/ET-day hard cap): 12 of the 2026-11-16 replicates hung at their first candidate-change evaluation on the
+# two nodes that each ran three strict jobs (six runs); redo the tetra and cube lighting pairs first, two jobs only.
+REPLICATES["rep-20261117"] = ("sim2sim-20261117", 2, [("wave20-20261116", f"w20-{n}{s}") for n in ("tetra-spring", "cube-spring") for s in ("", "-lit")]
+                                + [("wave21-20261116", f"w21-{n}") for n in ("hand-prism", "hand-prism-offset-com")])  # cheap (~$10/6 h): fill the day
+# 2026-11-18 ($200/day; the hand pair above still draws on pool sim2sim-20261117's last $39, so this pool is capped at $161):
+# complete the spring-out and msd lighting pairs and redo the hinted heavy-marble box (all lost to the node-packing hang).
+REPLICATES["rep-20261118"] = ("sim2sim-20261118", 2, [("wave20-20261116", "w20-spring-out"), ("wave20-20261116", "w20-msd-spring-visible-lit"),
+                                                     ("wave19-20261114", "w19-marble-heavy-hint"), ("wave19-20261114", "w19-marble-equal-hint"),
+                                                     ("wave21-20261116", "w21-hand-smooth-mesh")])  # last two fill the day under the same $161 pool
+POOL_USD = {"sim2sim-20261118": 161.0}
 for directory, (pool, n, originals) in REPLICATES.items():
     out = Path(__file__).parent / directory
     out.mkdir(exist_ok=True)
     for wave_dir, run_id in originals:
         wave, _, cap, runs = WAVES[wave_dir]
         env, factor, overrides = runs[run_id]
-        (out / f"{run_id}-r{n}.toml").write_text(config(wave, pool, cap, env, factor, {**overrides, "pool_usd": 700.0 if pool <= "sim2sim-20261106" else 1000.0}))
+        (out / f"{run_id}-r{n}.toml").write_text(config(wave, pool, cap, env, factor, {**overrides, "pool_usd": 700.0 if pool <= "sim2sim-20261106" else 2000.0 if pool == "sim2sim-20261116" else POOL_USD.get(pool, 200.0) if pool >= "sim2sim-20261117" else 1000.0}))
     print(directory, sorted(p.name for p in out.glob("*.toml")))
+
+# 2026-11-19 (user): Gemini 4 Neon and Hydrogen against the existing gpt-6-astra runs on five hard levels (cloth identification,
+# Panda spring weighing, touch-only hand shape, hidden box contents, latch force profile). Each config equals its astra original
+# except the model/inference route and the cost lines, so harness, task, observations, tools, wall budget and output-token
+# limit match. No 4 h checkpoint hold: each run gets its original's full wall budget. Per-run caps are a safety net at roughly
+# astra's largest extended spend ($120) at each model's price; the pool holds this batch to $200.
+HARD = [("wave22-20261116", "w22-cloth-holes"), ("wave11-20261106", "w11-tetra-spring-k"), ("wave21-20261116", "w21-hand-smooth-mesh"),
+        ("wave19-20261114", "w19-marble-heavy-hint"), ("wave20-20261116", "w20-latch-out")]
+# 2026-11-20 (user): Gemini spend is unlimited (key limits 200 RPM, 2M TPM, 100K RPD); compare fairly anyway (AGENTS.md).
+# Google's latency spiked (2 s to > 290 s for one tiny request) and killed hand-hydrogen-001 after four timeouts, so batch
+# gemini-20261120 adds provider_hold_seconds: a provider outage's failed attempts and retry backoff are held outside the run
+# (containers paused, clocks stopped); successful calls' latency counts as astra's did. Caps are accounting-only.
+for directory, pool, extra in (("gemini-20261119", "gemini-20261119", {}), ("gemini-20261120", "gemini-20261120", {"provider_hold": 14400})):
+    out = Path(__file__).parent / directory
+    out.mkdir(exist_ok=True)
+    for model, cap in ((("gemini-4-neon", 40.0), ("gemini-4-hydrogen", 20.0)) if not extra else (("gemini-4-neon", 1e6), ("gemini-4-hydrogen", 1e6))):
+        for wave_dir, run_id in HARD:
+            wave, _, _, runs = WAVES[wave_dir]
+            env, factor, overrides = runs[run_id]
+            overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": model, "cost": cap, "pool_usd": 200.0 if not extra else 1e6,
+                                                                                   "hold": 129600, **extra}
+            (out / f"{run_id}-{model.removeprefix('gemini-4-')}.toml").write_text(config(wave, pool, cap, env, factor, overrides))
+    print(out.name, sorted(p.name for p in out.glob("*.toml")))
