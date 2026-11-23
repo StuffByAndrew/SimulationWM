@@ -11,8 +11,10 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 
 from sim2sim.client import Client
@@ -39,6 +41,31 @@ COMPACT = """Your context is nearly full, so older turns will now be removed. Wr
 
 GUARD = """finish was not executed yet (%s of wall time remain). Before ending, list every aspect of your reconstruction that you have NOT validated by a direct comparison experiment between the reference and reconstruction worlds. If any remain, design and run those experiments and resubmit when the reconstruction improves. If none remain, call finish again in a later turn and it will be executed."""
 
+# Tasks whose submission is a predictor program (task["submission"]["kind"] == "predictor", e.g. the real-time die level) get
+# their own fixed texts; every scene-reconstruction condition keeps the texts above unchanged.
+SYSTEM_PREDICTOR = """You are an autonomous research agent working inside an isolated Linux sandbox. Your job is to study an object in a simulated world through the observations and interactions offered by the controller, build a model that predicts its behavior, and submit that model as a predictor program. The task statement, action contract and first observation follow in the first user message.
+
+Environment
+- You act only through function tools. `bash` runs shell commands in /workspace. python3 with mujoco, numpy, scipy and matplotlib is installed; there is no network. Files in /workspace and /tmp cannot be executed directly, so run scripts as `python3 file.py` or `bash file.sh`. Use code freely: analyze observations quantitatively, simulate your own models offscreen, and write and test your predictor.
+- The world runs continuously in real time, also while you think and while your code runs. Controller tools act on it directly; when the task offers a controller channel, programs you start with bash can act on the world and read its camera frames with low latency.
+- Any image a controller tool returns is also saved under /workspace/observations/ for analysis with code; only the most recent files are kept. `view_image` shows you any PNG or JPEG file, including renders you produce yourself.
+- Only recent turns and images stay in your context; older history is replaced by a summary. Keep a running notes file at /workspace/NOTES.md (hypotheses, experiments, measurements, and what is still unverified) and re-read it whenever you need it.
+
+How your work is evaluated
+- Only submitted predictors are evaluated, by hidden tests that run them on new throws as the task describes. You never see scores.
+- First versions of a predictor are almost always wrong in respects that were not directly tested. Treat every assumption in your predictor as a hypothesis until experiments in the world support it.
+
+How to work
+- Every tool result reports the remaining wall time; the session ends automatically at the deadline.
+- Work in cycles: form hypotheses, design experiments that discriminate between them, compare your predictor's answers with what actually happens, update it, and resubmit whenever it improves. A submission is a checkpoint, not an ending: keep testing after every submission.
+- `finish` is irreversible. Call it when you believe no experiment you can still design would improve your predictor. Work that was not submitted is lost, so keep your best current predictor submitted.
+- In each turn, write one or two sentences of public status describing what you are testing and why, alongside your tool calls. Use only the provided tools and your own sandbox."""
+
+COMPACT_PREDICTOR = """Your context is nearly full, so older turns will now be removed. Write a complete, self-contained summary of the work so far for your future self: the current predictor and where its files are, every experiment you ran with its measured outcome, what each result established, which aspects are still unverified, which submissions you made, and your plan. Reply with text only; do not call tools in this reply. Also update /workspace/NOTES.md in your next turn."""
+
+GUARD_PREDICTOR = """finish was not executed yet (%s of wall time remain). Before ending, list every assumption in your predictor that you have NOT checked against what actually happens in the world. If any remain, design and run those experiments and resubmit when the predictor improves. If none remain, call finish again in a later turn and it will be executed."""
+PROMPTS = {"scene": (SYSTEM, COMPACT, GUARD), "predictor": (SYSTEM_PREDICTOR, COMPACT_PREDICTOR, GUARD_PREDICTOR)}
+
 WORLD = {"type": "string", "enum": ["reference", "reconstruction"]}
 STRING = {"type": "string"}
 INTEGERS = lambda n: {"type": "array", "items": {"type": "integer"}, "minItems": n, "maxItems": n}
@@ -50,15 +77,18 @@ ACTIONS = {
     "release": ({"world": WORLD, "ticks": {"type": "integer", "minimum": 0}}, ["world"]),
     "arm_target": ({"world": WORLD, "joint_targets": NUMBERS(7), "gripper_width_m": {"type": "number"},
                     "ticks": {"type": "integer", "minimum": 1}}, ["world", "joint_targets", "gripper_width_m"]),
+    "hand_target": ({"world": WORLD, "actuator_targets": NUMBERS(20), "ticks": {"type": "integer", "minimum": 1}}, ["world", "actuator_targets"]),
     "camera": ({"world": WORLD, "pos": NUMBERS(3), "lookat": NUMBERS(3)}, ["world", "pos", "lookat"]),
     "reset": ({"world": WORLD}, ["world"]),
     "load_reconstruction": ({"project_dir": STRING, "entrypoint": STRING, "camera": STRING}, []),
     "submit": ({"project_dir": STRING}, []),
     "sam3d": ({"image": STRING, "mask": STRING, "seed": {"type": "integer", "minimum": 0}}, ["image", "mask"]),
     "sequence": ({"world": WORLD, "steps_file": STRING, "images": {"type": "string", "enum": ["last", "none"]}}, ["world", "steps_file"]),
+    "frames": ({"since": {"type": "integer"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, []),
+    "throw": ({"protocol": STRING}, ["protocol"]),
     "finish": ({}, []),
 }
-SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "camera", "reset")  # physical actions a sequence may contain
+SEQUENCE_OPS = ("observe", "grasp", "move", "release", "arm_target", "hand_target", "camera", "reset", "throw")  # physical actions a sequence may contain
 SEQUENCE_STEPS = 2000
 LOCAL = {
     "bash": ("Run a bash command in /workspace and return its exit status and combined stdout/stderr (long output is truncated in the middle). "
@@ -99,12 +129,15 @@ def tool_schemas(task):
         if op in ("inference", "progress"):
             continue
         properties, required = ACTIONS[op]
+        if "realtime" in task:  # a real-time task has only the reference world
+            properties, required = {k: v for k, v in properties.items() if k != "world"}, [k for k in required if k != "world"]
         contract = task["action_schema"][op]
         notes = {"load_reconstruction": " Packages project_dir (default /workspace/project) as a ZIP and loads it into the reconstruction world.",
                  "submit": " Packages project_dir (default /workspace/project) as a ZIP and submits it for hidden evaluation.",
                  "finish": " Irreversibly ends the session.",
                  "sam3d": " image and mask are PNG file paths in the sandbox; the mesh is saved as a PLY file under /workspace/sam3d/.",
-                 "sequence": " Write steps_file with your own code, then analyze the saved per-step outputs with code."}.get(op, "")
+                 "sequence": " Write steps_file with your own code, then analyze the saved per-step outputs with code.",
+                 "frames": " Images are saved as files (paths in the reply), not shown; use view_image or your code."}.get(op, "")
         tools.append({"name": op, "description": "Controller action. Contract: %s.%s" % (json.dumps(contract), notes),
                       "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}})
     return tools
@@ -126,9 +159,10 @@ class Agent:
         self.compact_tokens, self.keep_turns, self.max_images = compact_tokens, keep_turns, max_images
         self.reserve, self.output_chars, self.keep_image_files = reserve_seconds, output_chars, keep_image_files
         self.tools = tool_schemas(self.task)
+        self.system, self.compact_text, self.guard = PROMPTS[self.task["submission"].get("kind", "scene")]
         self.schemas = {tool["name"]: tool["parameters"] for tool in self.tools}
         self.turns, self.summary, self.saved, self.images = [], None, [], 0
-        self.turn, self.submissions, self.intercepted = 0, 0, None
+        self.turn, self.submissions, self.intercepted, self.channel_requests = 0, 0, None, 0
         self.project, self.submitted = self.workspace / "project", None
         public = {key: value for key, value in self.task.items() if key not in ("type", "protocol", "observation")}
         self.task_message = {"role": "user", "content": [text("Controller task and contract:\n" + json.dumps(public, indent=1))]
@@ -144,7 +178,7 @@ class Agent:
         self.client.progress(message[:1000], origin=origin)
 
     def messages(self):
-        head = [{"role": "system", "content": SYSTEM}, self.task_message]
+        head = [{"role": "system", "content": self.system}, self.task_message]
         if self.summary is not None:
             head.append({"role": "user", "content": "Summary of earlier work (older turns were removed from context):\n" + self.summary})
         return head + [message for turn in self.turns for message in turn]
@@ -192,7 +226,7 @@ class Agent:
         self.client.finish()
 
     def compact(self):
-        reply = self.infer(self.messages() + [{"role": "user", "content": COMPACT + " " + self.stamp()}])
+        reply = self.infer(self.messages() + [{"role": "user", "content": self.compact_text + " " + self.stamp()}])
         if reply.get("budget_stop"):
             return
         self.summary = reply["content"].strip() or "(No summary was produced; consult /workspace/NOTES.md.)"
@@ -246,7 +280,7 @@ class Agent:
                     response = self.client.load_reconstruction(project, entrypoint=args.get("entrypoint", "scene.xml"), camera=args.get("camera", "fixed"))
             else:
                 response = self.client.request(name, **args)
-            return self.render(response, args.get("world", "reconstruction")), False
+            return self.render(response, args.get("world", "reconstruction" if name == "load_reconstruction" else "reference")), False
         except (RuntimeError, ValueError, OSError) as exc:
             return [text("ERROR: %s" % exc)], False
 
@@ -257,36 +291,83 @@ class Agent:
         if left > max(900, .1 * self.budget) and self.intercepted in (None, self.turn):
             self.intercepted = self.turn
             self.note("Intercepted an early finish request with %s remaining." % clock(left))
-            return [text(GUARD % clock(left))], False
+            return [text(self.guard % clock(left))], False
         self.note("Model ended the session with %s remaining." % clock(left))
         self.client.finish()
         return [], True
 
-    def render(self, response, world):
-        response = dict(response)
-        observation = dict(response.pop("observation", None) or {})
-        parts, saved = [], []
+    def save_images(self, observation, world):
+        """Move every image of observation into a file; return [(key, path)]."""
+        saved = []
         for key in IMAGE_KEYS:
             if isinstance(observation.get(key), str):
                 self.images += 1
                 path = self.observations / ("%05d-%s-%s.png" % (self.images, world, key))
                 path.write_bytes(base64.b64decode(observation.pop(key), validate=True))
                 self.saved.append(path)
-                saved.append(str(path))
-                if key.endswith("rgb"):
-                    parts += [text("%s image (%s):" % (key, path)), {"type": "image_url", "image_url": {"url": "data:image/png;base64," +
-                                                                     base64.b64encode(path.read_bytes()).decode()}}]
+                saved.append((key, path))
         for path in self.saved[:-self.keep_image_files]:
             path.unlink()
         self.saved = self.saved[-self.keep_image_files:]
+        return saved
+
+    def render(self, response, world):
+        response = dict(response)
+        observation = dict(response.pop("observation", None) or {})
+        saved = self.save_images(observation, world)
+        parts = [part for key, path in saved if key.endswith("rgb") for part in
+                 (text("%s image (%s):" % (key, path)), {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()}})]
+        if "frames" in response:  # real-time frame batches: files only, never inline images
+            response["frames"] = [dict(frame, saved_images=[str(path) for _, path in self.save_images(frame, world)]) for frame in map(dict, response["frames"])]
         if observation:
             response["observation"] = observation
         if saved:
-            response["saved_images"] = saved
+            response["saved_images"] = [str(path) for _, path in saved]
         return [text(json.dumps(response, separators=(",", ":")))] + parts
+
+    def relay(self, server, stop):
+        """Controller channel (task code_channel): serve the bash command's programs one connection at a time, forwarding each
+        JSON request line that names an offered physical action to the controller and writing back its reply line."""
+        allowed = set(self.task["code_channel"]["ops"])
+        while not stop.is_set():
+            try:
+                connection, _ = server.accept()
+            except socket.timeout:
+                continue
+            with connection, connection.makefile("rwb") as stream:
+                for line in stream:
+                    try:
+                        request = json.loads(line)
+                        assert isinstance(request, dict) and request.get("op") in allowed, "op must be one of %s" % sorted(allowed)
+                        reply = self.client.request(request.pop("op"), **request)
+                    except (AssertionError, ValueError, RuntimeError, TypeError) as exc:
+                        reply = {"ok": False, "error": str(exc)}
+                    stream.write(json.dumps(reply, separators=(",", ":")).encode() + b"\n")
+                    stream.flush()
+                    self.channel_requests += 1
 
     def bash(self, command, timeout):
         timeout = max(1, min(timeout, 1800, int(self.left() - self.reserve)))
+        stop, relay = threading.Event(), None
+        if "code_channel" in self.task:
+            path = Path(self.task["code_channel"]["path"])
+            path.unlink(missing_ok=True)
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind(str(path))
+            server.listen(1)
+            server.settimeout(.2)
+            relay = threading.Thread(target=self.relay, args=(server, stop), daemon=True)
+            relay.start()
+        try:
+            return self.run_bash(command, timeout)
+        finally:
+            if relay is not None:
+                stop.set()
+                relay.join()
+                server.close()
+                path.unlink()
+
+    def run_bash(self, command, timeout):
         with tempfile.TemporaryFile() as output:
             process = subprocess.Popen(["bash", "-c", command], cwd=self.workspace, stdin=subprocess.DEVNULL, stdout=output,
                                        stderr=subprocess.STDOUT, start_new_session=True,

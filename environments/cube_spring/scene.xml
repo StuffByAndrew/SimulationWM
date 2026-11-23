@@ -1,0 +1,124 @@
+<mujoco model="cube_spring">
+  <!-- cube beside a 0.136 m wide, 0.09 m deep round hole in the table, and a massless linear spring
+       (stiffness 21.7 N/m, damping 0 N s/m) lying on its side: two round plates (0.13 m across) on a slide joint, frictionless against
+       the table and hole, with visual-only coil strands. In the hole the top plate rests flush with the table top. -->
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <default><geom friction=".7 .01 .001" condim="3" solref=".004 1"/></default>
+  <asset><mesh name="table_ring" vertex="-0.101413 0.080000 0.400000 -0.103750 0.097752 0.400000 -0.110602 0.114293 0.400000 -0.121502 0.128498 0.400000 -0.135707 0.139398 0.400000 -0.152248 0.146250 0.400000 -0.170000 0.148587 0.400000 -0.187752 0.146250 0.400000 -0.204293 0.139398 0.400000 -0.218498 0.128498 0.400000 -0.229398 0.114293 0.400000 -0.236250 0.097752 0.400000 -0.238587 0.080000 0.400000 -0.236250 0.062248 0.400000 -0.229398 0.045707 0.400000 -0.218498 0.031502 0.400000 -0.204293 0.020602 0.400000 -0.187752 0.013750 0.400000 -0.170000 0.011413 0.400000 -0.152248 0.013750 0.400000 -0.135707 0.020602 0.400000 -0.121502 0.031502 0.400000 -0.110602 0.045707 0.400000 -0.103750 0.062248 0.400000 -0.101413 0.080000 0.310000 -0.103750 0.097752 0.310000 -0.110602 0.114293 0.310000 -0.121502 0.128498 0.310000 -0.135707 0.139398 0.310000 -0.152248 0.146250 0.310000 -0.170000 0.148587 0.310000 -0.187752 0.146250 0.310000 -0.204293 0.139398 0.310000 -0.218498 0.128498 0.310000 -0.229398 0.114293 0.310000 -0.236250 0.097752 0.310000 -0.238587 0.080000 0.310000 -0.236250 0.062248 0.310000 -0.229398 0.045707 0.310000 -0.218498 0.031502 0.310000 -0.204293 0.020602 0.310000 -0.187752 0.013750 0.310000 -0.170000 0.011413 0.310000 -0.152248 0.013750 0.310000 -0.135707 0.020602 0.310000 -0.121502 0.031502 0.310000 -0.110602 0.045707 0.310000 -0.103750 0.062248 0.310000 -0.075000 0.080000 0.400000 -0.075000 0.105455 0.400000 -0.075000 0.134848 0.400000 -0.075000 0.175000 0.400000 -0.115152 0.175000 0.400000 -0.144545 0.175000 0.400000 -0.170000 0.175000 0.400000 -0.195455 0.175000 0.400000 -0.224848 0.175000 0.400000 -0.265000 0.175000 0.400000 -0.265000 0.134848 0.400000 -0.265000 0.105455 0.400000 -0.265000 0.080000 0.400000 -0.265000 0.054545 0.400000 -0.265000 0.025152 0.400000 -0.265000 -0.015000 0.400000 -0.224848 -0.015000 0.400000 -0.195455 -0.015000 0.400000 -0.170000 -0.015000 0.400000 -0.144545 -0.015000 0.400000 -0.115152 -0.015000 0.400000 -0.075000 -0.015000 0.400000 -0.075000 0.025152 0.400000 -0.075000 0.054545 0.400000 -0.075000 0.080000 0.310000 -0.075000 0.105455 0.310000 -0.075000 0.134848 0.310000 -0.075000 0.175000 0.310000 -0.115152 0.175000 0.310000 -0.144545 0.175000 0.310000 -0.170000 0.175000 0.310000 -0.195455 0.175000 0.310000 -0.224848 0.175000 0.310000 -0.265000 0.175000 0.310000 -0.265000 0.134848 0.310000 -0.265000 0.105455 0.310000 -0.265000 0.080000 0.310000 -0.265000 0.054545 0.310000 -0.265000 0.025152 0.310000 -0.265000 -0.015000 0.310000 -0.224848 -0.015000 0.310000 -0.195455 -0.015000 0.310000 -0.170000 -0.015000 0.310000 -0.144545 -0.015000 0.310000 -0.115152 -0.015000 0.310000 -0.075000 -0.015000 0.310000 -0.075000 0.025152 0.310000 -0.075000 0.054545 0.310000" face="0 48 49 0 49 1 24 73 72 24 25 73 0 1 24 1 25 24 48 72 49 49 72 73 1 49 50 1 50 2 25 74 73 25 26 74 1 2 25 2 26 25 49 73 50 50 73 74 2 50 51 2 51 3 26 75 74 26 27 75 2 3 26 3 27 26 50 74 51 51 74 75 3 51 52 3 52 4 27 76 75 27 28 76 3 4 27 4 28 27 51 75 52 52 75 76 4 52 53 4 53 5 28 77 76 28 29 77 4 5 28 5 29 28 52 76 53 53 76 77 5 53 54 5 54 6 29 78 77 29 30 78 5 6 29 6 30 29 53 77 54 54 77 78 6 54 55 6 55 7 30 79 78 30 31 79 6 7 30 7 31 30 54 78 55 55 78 79 7 55 56 7 56 8 31 80 79 31 32 80 7 8 31 8 32 31 55 79 56 56 79 80 8 56 57 8 57 9 32 81 80 32 33 81 8 9 32 9 33 32 56 80 57 57 80 81 9 57 58 9 58 10 33 82 81 33 34 82 9 10 33 10 34 33 57 81 58 58 81 82 10 58 59 10 59 11 34 83 82 34 35 83 10 11 34 11 35 34 58 82 59 59 82 83 11 59 60 11 60 12 35 84 83 35 36 84 11 12 35 12 36 35 59 83 60 60 83 84 12 60 61 12 61 13 36 85 84 36 37 85 12 13 36 13 37 36 60 84 61 61 84 85 13 61 62 13 62 14 37 86 85 37 38 86 13 14 37 14 38 37 61 85 62 62 85 86 14 62 63 14 63 15 38 87 86 38 39 87 14 15 38 15 39 38 62 86 63 63 86 87 15 63 64 15 64 16 39 88 87 39 40 88 15 16 39 16 40 39 63 87 64 64 87 88 16 64 65 16 65 17 40 89 88 40 41 89 16 17 40 17 41 40 64 88 65 65 88 89 17 65 66 17 66 18 41 90 89 41 42 90 17 18 41 18 42 41 65 89 66 66 89 90 18 66 67 18 67 19 42 91 90 42 43 91 18 19 42 19 43 42 66 90 67 67 90 91 19 67 68 19 68 20 43 92 91 43 44 92 19 20 43 20 44 43 67 91 68 68 91 92 20 68 69 20 69 21 44 93 92 44 45 93 20 21 44 21 45 44 68 92 69 69 92 93 21 69 70 21 70 22 45 94 93 45 46 94 21 22 45 22 46 45 69 93 70 70 93 94 22 70 71 22 71 23 46 95 94 46 47 95 22 23 46 23 47 46 70 94 71 71 94 95 23 71 48 23 48 0 47 72 95 47 24 72 23 0 47 0 24 47 71 95 48 48 95 72"/></asset>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76"/>
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.62 -0.78 0.98" xyaxes="0.764911198 0.644135746 -0.000000000 -0.324733441 0.385620962 0.863622988" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <body name="cube" pos="0 -0.15 0.42500000000000004">
+      <freejoint name="cube_free"/>
+      <geom name="cube" type="box" size="0.025 0.025 0.025" mass="0.0481" rgba=".26 .50 .80 1"/>
+    </body>
+    <body name="spring_base" pos="0.12 0.1 0.465" quat="0.7071067811865476 0 0.7071067811865476 0">
+      <freejoint name="spring_free"/>
+      <geom name="spring_base_plate" type="cylinder" size="0.065 0.004" mass="0.012" contype="4" conaffinity="1" rgba=".55 .58 .64 1"/>
+      <site name="bottom_0" pos="0.042000 0.000000 0.004" size=".002" group="3"/><site name="bottom_1" pos="0.000000 0.042000 0.004" size=".002" group="3"/><site name="bottom_2" pos="-0.042000 0.000000 0.004" size=".002" group="3"/><site name="bottom_3" pos="-0.000000 -0.042000 0.004" size=".002" group="3"/>
+      <geom name="spring_coil_core" type="cylinder" size="0.039 0.002" pos="0 0 0" mass="0" contype="0" conaffinity="0" group="3" rgba="0 0 0 0"/>
+      <body name="spring_top" pos="0 0 0.08561658986175114">
+        <joint name="spring" type="slide" axis="0 0 1" stiffness="21.7" springref="0.000000000" damping="0" range="-0.0756 .03"/>
+        <geom name="spring_top_plate" type="cylinder" size="0.065 0.004" mass="0.008" contype="4" conaffinity="1" rgba=".55 .58 .64 1"/>
+        <site name="top_0" pos="-0.041362 0.007293 -0.004" size=".002" group="3"/><site name="top_1" pos="-0.007293 -0.041362 -0.004" size=".002" group="3"/><site name="top_2" pos="0.041362 -0.007293 -0.004" size=".002" group="3"/><site name="top_3" pos="0.007293 0.041362 -0.004" size=".002" group="3"/>
+      </body>
+    </body>
+    <geom name="table_floor" type="box" pos="0.000000 -0.080000 0.305000" size="0.380000 0.340000 0.005000" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_left" type="box" pos="-0.322500 -0.080000 0.355000" size="0.057500 0.340000 0.045000" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_right" type="box" pos="0.152500 -0.080000 0.355000" size="0.227500 0.340000 0.045000" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_front" type="box" pos="-0.170000 -0.217500 0.355000" size="0.095000 0.202500 0.045000" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_back" type="box" pos="-0.170000 0.217500 0.355000" size="0.095000 0.042500 0.045000" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_00" type="box" pos="-0.067881 0.093444 0.355000" size="0.035 0.03 0.045" euler="0 0 0.130899694" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_01" type="box" pos="-0.074840 0.119416 0.355000" size="0.035 0.03 0.045" euler="0 0 0.392699082" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_02" type="box" pos="-0.088285 0.142702 0.355000" size="0.035 0.03 0.045" euler="0 0 0.654498469" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_03" type="box" pos="-0.107298 0.161715 0.355000" size="0.035 0.03 0.045" euler="0 0 0.916297857" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_04" type="box" pos="-0.130584 0.175160 0.355000" size="0.035 0.03 0.045" euler="0 0 1.178097245" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_05" type="box" pos="-0.156556 0.182119 0.355000" size="0.035 0.03 0.045" euler="0 0 1.439896633" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_06" type="box" pos="-0.183444 0.182119 0.355000" size="0.035 0.03 0.045" euler="0 0 1.701696021" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_07" type="box" pos="-0.209416 0.175160 0.355000" size="0.035 0.03 0.045" euler="0 0 1.963495408" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_08" type="box" pos="-0.232702 0.161715 0.355000" size="0.035 0.03 0.045" euler="0 0 2.225294796" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_09" type="box" pos="-0.251715 0.142702 0.355000" size="0.035 0.03 0.045" euler="0 0 2.487094184" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_10" type="box" pos="-0.265160 0.119416 0.355000" size="0.035 0.03 0.045" euler="0 0 2.748893572" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_11" type="box" pos="-0.272119 0.093444 0.355000" size="0.035 0.03 0.045" euler="0 0 3.010692960" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_12" type="box" pos="-0.272119 0.066556 0.355000" size="0.035 0.03 0.045" euler="0 0 3.272492347" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_13" type="box" pos="-0.265160 0.040584 0.355000" size="0.035 0.03 0.045" euler="0 0 3.534291735" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_14" type="box" pos="-0.251715 0.017298 0.355000" size="0.035 0.03 0.045" euler="0 0 3.796091123" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_15" type="box" pos="-0.232702 -0.001715 0.355000" size="0.035 0.03 0.045" euler="0 0 4.057890511" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_16" type="box" pos="-0.209416 -0.015160 0.355000" size="0.035 0.03 0.045" euler="0 0 4.319689899" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_17" type="box" pos="-0.183444 -0.022119 0.355000" size="0.035 0.03 0.045" euler="0 0 4.581489286" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_18" type="box" pos="-0.156556 -0.022119 0.355000" size="0.035 0.03 0.045" euler="0 0 4.843288674" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_19" type="box" pos="-0.130584 -0.015160 0.355000" size="0.035 0.03 0.045" euler="0 0 5.105088062" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_20" type="box" pos="-0.107298 -0.001715 0.355000" size="0.035 0.03 0.045" euler="0 0 5.366887450" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_21" type="box" pos="-0.088285 0.017298 0.355000" size="0.035 0.03 0.045" euler="0 0 5.628686838" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_22" type="box" pos="-0.074840 0.040584 0.355000" size="0.035 0.03 0.045" euler="0 0 5.890486225" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_23" type="box" pos="-0.067881 0.066556 0.355000" size="0.035 0.03 0.045" euler="0 0 6.152285613" group="3" rgba=".65 .52 .37 1" contype="2" conaffinity="3"/>
+    <geom name="table_ring_visual" type="mesh" mesh="table_ring" contype="0" conaffinity="0" rgba=".65 .52 .37 1"/>
+  </worldbody>
+  <tendon>
+    <spatial name="coil_0" width=".0035" rgba=".75 .76 .78 1"><site site="bottom_0"/><geom geom="spring_coil_core"/><site site="top_0"/></spatial><spatial name="coil_1" width=".0035" rgba=".75 .76 .78 1"><site site="bottom_1"/><geom geom="spring_coil_core"/><site site="top_1"/></spatial><spatial name="coil_2" width=".0035" rgba=".75 .76 .78 1"><site site="bottom_2"/><geom geom="spring_coil_core"/><site site="top_2"/></spatial><spatial name="coil_3" width=".0035" rgba=".75 .76 .78 1"><site site="bottom_3"/><geom geom="spring_coil_core"/><site site="top_3"/></spatial>
+  </tendon>
+  <contact>
+    <pair geom1="spring_base_plate" geom2="table_floor" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_left" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_right" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_front" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_back" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_00" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_01" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_02" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_03" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_04" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_05" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_06" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_07" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_08" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_09" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_10" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_11" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_12" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_13" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_14" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_15" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_16" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_17" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_18" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_19" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_20" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_21" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_22" condim="1" solref=".004 1"/>
+    <pair geom1="spring_base_plate" geom2="table_ring_23" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_floor" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_left" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_right" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_front" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_back" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_00" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_01" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_02" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_03" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_04" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_05" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_06" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_07" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_08" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_09" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_10" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_11" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_12" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_13" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_14" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_15" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_16" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_17" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_18" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_19" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_20" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_21" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_22" condim="1" solref=".004 1"/>
+    <pair geom1="spring_top_plate" geom2="table_ring_23" condim="1" solref=".004 1"/>
+  </contact>
+</mujoco>

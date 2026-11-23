@@ -17,6 +17,26 @@ Keep this list current: strike items when a log entry covers them.
   differs); compare new-prompt runs only with new-prompt baselines.
 - Run on home (hot storage, `--root experiments`); keep ≥10 GB free.
 
+## Wave 23 biased die (user, 2026-11-23): planned, not launched
+- [ ] Configs `experiments/configs/wave23-20261123/` (8 runs): {point grasp without wrench, Franka with joint efforts} ×
+  {25 frames/s baseline, 100 frames/s control} × {gemini-4-neon, gemini-4-hydrogen}.
+  - Every run: real time, RGB-D, movable camera, `sequence` + `channel` tools, die metric.
+  - 6 h wall with the 4 h checkpoint hold, `provider_hold_seconds` 14400, accounting-only caps, pool `gemini-20261123`.
+  - Single factors: the actuator (grasp vs franka at equal frame rate), and the frame rate (25 vs 100 at equal actuator).
+  - The 100 frames/s control keeps the throws, evaluation trials and baselines identical, so it tests whether the agent
+    adapts its modeling approach (e.g. a mechanics model from precise release estimates) to more precise observations.
+- [ ] Before launching:
+  - Merge the die-level worktree and load the image recorded in `experiments/images/trusted-image-die.json` (point
+    `SIM2SIM_TRUSTED_IMAGE_RECORD` at it, or promote it to `trusted-image.json`).
+  - Pack **one die run per strict job**. The controller's real-time physics thread, the agent (4 CPU) and, during
+    evaluation, the predictor container (4 CPU) all need CPUs at once.
+  - Use lab or netscratch storage (`audit_bytes` 32 GiB: every frame batch the agent's code reads is audited).
+- [ ] Review:
+  - Brier score vs experiment time against the uniform, empirical and mechanics baselines (`RUN/die-view.html`).
+  - Whether agents model the throw-dependent outcome distribution, use the controller channel, and report estimates.
+  - Latency and late-answer rates.
+  - Compare at matched wall minutes and tokens.
+
 ## Wave 16 tunnel levels (user, 2026-11-08): standing review rules
 - [ ] When the runs end or hold, review each automatically (audit progress notes, submitted models, `force_profile`):
   1. If an agent never probes or discovers that something is at the far end of the tunnel, rerun that condition with a
@@ -192,3 +212,55 @@ Keep this list current: strike items when a log entry covers them.
 - [x] Wave 19 (hinted marble boxes): `-001` is invalid (camera clipping). Of `-002`, heavy is valid (it inferred the ball) and equal is invalid (it carried the box around the camera). The equal rerun is `-003`, job `60555357`. Review holds as before: review holds under the same rule. After the runs, compare the
   CoM errors with wave 18 and with the solid-box baseline.
 - [ ] The wrist camera is exempt from the covered-lens rule. Design a rule before using it with sealed boxes.
+
+## Wave 20 (user, 2026-11-16): outside-start tunnels, point-grasp tetra/cube springs, 1D spring–mass(–damper), lighting ablation
+- [ ] Launch when the three level builders report back:
+  - tunnel_{spring,latch}_out: point grasp with wrench, RGBD, `sequence`, fixed camera.
+  - tetra/cube spring levels:
+    - point grasp without force, RGBD, movable camera, `sequence`;
+    - the prompt stresses identifying the inertial properties of the cluster or cube and states that the spring is ideal;
+    - give k in the spring + object levels, and the block mass in the + block levels.
+  - msd_{spring,damper}_{visible,hidden}: point grasp with wrench, RGBD, movable camera, `sequence`.
+  - All runs: 6 h visible budget with a 4 h wall checkpoint hold (new `checkpoint_wall_seconds`), plus the $44 hold.
+- [ ] **Lighting ablation (user):**
+  - The basic level of each family (tunnel_spring_out, tetra_spring, cube_spring, msd_spring_visible) gets a twin run
+    whose prompt also gives the ground-truth lighting: the exact `<light>`/`<headlight>` MJCF from the scene.
+  - Next report: does the given lighting reduce the time agents spend on lighting/appearance (share of wall time and
+    of experiments, from progress notes and actions), and does that time go to the physics instead (physics metrics at
+    matched time)? The user cares about physics, not appearance fitting.
+- [ ] After launch: build the dex-hand tactile levels (Shadow Hand, no vision, resets; 4 objects; com + chamfer).
+- [ ] **Cloth levels (user, 2026-11-16).** Being built in a worktree; merge when done.
+  - Levels:
+    - base square, uniform stiffness;
+    - quadrant stiffnesses with uniform colours;
+    - quadrant stiffnesses with quadrant colours;
+    - quadrant stiffnesses with colours split by the diagonals;
+    - an odd shape with random holes and cuts;
+    - a centre circle hole with a stiff rim;
+    - a centre circle hole with a soft rim.
+  - Ground truth: a simple triangle mesh, modelled on "RoboSim studio" default cloths.
+  - Evaluation:
+    - a local stiffness map with the cloth laid flat;
+    - drops onto a bar from random angles;
+    - a drop with the centre over a cone;
+    - videos of every evaluation.
+  - Conditions: RGBD, `sequence`, movable camera, point grasp with wrench, no Panda.
+- [ ] **Dex-hand levels.** Being built in a separate worktree (Shadow Hand fixture); merge when done.
+- [ ] **Budget (user, 2026-11-16):** $2000 for 2026-11-16 only. From 2026-11-17, a HARD cap of $200 per ET day across all pools; spend after midnight ET from older pools counts toward the new day.
+- [ ] Controller hang:
+  - The controller waited 13 h on a crashed inference child (`ModuleNotFoundError`) and the wall watchdog did not end
+    the run. Make `InferenceBroker.call` fail loudly when the child exits without replying, and check why `WallClock`
+    did not fire.
+  - Launches now freeze `src/` per job, which removes this trigger.
+- [ ] **Node-packing hang (2026-11-16):** with three strict jobs (six runs) on one node, every run hung at its first
+  candidate-change evaluation (pause plus evaluator step).
+  - Find the cause: the shared per-UID nproc limit, or rootless Podman contention.
+  - Until then, keep at most two strict jobs per node.
+  - Make the controller fail loudly on a stalled pause or step launch.
+  - Redo the lost replicates as the $200/day budget allows: cylinder, marble heavy and equal hint, spring-out,
+    msd-spring-visible-lit, hand prism, offset-com and smooth.
+- [ ] **Image-load hang (2026-11-17/18):** strict jobs on sapphire nodes holy8a24208 and holy8a26105 hung inside
+  `podman-job.sh`/`load_trusted_image` for 10–12 h.
+  - Add timeouts to the podman init and load (fail fast so Slurm frees the node), and log each step.
+  - Find out what state on a node causes it (stale pause process or lock?).
+

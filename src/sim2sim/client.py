@@ -3,6 +3,7 @@ import base64
 import io
 import json
 from pathlib import Path
+import socket
 import sys
 import zipfile
 
@@ -33,6 +34,9 @@ class Client:
     def arm_target(self, joint_targets, gripper_width_m, ticks=20, *, world="reference"):
         return self.request("arm_target", joint_targets=list(joint_targets),
                             gripper_width_m=gripper_width_m, ticks=ticks, world=world)["observation"]
+
+    def hand_target(self, actuator_targets, ticks=20, *, world="reference"):
+        return self.request("hand_target", actuator_targets=list(actuator_targets), ticks=ticks, world=world)["observation"]
 
     def grasp(self, pixel, *, world="reference"):
         return self.request("grasp", pixel=list(pixel), world=world)["observation"]
@@ -80,3 +84,27 @@ class Client:
 
     def finish(self):
         return self.request("finish")
+
+
+class Channel:
+    """Agent code's controller channel (task code_channel): the sandbox harness relays physical actions while a bash command
+    runs. request() returns the controller's reply (base64 images included) and raises on an unsuccessful one."""
+    def __init__(self, path="/tmp/sim2sim-controller.sock"):
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.connect(path)
+        self.stream = self.socket.makefile("rwb")
+
+    def request(self, op, **kwargs):
+        self.stream.write(json.dumps({"op": op, **kwargs}, separators=(",", ":")).encode() + b"\n")
+        self.stream.flush()
+        line = self.stream.readline()
+        if not line:
+            raise EOFError("Controller channel closed")
+        response = json.loads(line)
+        if not response.get("ok"):
+            raise RuntimeError(response.get("error", "Host operation failed"))
+        return response
+
+    def close(self):
+        self.stream.close()
+        self.socket.close()

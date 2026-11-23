@@ -390,3 +390,70 @@ class MovableCameraOCITests(unittest.TestCase):
         cameras = [event for event in events if event.get("op") == "camera"]
         self.assertEqual(len(cameras), 2)
         self.assertTrue(all(event.get("ok", True) for event in events))
+
+
+DIE_AGENT = r'''
+import base64, io, json, time, zipfile
+from sim2sim.client import Client
+client = Client()
+task = client.task
+assert task["submission"]["kind"] == "predictor" and "throw" in task["actions"] and "load_reconstruction" not in task["actions"]
+thrown = client.request("throw", protocol="spin")["observation"]
+time.sleep(.3)
+frames = client.request("frames", since=thrown["frame"] - 1, limit=10)["frames"]
+assert all(abs(f["time"] - .04 * i) < 1e-9 for i, f in enumerate(frames)) and len(frames) >= 4, [f["time"] for f in frames]
+PREDICT = """import json, os, socket, sys
+from pathlib import Path
+hits = [str(p) for root in ("/opt", "/workspace", "/tmp", "/home", "/usr/local", "/etc", "/srv", "/mnt", "/var") if Path(root).is_dir()
+        for p in Path(root).rglob("*") if p.name in ("manifest.toml", "scene.xml", "trials.json") or "die_slug" in p.name]
+try:
+    socket.create_connection(("1.1.1.1", 53), timeout=.5); network = True
+except OSError:
+    network = False
+print(json.dumps({"isolation": {"uid": os.getuid(), "hits": hits, "network": network, "controller": Path("/tmp/sim2sim-controller.sock").exists(),
+                                "cwd": os.getcwd(), "env": sorted(os.environ)}}), file=sys.stderr, flush=True)
+for line in sys.stdin:
+    m = json.loads(line)
+    if m["type"] == "start":
+        faces = m["faces"]
+        print(json.dumps({"type": "ready"}), flush=True)
+    elif m["type"] == "frame" and m["index"] == 0:
+        assert "rgb" in m and "depth" in m
+        print(json.dumps({"type": "prediction", "trial": m["trial"], "probabilities": [1 / faces] * faces}), flush=True)
+    elif m["type"] == "end":
+        break
+"""
+bundle = io.BytesIO()
+with zipfile.ZipFile(bundle, "w") as archive:
+    archive.writestr("predict.py", PREDICT)
+assert client.request("submit", project_b64=base64.b64encode(bundle.getvalue()).decode())["status"] == "ok"
+client.finish()
+'''
+
+
+@unittest.skipUnless(os.environ.get("SIM2SIM_OCI_TEST") == "1", "requires explicit rootless OCI integration opt-in")
+class DieRealtimeOCITests(unittest.TestCase):
+    """A real-time die run: the agent throws and reads frames, and its predictor runs in its own isolated container."""
+    def test_predictor_runs_isolated_on_real_time_streams(self):
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/die-oci" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        scene = root / "environments/die_biased/scene.xml"
+        config = {"source": {"scene": str(scene)},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": IMAGE, "command": ["python", "-c", DIE_AGENT],
+                              "memory": "1g", "cpus": 1, "pids": 64},
+                  "output_dir": str(output), "record_video": False, "budget": {"wall_only": True, "wall_seconds": 900},
+                  "simulation": {"camera": "fixed", "width": 160, "height": 120, "rgb": True, "depth": True, "calibration": True,
+                                 "realtime": True, "frame_rate": 25},
+                  "evaluation": {"source_dir": str(scene.parent), "metrics": ["die"], "die": {"trials_per_protocol": 2, "empirical_throws": 3}}}
+        result = run(config)
+        self.assertEqual((result["status"], result["submissions"]), ("finished", 1))
+        report = json.loads((output / "version-001/evaluation.json").read_text())
+        self.assertEqual((report["status"], report["predictor_ready"], report["scores"]["die"]["on_time"]), ("ok", True, 8), report)
+        self.assertAlmostEqual(report["scores"]["die"]["brier"], 11 / 12)
+        self.assertEqual(report["scores"]["die"]["baselines"]["oracle"]["brier"], 0)
+        isolation = json.loads([line for line in (output / "version-001/predictor.stderr.log").read_text().splitlines() if "isolation" in line][0])["isolation"]
+        print("predictor isolation: " + json.dumps(isolation))
+        self.assertEqual((isolation["uid"], isolation["hits"], isolation["network"], isolation["controller"]), (65532, [], False, False))
+        self.assertTrue((output / "die-view.html").is_file())
+        self.assertIsNone(json.loads((output / "termination.json").read_text())["realtime_world"]["error"])

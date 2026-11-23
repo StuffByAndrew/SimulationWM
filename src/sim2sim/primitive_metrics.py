@@ -1,13 +1,17 @@
-"""Private reset-frame metrics for unions of uniformly dense MuJoCo primitives."""
+"""Private reset-frame metrics for unions of uniformly dense MuJoCo primitives and convex meshes.
+
+A mesh geom counts as the convex hull of its compiled vertices, exactly the shape MuJoCo collides; its `size` here is
+that scipy ConvexHull (geom-frame vertices)."""
 from __future__ import annotations
 import math
 from pathlib import Path
 import numpy as np
 
-_TYPES = {2: 'sphere', 3: 'capsule', 4: 'ellipsoid', 5: 'cylinder', 6: 'box'}
+_TYPES = {2: 'sphere', 3: 'capsule', 4: 'ellipsoid', 5: 'cylinder', 6: 'box', 7: 'mesh'}
 
 
 def volume(kind, size):
+    if kind == 'mesh': return size.volume
     s = np.asarray(size)
     if kind == 'sphere': return 4*math.pi*s[0]**3/3
     if kind == 'ellipsoid': return 4*math.pi*np.prod(s[:3])/3
@@ -18,6 +22,7 @@ def volume(kind, size):
 
 
 def surface_area(kind, size):
+    if kind == 'mesh': return size.area
     a,b,c = size
     if kind == 'sphere': return 4*math.pi*a*a
     if kind == 'box': return 8*(a*b+a*c+b*c)
@@ -38,6 +43,12 @@ def _sphere(rng, n):
 
 def sample_surface(kind, size, n, rng):
     """Uniform-area local surface samples (ellipsoid uses Jacobian rejection)."""
+    if kind == 'mesh':
+        triangles=size.points[size.simplices]
+        area=np.linalg.norm(np.cross(triangles[:,1]-triangles[:,0],triangles[:,2]-triangles[:,0]),axis=1)
+        t=triangles[rng.choice(len(triangles),size=n,p=area/area.sum())]
+        u,v=rng.random((2,n,1)); flip=(u+v)>1; u,v=np.where(flip,1-u,u),np.where(flip,1-v,v)
+        return t[:,0]+u*(t[:,1]-t[:,0])+v*(t[:,2]-t[:,0])
     s = np.asarray(size,dtype=float)
     if kind == 'sphere': return _sphere(rng,n)*s[0]
     if kind == 'ellipsoid':
@@ -75,6 +86,7 @@ def sample_surface(kind, size, n, rng):
 def _inside(points, primitive):
     p=(points-primitive['pos']) @ primitive['rotation']
     s=primitive['size']; kind=primitive['kind']; eps=1e-9
+    if kind=='mesh': return np.all(p@s.equations[:,:3].T+s.equations[:,3]<-eps,axis=1)
     if kind=='sphere': return np.sum(p*p,axis=1)<(s[0]-eps)**2
     if kind=='ellipsoid': return np.sum((p/s)**2,axis=1)<1-eps
     if kind=='box': return np.all(np.abs(p)<s-eps,axis=1)
@@ -109,10 +121,12 @@ def exposed_surface(primitives, samples=2048, seed=0):
 
 
 def _robot_bodies(sim):
-    """Body ids belonging to the public Panda fixture, including its fingers."""
+    """Body ids belonging to the public robot fixture subtree (Panda arm and fingers, or Shadow hand and forearm)."""
     import mujoco
-    base=mujoco.mj_name2id(sim._model,mujoco.mjtObj.mjOBJ_BODY,'link0')
-    if base<0: raise ValueError('Panda fixture is missing link0')
+    from .robots import ROBOTS
+    root=ROBOTS[sim.robot][1]
+    base=mujoco.mj_name2id(sim._model,mujoco.mjtObj.mjOBJ_BODY,root)
+    if base<0: raise ValueError(f'{sim.robot} fixture is missing {root}')
     ids=set()
     for body in range(1,sim._model.nbody):
         parent=body
@@ -138,12 +152,17 @@ def _primitives(sim, *, geom_names=None, exclude_robot=False):
         if selected is not None and name not in selected: continue
         found.add(name)
         if kind is None: raise ValueError(f'unsupported object geom {name}')
-        primitives.append(dict(id=i,name=name,kind=kind,size=sim._model.geom_size[i].copy(),
+        if kind=='mesh':
+            from scipy.spatial import ConvexHull
+            mesh=int(sim._model.geom_dataid[i]);start=int(sim._model.mesh_vertadr[mesh])
+            size=ConvexHull(sim._model.mesh_vert[start:start+int(sim._model.mesh_vertnum[mesh])].astype(float))
+        else: size=sim._model.geom_size[i].copy()
+        primitives.append(dict(id=i,name=name,kind=kind,size=size,extent=sim._model.geom_size[i].copy(),
             pos=sim._data.geom_xpos[i].copy(),rotation=sim._data.geom_xmat[i].reshape(3,3).copy()))
     if selected is not None and found!=selected:
         raise ValueError('missing target object geom: '+', '.join(sorted(selected-found)))
     if not primitives: raise ValueError('no object primitives')
-    return sorted(primitives,key=lambda p: (p['kind'],*np.round(p['size'],12),*np.round(p['pos'],12),*np.round(p['rotation'].ravel(),12)))
+    return sorted(primitives,key=lambda p: (p['kind'],*np.round(p['extent'],12),*np.round(p['pos'],12),*np.round(p['rotation'].ravel(),12)))
 
 
 def _densities(scene_path, sim, primitives):

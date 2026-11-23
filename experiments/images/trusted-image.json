@@ -1,14 +1,14 @@
 {
-  "image_id": "cb84098cc84e6b65b1b9c0cc9e50fb9d54d3eb56ab6127fc44fe307b5e9f883d",
-  "archive": "experiments/images/sim2sim-cb84098cc84e.tar",
-  "archive_sha256": "1c63df662603c8f7f467f1b7741d667bfbe585695817e74168369e69988ef6f5",
-  "archive_bytes": 953050112,
-  "built_job": "60554519",
+  "image_id": "964c615842a1d1116affa326c93187e4d0fafe8026509ff0b633d78e0a1ae4a3",
+  "archive": "/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-images/sim2sim-964c615842a1.tar",
+  "archive_sha256": "df4d5cdf16624eb0e344d4864829b2e806ba8b7b5d3fb8c6aebaf6488b350ed9",
+  "archive_bytes": 949600256,
+  "built_job": "61059506",
   "node": "holy8a24102.rc.fas.harvard.edu",
-  "built_at_utc": "2026-11-14T18:22:31.688171+00:00",
+  "built_at_utc": "2026-11-16T09:21:26.599680+00:00",
   "containerfile": "Containerfile",
   "containerfile_sha256": "e10a07c796daeff89ad2dd515614da3981ed1f3236146766e056e3756cdacf81",
-  "git_head": "2a078c7ea0b44498a20ebe75129b48e586cc3f22",
+  "git_head": "f385a5d70784f1e2db1cacfa9bca8505cb31dc43",
   "inspection": {
     "forbidden_hits": [],
     "env_names": [

@@ -28,6 +28,8 @@ Every request has an `op` string:
 | `release` | optional `ticks` (default 0) | Disable the grasp, then advance physics. |
 | `reset` | none | Restore initial physical state and release the grasp. |
 | `camera` | `pos: [x, y, z]`, `lookat: [x, y, z]` (only with `simulation.movable_camera = true`) | Re-aim the observation camera (up = +z) without advancing time. Both points within ±4 m, at least 0.05 m apart, and `pos` at least the near-plane frustum reach (`1.5 · znear · extent · corner factor`) from every surface, so the near clip plane can never cut a wall; a camera inside a geom or a small closed cavity is rejected too. |
+| `frames` | optional `since`, `limit` (only with `simulation.realtime`) | Kept camera frames newer than `since`; see [real-time world](#real-time-world-simulationrealtime). |
+| `throw` | `protocol` (only with a real-time `[launcher]`) | Reset, then launch the body with a public protocol's perturbed release state. |
 | `submit` | `project_b64` | Submit a base64 ZIP containing `scene.xml` and local assets. |
 | `inference` | `messages`, optional `tools` | Request inference from the configured host broker. |
 | `finish` | none | End the run. |
@@ -36,7 +38,9 @@ Pixel origin is the image's top left, with coordinates inside the image. An
 occluded object cannot be grasped through the visible surface. Only one grasp
 exists at a time; release it before grasping again. The point constraint supplies
 force without an orientation target, so off-center pulling can rotate a body.
-Ray hits and body identity stay private.
+A cloth (any MuJoCo flex, from `flexcomp` or `<deformable><flex>`) is grasped at
+the vertex of the hit flex nearest the ray hit, held at the hit point's offset;
+the wrench then reports that vertex's pull. Ray hits and body identity stay private.
 
 Ticks must be nonnegative integers for `observe` and `release`, and positive for
 `move`. Move defaults to the configured duration (runtime default 20). The core
@@ -129,7 +133,7 @@ For `rlimit` and `slurm_step`, `pids` is a hard `RLIMIT_NPROC` set by `prlimit`
 for threads and processes sharing the fixed nonroot subordinate real UID across
 all containers on the node; this may cause shared-slot starvation. Optional
 `[sandbox.worker]` keys bound the evaluator and candidate worker separately.
-Panda runs see the public robot fixture read-only at `/opt/public/robot`.
+Robot runs (Panda or Shadow hand) see the public robot fixture read-only at `/opt/public/robot`.
 
 Optional agent tools (`[tools] segmentation = true`, `planning = true`; both
 default false; strict OCI only) are real ablations. An enabled tool is staged
@@ -141,7 +145,7 @@ pinned weights sha256 `6dbb9052…6c2f`) needs the tools image, whose label the
 runtime checks before launch; `planning` (IK, interpolation, collision-checked
 straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `sequence` (no files) adds a `sequence` action that the
 sandbox harness executes itself: the agent's code writes a JSON array of at most 2000 physical action objects
-(`observe`, `grasp`, `move`, `release`, `arm_target`, `camera`, `reset`, as offered, without `world`), the harness
+(`observe`, `grasp`, `move`, `release`, `arm_target`, `hand_target`, `camera`, `reset`, as offered, without `world`), the harness
 sends them in order to one world as ordinary controller actions (each charged and audited as usual), stops at the
 first rejected step, saves every step's non-image observation fields to `/workspace/sequences/NNNN.json` and returns
 the final step's images (or none). The controller never receives a `sequence` request.
@@ -165,7 +169,7 @@ rgb = true
 depth = false
 calibration = true
 wrench = false         # optional 6-axis grasp-point reading
-tactile = false        # optional Panda finger-pad normal forces (robot = "panda" only)
+tactile = false        # optional robot taxel normal forces (robot = "panda" or "shadow_hand" only)
 default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # timestep = 0.002      # optional override; otherwise scene timestep
 # graspable_bodies = ["block_red", "block_blue"] # otherwise source manifest/auto discovery
@@ -403,6 +407,48 @@ max_request_bytes = 12582912
 timeout_seconds = 300
 ```
 
+`api = "gemini"` (default `"responses"`, the gateway above) sends the same
+validated transcript, including labelled tool turns, to Google's native
+`generateContent`, so both APIs see identical conversations. The endpoint must
+be `.../v1beta/models/<model>:generateContent`, and the key travels in
+`x-goog-api-key`. No `metadata` or `provider` is allowed. The reasoning effort
+becomes `thinkingConfig.thinkingLevel`, and a summary setting becomes
+`includeThoughts` (thought parts are provider summaries). Schemas go as
+`parametersJsonSchema`. The broker requires `modelVersion == model`.
+
+Usage maps to the gateway's fields:
+
+- `promptTokens` = prompt minus cached;
+- `cacheReadTokens` = cached;
+- `completionTokens` = candidates plus thoughts;
+- `cacheWriteTokens` = 0.
+
+Google returns no cost, so the host prices these counts at the required
+`price_usd_per_mtok = { input, cached_input, output }` list prices. Any API
+retries HTTP 429/500/503/504 host-side within the call's deadline.
+
+Provider outages are a separate failure class, `ProviderUnavailable`: a call that hits the provider's own timeout, still gets
+HTTP 429/5xx after those retries, or fails in transport. With `provider_hold_seconds = N` the controller holds the outage
+outside the run:
+
+- The failed attempt's time is credited back to both clocks.
+- The backoff (15 s, doubling to at most 300 s) runs with the containers paused and the clocks stopped.
+- The identical request is then retried. Each hold is audited as `provider_hold`.
+- After N held seconds, outages reach the agent as ordinary failures again.
+
+A successful call's latency always counts as run time.
+
+```toml
+[inference]
+api = "gemini"
+endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-neon:generateContent"
+model = "gemini-4-neon"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+api_key_env = "GEMINI_API_KEY"
+price_usd_per_mtok = { input = 3.0, cached_input = 0.15, output = 15.0 }
+```
+
 `Client.progress(text, origin="agent")` emits a concise public note, maximum
 4096 characters. `origin` is `model`, `adapter` or `agent`; the host always records
 the sender as `source="agent"`. Actual provider summaries are host-recorded as
@@ -527,6 +573,38 @@ include `robot/panda.xml` once in root `scene.xml`, and set its compiler mesh
 directory to `robot/assets`. The evaluator verifies the fixture bytes before
 scoring. Source object XML and private manifests are not copied to that path.
 
+## Opt-in Shadow hand protocol
+
+With `[simulation] robot = "shadow_hand"` the scene includes the public fixture `robot/shadow_hand.xml` (MuJoCo
+Menagerie Shadow Hand E3M5, right hand, unchanged except for its compiler line; see `robot/IMPORT.md`). The forearm is
+welded at the world origin with the palm facing +z and the fingers along +x. The task offers `hand_target` in place of
+`grasp`, `move` and `release` (and never `arm_target`). Send the 20 position-actuator targets in fixture order
+`rh_A_WRJ2, rh_A_WRJ1, rh_A_THJ5 … rh_A_THJ1, rh_A_FFJ4, rh_A_FFJ3, rh_A_FFJ0, rh_A_MFJ4 …, rh_A_RFJ4 …, rh_A_LFJ5,
+rh_A_LFJ4, rh_A_LFJ3, rh_A_LFJ0` (each within its `ctrlrange`; a coupled `*J0` target is the sum of that finger's J1
+and J2 angles) and a positive tick duration:
+
+```json
+{"op":"hand_target","actuator_targets":[0,0,0.3,0.4,0,0,0,0,0.25,0.3,0,0.25,0.3,0,0.25,0.3,0,0,0.25,0.3],"ticks":100}
+```
+
+The host interpolates the targets linearly from the current ones over the ticks, rejects out-of-range targets and
+charges every executed tick across both worlds. `reset` restores the home pose (all joints 0 except J3 = 0.25 and
+J2 = J1 = 0.15 rad on the four fingers, THJ5 = 0.3 and THJ4 = 0.4 rad, with matching targets) and the scene's initial
+object state, and never refunds ticks. `Client.hand_target(actuator_targets, ticks, world=...)` wraps the action.
+
+`observation.proprioception` holds `joint_positions_rad[24]` and `joint_velocities_rad_s[24]` in qpos order
+(`rh_WRJ2, rh_WRJ1, rh_FFJ4 … rh_FFJ1, rh_MFJ4 …, rh_RFJ4 …, rh_LFJ5 … rh_LFJ1, rh_THJ5 … rh_THJ1`) and
+`actuator_effort_nm[20]` in action order (absent with `effort = false`). With `tactile = true`, `observation.tactile`
+has `thumb`, `first`, `middle`, `ring`, `little` and `palm`, each with `pad_normal_force_n` (a rows × columns grid) and
+`total_normal_force_n` (all contacts on that body), plus `unit` and `layout`. A fingertip grid is 3 × 3 over the
+palmar side (body y ≤ 1 mm) of the distal phalanx: body x −9.5…9.5 mm in columns of increasing x, body z 34…4 mm in rows,
+distal first. The palm grid is 4 × 3 over the palmar face of `rh_palm` (body y ≤ −4 mm): z 96…−12 mm in rows, distal
+first, x −42…44 mm in columns. Normal contact force is binned by contact position in the body frame; like the Panda
+taxels it counts any contact on the body, and contact positions and identities are never exposed. Hand scenes expose no
+images, calibration, wrench or point-grasp state. Candidate projects copy `robot/` unchanged, include
+`robot/shadow_hand.xml` once and set `<compiler angle="radian" autolimits="true" meshdir="robot/assets"/>`; object meshes
+are written inline (`<mesh vertex="..."/>`, collided as the convex hull of the vertices).
+
 ## Optional Panda wrist camera
 
 `simulation.wrist_camera = "wrist"` enables a second camera fixed directly to
@@ -560,3 +638,90 @@ termination), and `termination.json` lists `holds` and `held_seconds`. Every inf
 `deadline_unix`, which the sandbox harness adopts (never shown to the model), so the agent's remaining wall time is
 unaffected by a hold. A resumed run is therefore the same run it would have been with the higher cap from the start;
 the agent sees the full `wall_seconds` budget from its first message. Call/token caps and missing accounting never hold.
+
+## Real-time world (`simulation.realtime`)
+
+`[simulation] realtime = true` with an integer `frame_rate` (frames per simulated second) is a generic environment setting
+for any level and either embodiment (point grasp or robot). The default `false` leaves every lock-step level unchanged.
+It requires `budget.wall_only` and strict OCI. Resolution and modalities are the usual `width`, `height`, `rgb`, `depth`
+and `calibration` settings. `src/sim2sim/realtime.py` implements it.
+
+- **Clock.** A host thread advances the reference world at one simulated second per wall-clock second (`RealtimeWorld`).
+  It keeps running while the agent reasons, while its code runs and between requests. The agent cannot pause it, slow it,
+  step it, or save and restore it. There is no reconstruction world and no `load_reconstruction`. Host-side holds outside
+  the run (budget and provider holds, private evaluation) pause the world with the run clocks.
+- **Actions.** Agent actions take effect in arrival order at the next physics tick boundary. A timed action
+  (`move`, `arm_target`, `hand_target`; `ticks` is its duration) occupies its ticks, and later actions wait for it.
+  Chained actions such as `move` then `release` therefore take effect back to back, whatever the transport latency.
+  Each reply arrives when its action takes effect. `observe` and `release` accept no ticks.
+- **Frames.** Camera frames exist only on a fixed grid: every 1/`frame_rate` simulated seconds since the latest reset
+  (frame 0 is the reset itself). Every image the agent receives is one of these frames. A reply carries the first frame
+  captured at or after its action took effect.
+  - Observations add `frame` (global index), `episode` (resets and launches so far) and `time` (since the episode began).
+  - `frames` (`since`, `limit` 1–100, default 25) returns kept frames newer than `since`, oldest first. It waits up to
+    1 s for the next frame. The latest 20 simulated seconds are kept.
+  - Frames are rendered on request from the state recorded at the frame's tick, in the controller thread, with a second
+    copy of the scene. MuJoCo rendering is bound to its context's thread, so the physics thread never renders.
+- **Privacy.** Replies contain only the usual public observation fields; states stay private.
+- **Audit.** Each action's state when it took effect (`applied` checkpoint) and each frame it returns are audited, and
+  every wire is kept. Per-tick checkpoints are not recorded. `termination.json` adds `realtime_world`: total ticks,
+  frames, launches, the largest lag behind the wall clock in ticks, and any physics-thread error. A physics-thread error
+  ends the run.
+- **Determinism.** A trajectory is fixed by its complete initial state and the recorded application tick of every action.
+
+**Launcher (optional, `src/sim2sim/launcher.py`).** A private manifest `[launcher]` table names one free `body`, a `seed`,
+a `rest` pose and `perturbation` sizes, plus `[[launcher.protocols]]`: each has a `name` and a nominal release
+`position`, `quat` (wxyz), `velocity` (of the body-frame origin) and `angular_velocity` (world axes).
+
+- With a launcher, `reset` restores a perturbed rest pose, and the `throw` action (`protocol`) resets the world and
+  releases the body with the protocol's perturbed state.
+- Launch k of stream s always draws `default_rng([seed, s, k])`. Stream 0 is the agent's session (k counts its resets and
+  throws), 1 is evaluation trials, 2 the empirical baseline and 3 measurement noise.
+- Every launch first resets the whole simulation (zero velocities and solver warm start, robot home, grasp released), so
+  each trajectory is fixed by protocol, stream, index and later actions.
+- The task lists the protocol names and nominal states (`launcher_protocols`). The seed and perturbation sizes stay
+  private.
+- Without a launcher, `reset` restores the scene's initial state and there is no `throw`. A `[launcher]` requires
+  `realtime`.
+
+## Controller channel (`[tools] channel`)
+
+The sandbox harness relays the controller to the agent's own programs, so code can act on a live world and read frames
+with low latency.
+
+- **When.** While a `bash` command runs, the harness serves the Unix socket `task.code_channel.path`
+  (`/tmp/sim2sim-controller.sock`), one connection at a time.
+- **Protocol.** Each request line is a controller action object; the reply line is the controller's reply, including
+  base64 images.
+- **Allowed operations.** Only the physical actions the task offers: `observe`, `frames`, `grasp`, `move`, `release`,
+  `arm_target`, `hand_target`, `camera`, `reset` and `throw`. Submit, inference, progress, finish and sequence are refused.
+- **Client.** `from sim2sim.client import Channel; Channel().request("frames", since=-1)`.
+- **Accounting.** The requests pass through the normal controller, so they are audited and charged as usual.
+
+Without `[tools] channel` the socket never exists. The `sequence` tool remains available alongside and may contain
+`throw`.
+
+## Predictor submissions and real-time evaluation streams
+
+Some evaluations score a submitted program instead of a scene. The die metric (`docs/evaluation.md`) is one;
+`task.submission.kind = "predictor"` marks such tasks. The harness then uses fixed predictor wording for its system,
+compaction and finish-guard texts (`SYSTEM_PREDICTOR`, …); scene conditions keep theirs.
+
+The submission is a ZIP with `predict.py`. `realtime.stream_predictor` runs it in its own container: the agent image,
+the agent's sandbox bounds, no network, no mounts, no source, no controller. The container command
+`python -m sim2sim.realtime /workspace/predictor` unpacks the ZIP and execs `python3 predict.py`.
+
+The stream is JSON lines over stdin/stdout:
+
+1. The host sends the bundle and waits for `loaded`.
+2. The host sends the public `start` message; the program replies `{"type":"ready"}` within 120 s.
+3. Per trial, the host sends the trial header at release, then frame k at k / frame rate seconds after release in real
+   time (only frames before the deadline), then `trial_end` at the deadline.
+4. The program's first `{"type":"prediction","trial":i,...}` line for the trial counts:
+   - `on_time` if it is received by the deadline with valid probabilities;
+   - `malformed` if it is invalid, or if any other line is written during the trial;
+   - `late` if it arrives after the deadline but within the 0.25 s gap before the next trial;
+   - `missing` otherwise.
+
+Every output line is logged with its receipt time. The runner is generic: its classes come from `start.faces` and its
+trials are `(header, frames)` pairs. A level-specific evaluation supplies the trials and the scoring.

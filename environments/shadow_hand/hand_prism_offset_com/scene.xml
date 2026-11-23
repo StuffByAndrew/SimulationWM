@@ -1,0 +1,21 @@
+<mujoco model="shadow_hand_hand_prism_offset_com">
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets"/>
+  <statistic extent="0.3" center="0.25 0 0"/>
+  <visual>
+    <map znear="0.01" zfar="10"/>
+  </visual>
+  <asset>
+    
+  </asset>
+  <worldbody>
+    <light pos="0.3 -0.3 1" dir="0 0.3 -1" diffuse="0.9 0.9 0.9"/>
+    <camera name="fixed" pos="0.58 -0.42 0.38" xyaxes="0.822896901 0.568190717 -0 -0.321338522 0.465386825 0.824716107" fovy="45"/>
+    <geom name="floor" type="plane" pos="0 0 -0.1" size="1 1 .05" rgba="0.15 0.17 0.20 1"/>
+    <body name="prism" pos="0.298152938 0.00263683454 0.0371997006" quat="0.999711259 -0.00663771234 0.00053580374 0.0230879349">
+      <freejoint name="prism"/>
+      <geom name="prism" type="box" size=".032 .022 .015" density="500" friction="0.5 0.01 0.003" condim="6" priority="1" rgba=".78 .56 .28 1"/>
+      <geom name="insert" type="box" size=".010 .010 .011" pos=".020 .010 0" density="3880" contype="0" conaffinity="0" group="3" rgba=".3 .3 .35 1"/>
+    </body>
+  </worldbody>
+  <include file="../robot/shadow_hand.xml"/>
+</mujoco>

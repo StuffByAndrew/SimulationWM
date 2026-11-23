@@ -646,13 +646,15 @@ def environment_setup(root, path):
     """Physics-worker setup for one authored environment scene (e.g. ``blocks`` or ``panda/blocks``) under ``root``."""
     from .dashboard import environment_scenes
     from .runtime import zip_directory
+    from .robots import ROBOTS
     root = Path(root)
     if path not in environment_scenes(root):
         raise ValueError(f'unknown environment {path!r}')
     family = path.split('/')[0]
     return dict(kind='source', archive_b64=base64.b64encode(zip_directory(root / family)).decode(),
                 entrypoint=path.split('/', 1)[1] + '/scene.xml' if '/' in path else 'scene.xml',
-                simulation={'robot': 'panda'} if (root / family / 'robot').is_dir() else {})
+                simulation=next(({'robot': robot} for robot, entry in ROBOTS.items()
+                                 if (root / family / 'robot' / entry[0]).is_file()), {}))
 
 
 class InspectorApp:

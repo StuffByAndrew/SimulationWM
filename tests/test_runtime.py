@@ -129,6 +129,38 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeFailure):
             InferenceBroker({}).call({}, 1)
 
+    def test_gemini_transcript_and_host_priced_accounting(self):
+        model = "gemini-4-neon"
+        cfg = {"api": "gemini", "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % model, "model": model,
+               "api_key_env": "K", "reasoning_effort": "medium", "reasoning_summary": "auto",
+               "price_usd_per_mtok": {"input": 3.0, "cached_input": 0.15, "output": 15.0}}
+        for bad in ({"endpoint": cfg["endpoint"].replace("neon", "hydrogen")}, {"metadata": {"project": "p", "feature": "f"}},
+                    {"price_usd_per_mtok": {"input": 3.0, "output": 15.0}}):
+            with self.assertRaises(RuntimeFailure):
+                InferenceBroker({**cfg, **bad})
+        broker = InferenceBroker(cfg)
+        tools = [{"name": "bash", "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "additionalProperties": False}}]
+        messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "U"},
+                    {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "name": "bash", "arguments": "{}"}]},
+                    {"role": "tool", "tool_call_id": "c1", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]}]
+        body = broker.gemini_payload(broker.payload({"messages": messages, "tools": tools})[0])
+        # Same labelled-text transport as the gateway route: no native functionCall/functionResponse parts in history.
+        self.assertEqual([c["role"] for c in body["contents"]], ["user", "user"])
+        self.assertEqual(body["contents"][1]["parts"][1], {"inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="}})
+        self.assertEqual(len(body["systemInstruction"]["parts"]), 2)
+        self.assertEqual(body["generationConfig"]["thinkingConfig"], {"includeThoughts": True, "thinkingLevel": "medium"})
+        self.assertIn("additionalProperties", body["tools"][0]["functionDeclarations"][0]["parametersJsonSchema"])
+        reply = {"modelVersion": model, "candidates": [{"finishReason": "STOP", "content": {"parts": [
+            {"text": "plan", "thought": True}, {"text": "ok"}, {"functionCall": {"name": "bash", "args": {"command": "ls"}}, "thoughtSignature": "x"}]}}],
+            "usageMetadata": {"promptTokenCount": 1000, "cachedContentTokenCount": 400, "candidatesTokenCount": 50, "thoughtsTokenCount": 150}}
+        out = broker.parse_gemini(reply, {"bash"})
+        self.assertEqual((out["content"], out["summaries"], out["tool_calls"][0]["arguments"]), ("ok", ["plan"], '{"command": "ls"}'))
+        self.assertEqual(out["usage"], {"promptTokens": 600, "completionTokens": 200, "totalTokens": 800, "cacheReadTokens": 400,
+                                        "cacheWriteTokens": 0, "reasoningTokens": 150, "accountedTokens": 1200})
+        self.assertAlmostEqual(out["cost_usd"], (600 * 3.0 + 400 * 0.15 + 200 * 15.0) / 1e6)
+        with self.assertRaises(RuntimeFailure):
+            broker.parse_gemini({**reply, "modelVersion": "gemini-4-hydrogen"}, {"bash"})
+
     def test_client_protocol(self):
         writer = io.StringIO()
         client = Client(io.StringIO('{"type":"task"}\n{"ok":true,"observation":{"ticks":2}}\n'), writer)
@@ -175,9 +207,10 @@ class HostBudgetTests(unittest.TestCase):
         source = Path(directory) / "source"
         source.mkdir()
         (source / "scene.xml").write_text("<mujoco/>")
-        if (simulation or {}).get("robot") == "panda":
+        if (simulation or {}).get("robot"):
+            from sim2sim.robots import ROBOTS
             (source / "robot/assets").mkdir(parents=True)
-            (source / "robot/panda.xml").write_text("<mujoco/>")
+            (source / "robot" / ROBOTS[simulation["robot"]][0]).write_text("<mujoco/>")
             (source / "robot/IMPORT.md").write_text("Robot notes.\n\nThe sibling scenes hold PRIVATE blocks.\n")
         config = {"source": {"scene": str(source / "scene.xml")}, "sandbox": {"image": "test", "command": ["agent"]}, "record_video": False,
                   "output_dir": str(Path(directory) / "run"), "budget": budget or {"physics_ticks": 3, "active_seconds": 2},
@@ -240,6 +273,26 @@ for action in [{"op":"arm_target","joint_targets":[0]*7,"gripper_width_m":0.04,"
             events = [event for _, event in read_audit(Path(directory)/"run")]
             actions = [event["resolved_action"] for event in events if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "arm_target"]
             self.assertEqual(actions, [{"op": "arm_target", "world": "reference", "ticks": 2, "joint_targets": [0]*7, "gripper_width_m": .04}])
+
+    def test_shadow_hand_action_schema_contract_and_payload(self):
+        script = '''
+assert task["actions"][1] == "hand_target" and not set(["grasp", "move", "release", "arm_target"]) & set(task["actions"])
+assert "rh_A_LFJ0" in task["action_schema"]["hand_target"]["actuator_targets"]
+assert "robot/shadow_hand.xml" in task["action_schema"]["load_reconstruction"]["robot"]
+contract = task["observation_contract"]
+assert "rh_THJ1" in contract["proprioception"] and "actuator_effort_nm[20]" in contract["proprioception"]
+assert "tactile" not in contract and "wrench" not in contract
+for action in [{"op":"hand_target","actuator_targets":[0.1]*20,"ticks":2}, {"op":"arm_target","joint_targets":[0]*7,"gripper_width_m":0.04,"ticks":1}, {"op":"grasp","pixel":[1,1]}, {"op":"reset"}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ reply=json.loads(input())
+ assert reply["ok"] is (action["op"] in ("hand_target", "reset", "finish")), reply
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_agent(directory, script, simulation={"robot": "shadow_hand", "rgb": False, "depth": False, "calibration": False})
+            self.assertEqual(result["total_ticks"], 2)
+            from sim2sim.audit import read_audit
+            actions = [event["resolved_action"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "hand_target"]
+            self.assertEqual(actions, [{"op": "hand_target", "world": "reference", "ticks": 2, "actuator_targets": [0.1]*20}])
 
     def test_observe_only_reference_rejects_interaction(self):
         script = '''
@@ -400,6 +453,66 @@ input()
             kinds = [e.get("kind") for _, e in read_audit(run)]
             self.assertIn("inference_hold_decision", kinds)
             self.assertNotIn("inference_suspended", kinds)
+
+    def test_provider_outage_is_held_outside_the_run(self):
+        """A provider timeout's attempt time is given back and the retry backoff runs paused; the agent only sees the answer."""
+        from sim2sim.audit import read_audit
+        from sim2sim.runtime import ProviderUnavailable
+        script = r'''
+print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
+reply=json.loads(input())["inference"]
+assert reply["content"] == "ok", reply
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        value = {"content": "ok", "tool_calls": [], "finish_reason": "stop", "model": "m", "summaries": [], "cost_usd": 1.0, "usage": None,
+                 "calls": 2, "remaining_calls": 8, "cumulative_tokens": 4, "remaining_tokens": None, "cumulative_cost_usd": 1.0, "remaining_cost_usd": None}
+        attempts = []
+        def call(*args):  # first attempt times out after 1 s; the host-side retry succeeds
+            attempts.append(1)
+            if len(attempts) == 1:
+                time.sleep(1.0)
+                raise ProviderUnavailable("Inference wall-time budget exhausted")
+            return value
+        with tempfile.TemporaryDirectory() as directory, patch("sim2sim.runtime.PROVIDER_BACKOFF", 0.3), \
+                patch("sim2sim.runtime.InferenceBroker.call", side_effect=call):
+            run = Path(directory) / "run"
+            self.run_agent(directory, script, {"wall_only": True, "wall_seconds": 10}, extra={"inference": {"provider_hold_seconds": 60}})
+            status = json.loads((run / "termination.json").read_text())
+            self.assertEqual(status["status"], "finished")
+            self.assertGreater(status["held_seconds"], 1.25)
+            self.assertLess(status["wall_elapsed"], 1.0)
+            self.assertIn("pause", self.host_operations)
+            holds = [e for _, e in read_audit(run) if e.get("kind") == "provider_hold"]
+            self.assertEqual([h["consecutive_failures"] for h in holds], [1])
+
+    def test_wall_checkpoint_holds_once_and_stops_on_decision(self):
+        """At checkpoint_wall_seconds the next inference call holds like a spend-cap hold; a stop decision suspends the run."""
+        import threading
+        from sim2sim.audit import read_audit
+        script = r'''
+time.sleep(1.2)
+print('{"op":"inference","messages":[{"role":"user","content":"hi"}]}',flush=True)
+reply=json.loads(input())["inference"]
+assert reply.get("content") is None, reply
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory, patch("sim2sim.runtime.InferenceBroker.call") as call:
+            run = Path(directory) / "run"
+            def decide():
+                while not (run / "hold.json").exists():
+                    time.sleep(.05)
+                (run / "hold-decision.json").write_text(json.dumps({"action": "stop"}))
+            threading.Thread(target=decide, daemon=True).start()
+            self.run_agent(directory, script, {"wall_only": True, "wall_seconds": 10},
+                           extra={"inference": {"budget_hold_seconds": 60, "checkpoint_wall_seconds": 1}})
+            status = json.loads((run / "termination.json").read_text())
+            self.assertEqual(status["reason"], "budget_suspended")
+            self.assertEqual([h["reason"] for h in status["holds"]], ["Wall-time checkpoint reached"])
+            call.assert_not_called()  # the checkpoint holds before any provider call
+            reasons = [e["reason"] for _, e in read_audit(run) if e.get("kind") == "inference_suspended"]
+            self.assertEqual(reasons, ["Wall-time checkpoint stop"])
 
     def test_partial_timeout_records_exact_confirmed_reference_ticks(self):
         from sim2sim.audit import read_audit

@@ -226,10 +226,10 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                 else: untimed+=1
             if event.get('kind')=='action_begin':
                 resolved=event.get('resolved_action') or {}
-                if resolved.get('op') in ('observe','wait','grasp','move','release','reset','arm_target','load_reconstruction','submit','finish') and world:
+                if resolved.get('op') in ('observe','wait','grasp','move','release','reset','arm_target','hand_target','load_reconstruction','submit','finish') and world:
                     action=dict(action_id=event.get('action_id'),seq=pointer['seq'],world=world,operation=resolved.get('op'),
                         category='meta' if resolved.get('op') in ('reset','load_reconstruction','submit','finish') else 'world',
-                        parameters={key:resolved[key] for key in ('pixel','displacement','joint_targets','gripper_width_m','entrypoint','camera') if key in resolved},
+                        parameters={key:resolved[key] for key in ('pixel','displacement','joint_targets','gripper_width_m','actuator_targets','entrypoint','camera') if key in resolved},
                         wall_elapsed=wall,completed_wall_elapsed=None,requested_ticks=resolved.get('ticks'),executed_ticks=None,
                         charged_ticks=None,outcome='completion unrecorded')
                     assert action_key not in action_starts, 'Overlapping actions with the same world and correlation ID'
@@ -310,6 +310,8 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                 data['metrics'].append(dict(name=name if label=='submission' else name+(' (candidate changes)' if label=='candidate_change' else ' (retrospective candidate changes)'),metric_name=name,
                     origin=label,unit=_unit(name),group=_metric_group(name)[0],default_visible=_metric_group(name)[1],points=[
                     dict(checkpoint,values=None,value=checkpoint['values'].get(name),origin=checkpoint.get('origin',label)) for checkpoint in series]))
+        if (run/'die-view.html').is_file():  # researcher die evaluation view (src/sim2sim/die.py); not audit-verified
+            data['links']=[dict(label='Die evaluation view (researcher-only; not audit-verified)',path=_asset(output,(run/'die-view.html').read_bytes(),'.html',verified_assets))]
         for frames in data['frames'].values(): frames.sort(key=lambda f:(f['wall_elapsed'],f['seq']))
         data['progress'].sort(key=lambda item:(item['wall_elapsed'],item['seq']))
     except (AuditFailure,OSError,ValueError,TypeError) as exc:
@@ -349,14 +351,15 @@ def agent_prompts(repo=REPO):
         configured={o.get('task',g['TASK']) for env,_,o in runs if env==path}
         configured={task for task in configured if task.startswith(base)}
         level=next(iter(configured))[len(base):] if len(configured)==1 else ''
-        constraints=g['PANDA_CONSTRAINTS'] if path.split('/')[0] in ('panda','panda_small') else g['CONSTRAINTS']
+        family=path.split('/')[0]
+        constraints=g['PANDA_CONSTRAINTS'] if family in ('panda','panda_small') else g['HAND_CONSTRAINTS'] if family=='shadow_hand' else g['CONSTRAINTS']
         return dict(task=base+level+'\nModel constraints:\n'+'\n'.join('- '+c for c in constraints),level=level.strip())
     return system,{path:prompt(path) for path in environment_scenes(repo/'environments')}
 
 
 def _environment(value):
     """Recorded environment name -> (robot label, scene, environment path)."""
-    for prefix,robot in (('panda_small_','Panda (small)'),('panda_','Panda')):
+    for prefix,robot in (('panda_small_','Panda (small)'),('panda_','Panda'),('shadow_hand_','Shadow hand')):
         if value.startswith(prefix):
             return robot,value[len(prefix):],prefix[:-1]+'/'+value[len(prefix):]
     return 'Point grasp',value,value

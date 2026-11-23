@@ -95,7 +95,7 @@ def test_gateway_rejections():
                     {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}]}]}):
         with pytest.raises(RuntimeFailure):
             broker.payload(request)
-    for config in ({**CONFIG, "api": "responses"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
+    for config in ({**CONFIG, "api": "chat"}, {k: v for k, v in CONFIG.items() if k != "metadata"}, {**CONFIG, "endpoint": "http://example.com"}):
         with pytest.raises(RuntimeFailure):
             InferenceBroker(config)
 
@@ -246,7 +246,7 @@ def test_shared_cost_pool_ledger_threshold_and_monitor(tmp_path, capsys):
     parent, child = multiprocessing.Pipe(duplex=False)
     with patch.object(InferenceBroker, "_call", lambda self, request, timeout: {"ledger": self.ledger}):
         _inference_process(config, {}, 1, child)
-    assert parent.recv() == (True, {"ledger": None})
+    assert parent.recv() == (True, {"ledger": None}, False)
     assert InferenceBroker({**CONFIG, "max_cost_usd": 5., "call_reserve_usd": 3.}).stop_reason() == "Run inference cost budget exhausted"
 
 
@@ -296,3 +296,25 @@ def test_harness_sequence_runs_agent_written_steps_and_saves_outputs(tmp_path):
     (tmp_path / "bad.json").write_text(json.dumps([{"op": "finish"}]))
     parts, _ = loop.execute({"id": "d", "name": "sequence", "arguments": json.dumps({"world": "reference", "steps_file": str(tmp_path / "bad.json")})})
     assert parts[0]["text"].startswith("ERROR: steps_file must hold")
+
+
+def test_harness_realtime_predictor_task_frames_and_controller_channel(tmp_path):
+    controller = Controller([], now=lambda: 1000.)
+    task = controller.task
+    task["actions"] = ["observe", "grasp", "move", "release", "frames", "throw", "reset", "submit", "inference", "progress", "finish"]
+    task["action_schema"].update(frames={"since": "index"}, throw={"protocol": "name"})
+    task.update(realtime={"frame_rate_hz": 25}, submission={"max_bytes": 1 << 20, "kind": "predictor"},
+                code_channel={"path": str(tmp_path / "controller.sock"), "ops": ["observe", "frames", "throw"]})
+    loop = agent.Agent(controller, workspace=tmp_path, now=lambda: 1000.)
+    assert loop.system == agent.SYSTEM_PREDICTOR and loop.guard == agent.GUARD_PREDICTOR
+    assert "world" not in loop.schemas["throw"]["properties"] and loop.schemas["observe"]["required"] == []
+    rendered = loop.render({"ok": True, "frames": [{"rgb": PNG, "frame": 3}, {"rgb": PNG, "frame": 4}]}, "reference")
+    reply = json.loads(rendered[0]["text"])
+    assert len(rendered) == 1 and [f["frame"] for f in reply["frames"]] == [3, 4] and all(Path(f["saved_images"][0]).exists() for f in reply["frames"])
+    script = tmp_path / "channel.py"
+    script.write_text("import json\nfrom sim2sim.client import Channel\nc = Channel(%r)\nprint(json.dumps(c.request('throw', protocol='drop', world='reference')))\n"
+                      "try:\n    c.request('submit', project_b64='')\nexcept RuntimeError as e:\n    print('rejected', e)\n" % str(tmp_path / "controller.sock"))
+    output = loop.bash("PYTHONPATH=%s python3 %s" % (Path(agent.__file__).resolve().parents[1] / "src", script), 60)
+    assert output.startswith("exit code 0") and '"ok": true' in output and "rejected op must be one of" in output, output
+    assert [r["op"] for r in controller.requests if r["op"] != "progress"] == ["throw"] and loop.channel_requests == 2
+    assert not (tmp_path / "controller.sock").exists()
