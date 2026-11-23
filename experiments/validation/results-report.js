@@ -157,7 +157,7 @@ function groupCurve(runs, k, xk = "t") {
 function convergence(host, b) {
   const card = div(host, "card");
   if (b.title) card.appendChild(html(`<h3 style="margin-top:0">${b.title}</h3>`));
-  const xk = b.x || "t";  // x axis: run-clock minutes, or cumulative model tokens ("mtok")
+  const xk = b.x || "t";  // x axis: run-clock minutes, cumulative model tokens ("mtok") or cumulative API cost ("usd")
   const series = b.series.map((s, i) => ({ ...s, color: s.color || PALETTE[i], label: s.runs ? `${s.label} (mean of ${s.runs.length} runs)` : s.label }));
   legend(div(card, "legend"), series.filter(s => !s.faded).map(s => [s.label, s.color]).concat(series.some(s => s.faded) ? [["faded: extended +2 h", null]] : [], [["true value (ratio plots)", null, "dash"]]));
   const grid = div(card, "minis");
@@ -167,10 +167,10 @@ function convergence(host, b) {
     if (!ss.some(s => s.pts.some(p => p[1] != null))) continue;
     const ratio = kind(k) === "ratio";
     lineChart(div(grid), { title: label(k) + (ratio ? " ÷ true" : ""), series: ss, log: true, ratio, truth: ratio ? 1 : null, xmax: b.xmax, at120: xk === "t",
-      xlabel: xk === "mtok" ? "cumulative model tokens (M)" : undefined, xfloor: xk === "mtok" ? 0 : undefined,
+      xlabel: { mtok: "cumulative model tokens (M)", usd: "cumulative API cost (USD)" }[xk], xfloor: xk === "t" ? undefined : 0,
       floor: ratio || k.endsWith("_mm") || k.endsWith("_n") ? 0.01 : k.startsWith("abs:") ? 1e-3 : 0, fmtv: v => fmtKey(k, v) });
   }
-  card.appendChild(html(`<p class="note">${xk === "mtok" ? "One point per submission, at the model tokens used by then" : "One point per submission at its submission time"}; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 (mm or N). ${xk === "t" ? "The dotted vertical line is the 120-minute mark." : ""}</p>`));
+  card.appendChild(html(`<p class="note">${{ mtok: "One point per submission, at the model tokens used by then", usd: "One point per submission, at the API cost spent by then" }[xk] || "One point per submission at its submission time"}; log scale.${series.some(s => s.runs) ? " Conditions with several runs: line = mean of the runs' latest values, shaded = their range (min to max; with three runs the range is more honest than a standard deviation), drawn from when every run has submitted." : ""} Hollow points at the bottom of a ratio plot: the parameter was left out (0). Filled points on the floor labeled \"exact\" of an error plot: error below 0.01 (mm or N). ${xk === "t" ? "The dotted vertical line is the 120-minute mark." : ""}</p>`));
 }
 
 // ---------- strategy taxonomy (all runs in R.order) ----------

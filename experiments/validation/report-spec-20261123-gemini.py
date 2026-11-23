@@ -28,7 +28,8 @@ ORDER = list(NAMES)
 # inputs (the cumulative report's), restricted to these runs
 SUMMARIES = tuple(((f[0] if isinstance(f, tuple) else f), set(NAMES)) for f in B.SUMMARIES)
 INVALID, CONTINUATIONS, COMPARISONS, NOTE_FLAGS, EXAMPLES = set(), {}, {}, {}, {}
-MODELS, CHECKPOINTS, TRACES, CHAT, VENDOR, TOOLS = B.MODELS, B.CHECKPOINTS, B.TRACES, B.CHAT, B.VENDOR, B.TOOLS
+MODELS, TRACES, CHAT, VENDOR, TOOLS = B.MODELS, B.TRACES, B.CHAT, B.VENDOR, B.TOOLS
+CHECKPOINTS = (B.MAIN / "reports" / "report-work-20261123" / "checkpoints-cost.json",)  # checkpoint-index.py with cumulative API cost per submission
 EDITS = B.MAIN / "reports" / "report-work-20261123" / "edits.json"  # text edits from this report's edit mode
 estimates, extra_metrics, METRICS = B.estimates, B.extra_metrics, B.METRICS
 CLIPS = {r: B.CLIPS[r] for r in NAMES if r in B.CLIPS}
@@ -97,7 +98,8 @@ def methods(ctx):
         "<b>Same configuration</b>: each Gemini config equals its astra original except the model route and cost lines (diffed when the batch was "
         "built); the hidden scenes are byte-identical. Every compared run's private config has <code>reasoning_effort = \"medium\"</code> (asserted).",
         "<b>Scores</b> are the private evaluator's; tunnel and box scores come from each submission's evaluation, spring masses from compiling "
-        "each submission with MuJoCo. Matched minutes and tokens come from <code>model-compare-20261120.json</code>.",
+        "each submission with MuJoCo. Minutes, tokens and dollars at each submission come from the audit's per-call accounting "
+        "(<code>checkpoint-index.py</code>); equal budgets are the largest every run on a level reached.",
         "<b>Infrastructure failures excluded</b>: " + ", ".join(f"<code>{r}</code>" for r in GEM_FAILED) + " died of Google-side call timeouts "
         "before the outage hold existed.",
         "<b>Few runs</b>: one to three per model per level. astra's own replicates differ by up to ×4 (marble box), so per-level differences smaller "
@@ -127,28 +129,38 @@ def sections(ctx):
     avg = lambda vals: None if not [v for v in vals if v is not None] else float(np.mean([v for v in vals if v is not None]))
     point = lambda r, k, cut: next((u["m"].get(k) for u in reversed(R[r]["subs"]) if cut(u) and u["m"].get(k) is not None), None)
     final = lambda r, k: R[r]["subs"][-1]["m"].get(k)
-    at_min = lambda r, k, lv: point(r, k, lambda u: u["t"] <= MC[lv]["matched_wall_min"])
-    at_tok = lambda r, k, lv: point(r, k, lambda u: u["mtok"] <= MC[lv]["matched_mtok"])
+    assert all("usd" in u for r in NAMES for u in R[r]["subs"]), "every compared submission needs its cumulative API cost"
+    # Equal budgets: per level and axis, the largest budget every run reached (the smallest run total); each run is read at its last
+    # scored submission within that budget. Axes: run-clock minutes, cumulative model tokens, cumulative API cost.
+    AXES = {"min": ("t", lambda r: R[r]["wall_min"], lambda v: f"{v:.0f} min", "equal minutes"),
+            "tok": ("mtok", lambda r: R[r]["final_mtok"], lambda v: f"{v:.1f}M tokens", "equal tokens"),
+            "usd": ("usd", lambda r: R[r]["cost_usd"], lambda v: f"${v:.2f}", "equal dollars")}
+    budget = {(lv, a): min(total(r) for model in MODEL_ORDER for r in RUNS[(lv, model)]) for lv in GEM_LEVELS for a, (_, total, _, _) in AXES.items()}
+    at = lambda r, k, lv, a: point(r, k, lambda u: u[AXES[a][0]] <= budget[(lv, a)])
+    WHEN = ("final", *AXES)
+    WHEN_NAME = {"final": "final", **{a: v[3] for a, v in AXES.items()}}
     effort = {r: json.loads((B.NETRUNS / r / "config-private.json").read_text())["inference"].get("reasoning_effort") for r in NAMES}
     assert set(effort.values()) == {"medium"}, effort
 
     # ---- ratios to astra, per level and overall (final and at equal tokens)
     ratio = {}
     for lv, (_, astra, key) in GEM_LEVELS.items():
-        for when, get in (("final", lambda r: final(r, key)), ("tokens", lambda r: at_tok(r, key, lv))):
+        for when, get in [("final", lambda r: final(r, key))] + [(a, lambda r, a=a: at(r, key, lv, a)) for a in AXES]:
             a = avg([err(key, get(r)) for r in astra])
             for model in GEM_MODELS.values():
                 g = avg([err(key, get(r)) for r in RUNS[(lv, model)]])
                 ratio[(lv, model, when)] = None if g is None or not a else g / a
-    have = {(m, w): [ratio[(lv, m, w)] for lv in GEM_LEVELS if ratio[(lv, m, w)]] for m in GEM_MODELS.values() for w in ("final", "tokens")}
+    have = {(m, w): [ratio[(lv, m, w)] for lv in GEM_LEVELS if ratio[(lv, m, w)]] for m in GEM_MODELS.values() for w in WHEN}
     geo = {k: float(np.exp(np.mean(np.log(v)))) for k, v in have.items()}  # over the levels where both models had a score at that point
-    better = {(m, w): [GEM_LEVELS[lv][0] for lv in GEM_LEVELS if ratio[(lv, m, w)] is not None and ratio[(lv, m, w)] < 1] for m in GEM_MODELS.values() for w in ("final", "tokens")}
+    better = {(m, w): [GEM_LEVELS[lv][0] for lv in GEM_LEVELS if ratio[(lv, m, w)] is not None and ratio[(lv, m, w)] < 1] for m in GEM_MODELS.values() for w in WHEN}
     cell = lambda v: "—" if v is None else hl(f"×{v:.2g}", v < 1)
     overview = [[f"<a href='#{lv}'>{GEM_LEVELS[lv][0]}</a><div class='muted small'>{B.GEM_LABEL[GEM_LEVELS[lv][2]]}</div>"] +
-                [cell(ratio[(lv, m, w)]) for m in GEM_MODELS.values() for w in ("final", "tokens")] for lv in GEM_LEVELS]
+                [cell(ratio[(lv, m, w)]) for m in GEM_MODELS.values() for w in WHEN] for lv in GEM_LEVELS]
     overview.append(["<b>geometric mean</b> (levels with a score)"] + [f"<b>{cell(geo[(m, w)])}</b> <span class='muted'>({len(have[(m, w)])})</span>"
-                                                                         for m in GEM_MODELS.values() for w in ("final", "tokens")])
+                                                                         for m in GEM_MODELS.values() for w in WHEN])
     LATCH = GEM_LEVELS["w20-latch-out"][1][0]
+    spend = {model: (float(np.mean([R[r]["final_mtok"] for lv in GEM_LEVELS for r in RUNS[(lv, model)]])),
+                     float(np.mean([R[r]["cost_usd"] for lv in GEM_LEVELS for r in RUNS[(lv, model)]]))) for model in MODEL_ORDER}
     verdict = lambda m: "worse" if geo[(m, "final")] > 1 else "better"
     neon, hyd = GEM_MODELS["neon"], GEM_MODELS["hydrogen"]
     sec = [dict(id="overview", nav="Overview", tag="one to three runs per model per level",
@@ -157,14 +169,21 @@ def sections(ctx):
         q=None, answer=L(f"Gemini 4 Neon's final error was ×{geo[(neon, 'final')]:.2g} astra's and Gemini 4 Hydrogen's ×{geo[(hyd, 'final')]:.2g} "
                          f"(geometric mean over five levels), so both did {verdict(neon)} on average. Neon beat astra on "
                          f"{', '.join(better[(neon, 'final')]).lower() or 'no level'}; Hydrogen on {', '.join(better[(hyd, 'final')]).lower() or 'no level'}. "
-                         f"At equal tokens the comparison is thinner, because at the common token count one side often had no scored submission yet: on "
-                         f"the {len(have[(neon, 'tokens')])} levels where both had one, Neon was ×{geo[(neon, 'tokens')]:.2g} astra's error and Hydrogen "
-                         f"×{geo[(hyd, 'tokens')]:.2g} on its {len(have[(hyd, 'tokens')])}. Gemini used about half astra's tokens per run, and astra was "
-                         f"often still far from its final answer at Gemini's budget (latch: {pct(at_tok(LATCH, 'fp_rel', 'w20-latch-out'))} error at "
-                         f"{MC['w20-latch-out']['matched_mtok']:.1f}M tokens, {pct(final(LATCH, 'fp_rel'))} at the end)."),
-        blocks=[cap("Table", L("<b>Mean error ÷ astra's mean error, per level</b> (green = better than astra), at the final submission and at the "
-                               "comparison's equal-token point. One to three runs per model; astra's own replicates differ by up to ×4.")),
-                blk(type="table", head=["level", f"{neon}: final", f"{neon}: equal tokens", f"{hyd}: final", f"{hyd}: equal tokens"], rows=overview)])]
+                         "Normalized by the resources spent, the comparison changes: at the largest budget every run on a level reached, the error ratios "
+                         "(geometric mean over the levels where both models had a scored submission by then, count in brackets) were " +
+                         "; ".join(f"{WHEN_NAME[a]}: Neon ×{geo[(neon, a)]:.2g} ({len(have[(neon, a)])}), Hydrogen ×{geo[(hyd, a)]:.2g} ({len(have[(hyd, a)])})"
+                                   for a in AXES) + ". Per run, astra used " + f"{spend['gpt-6-astra'][0]:.1f}M tokens and ${spend['gpt-6-astra'][1]:.0f}; "
+                         + ", ".join(f"{m} {spend[m][0]:.1f}M and ${spend[m][1]:.0f}" for m in GEM_MODELS.values()) + " (Gemini's tokens cost more at list "
+                         "prices, and its thinking is billed as output), so fewer tokens did not mean fewer dollars. astra was also often still far "
+                         f"from its final answer at Gemini's budget (latch: {pct(at(LATCH, 'fp_rel', 'w20-latch-out', 'tok'))} error at "
+                         f"{AXES['tok'][2](budget[('w20-latch-out', 'tok')])}, {pct(final(LATCH, 'fp_rel'))} at the end)."),
+        blocks=[cap("Table", L("<b>Mean error ÷ astra's mean error, per level</b> (green = better than astra): at the final submission, and normalized "
+                               "by resources at equal run-clock minutes, equal model tokens and equal API dollars. The budget on each axis is the largest "
+                               "every run on the level reached (its smallest run total; the level sections give the values); each run is read at its last "
+                               "scored submission within it, and \"—\" means a model had no scored submission by then. Gemini dollars are priced at "
+                               "Google's list prices (Google reports none), astra's are the gateway's. One to three runs per model; astra's own "
+                               "replicates differ by up to ×4.")),
+                blk(type="table", head=["level"] + [f"{m}: {WHEN_NAME[w]}" for m in GEM_MODELS.values() for w in WHEN], rows=overview)])]
 
     # ---- one section per level
     for i, (lv, (scene, astra, key)) in enumerate(GEM_LEVELS.items()):
@@ -175,21 +194,22 @@ def sections(ctx):
                 rows.append([model if r == RUNS[(lv, model)][0] else "", lnk(r, f"run {RUNS[(lv, model)].index(r) + 1}"),
                              "finished" if R[r]["reason"] == "agent_finish" else "cost limit" if R[r]["reason"] == "budget_suspended" else R[r]["reason"],
                              f"{R[r]['wall_min']:.0f}", f"{R[r]['final_mtok']:.1f}", str(R[r]["submissions"]),
-                             f"<b>{fmt_k(key, final(r, key))}</b>", fmt_k(key, at_min(r, key, lv)), fmt_k(key, at_tok(r, key, lv))] +
+                             f"${R[r]['cost_usd']:.2f}", f"<b>{fmt_k(key, final(r, key))}</b>"] + [fmt_k(key, at(r, key, lv, a)) for a in AXES] +
                             [fmt_k(k, final(r, k)) for k in keys[1:]])
-        level_head = ["model", "run", "ended", "minutes", "tokens (M)", "submissions", f"{B.GEM_LABEL[key]}: final",
-                      f"at {MC[lv]['matched_wall_min']:.0f} min", f"at {MC[lv]['matched_mtok']:.1f}M tokens"] + [f"{ctx_label(k)} (final)" for k in keys[1:]]
+        level_head = ["model", "run", "ended", "minutes", "tokens (M)", "submissions", "API cost", f"{B.GEM_LABEL[key]}: final"] + \
+                     [f"at {AXES[a][2](budget[(lv, a)])}" for a in AXES] + [f"{ctx_label(k)} (final)" for k in keys[1:]]
         series = [[astra if len(astra) > 1 else astra[0], "gpt-6-astra", {"color": COLORS["gpt-6-astra"]}]] + \
                  [[r, f"{NAMES[r][1]}", {"color": COLORS[GEM_MODELS[m]], "dash": "6 3" if "run 2" in NAMES[r][1] else ""}] for m in GEM_MODELS for r in GEM_DONE[(lv, m)]]
         blocks = [lead(LEVEL_TEXT[lv]),
-                  cap("Table", L(f"<b>Every run on this level.</b> Primary error ({B.GEM_LABEL[key]}) at the final submission, at the comparison's equal "
-                                 f"run-clock minute and at its equal token count; other scores at the final submission. Lower is better; masses are "
-                                 "estimate ÷ true.")),
+                  cap("Table", L(f"<b>Every run on this level.</b> Primary error ({B.GEM_LABEL[key]}) at the final submission and at equal minutes, "
+                                 "tokens and dollars (the largest budget every run here reached); other scores at the final submission. Lower is better; "
+                                 "masses are estimate ÷ true.")),
                   blk(type="table", head=level_head, rows=rows),
-                  cap("Figure", L("<b>Time course</b>, against run-clock minutes and against cumulative model tokens (astra: mean and range when it "
-                                  "has several runs).")),
+                  cap("Figure", L("<b>Error against resources spent</b>: by run-clock minutes, by cumulative model tokens and by cumulative API "
+                                  "dollars (astra: mean and range when it has several runs).")),
                   conv(series, keys[:3], title="By run-clock minutes", xmax=360),
-                  conv(series, keys[:3], title="By cumulative model tokens", x="mtok")]
+                  conv(series, keys[:3], title="By cumulative model tokens", x="mtok"),
+                  conv(series, keys[:3], title="By cumulative API cost (USD)", x="usd")]
         if lv == "w11-tetra-spring-k":
             blocks += [cap("Table", L("<b>Did the agent use the spring as a scale?</b> From every 10th recorded state of the hidden scene: when the spring "
                                       "first sat in the hole, when the cluster first rested on it there, and when it rested on the upright spring "

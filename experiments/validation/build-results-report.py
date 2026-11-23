@@ -249,7 +249,8 @@ def data(spec_path, work, out):
         offset = rows[S.CONTINUATIONS[run]]["wall_min"] if run in S.CONTINUATIONS else 0.0
         est_fn = (lambda src, m: S.estimates(run, src, m, estimates)) if hasattr(S, "estimates") else estimates  # optional spec hook: scene-specific estimates
         truth = est_fn(model["source"], model["source"])
-        subs = [dict(t=c["wall_min"] + offset, mtok=c["tokens"] / 1e6, **submission(model["source"], s, h, truth, est_fn)) for c, s, h in zip(cp, model["submissions"], hist)]
+        subs = [dict(t=c["wall_min"] + offset, mtok=c["tokens"] / 1e6, **({"usd": c["cost_usd"]} if c.get("cost_usd") is not None else {}),
+                     **submission(model["source"], s, h, truth, est_fn)) for c, s, h in zip(cp, model["submissions"], hist)]
         for i, sub in enumerate(subs):  # optional spec hook: extra per-submission metrics (keys declared in S.METRICS)
             sub["m"].update(S.extra_metrics(run, i, hist[i]) if hasattr(S, "extra_metrics") else {})
         tax, note_labels, script_kinds = taxonomy(notes, stats["scripts"])

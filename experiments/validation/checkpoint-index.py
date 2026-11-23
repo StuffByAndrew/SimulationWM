@@ -23,14 +23,14 @@ def envelope(blobs, pointer):
 
 def keep(event):
     kind, t = event.get("kind"), event.get("wall_elapsed")
-    if kind == "inference_accounting":
-        return ("tokens", t, event["cumulative_tokens"])
+    if kind == "inference_accounting":  # host-only: cumulative tokens and, for cost-blind runs, cumulative API cost (USD)
+        return ("tokens", t, event["cumulative_tokens"], event.get("cumulative_cost_usd"))
     payload = event.get("payload")
     if kind == "boundary" and event.get("direction") == "response" and isinstance(payload, dict) \
             and isinstance(payload.get("inference"), dict) and payload["inference"].get("cumulative_tokens") is not None:
-        return ("tokens", t, payload["inference"]["cumulative_tokens"])
+        return ("tokens", t, payload["inference"]["cumulative_tokens"], payload["inference"].get("cumulative_cost_usd"))
     if kind == "action_begin" and (event.get("resolved_action") or {}).get("op") == "submit":
-        return ("submit", t, None)
+        return ("submit", t, None, None)
     return None
 
 
@@ -40,18 +40,22 @@ def index(run_dir):
     with ThreadPoolExecutor(24) as pool:
         kept = sorted((e for e in pool.map(lambda p: keep(envelope(run_dir / "audit" / "blobs", p)), pointers) if e),
                       key=lambda e: e[1])
-    tokens, submits = 0, []
-    for kind, t, value in kept:
+    tokens, cost, submits = 0, 0.0, []
+    for kind, t, value, usd in kept:
         if kind == "tokens":
             assert value >= tokens, (run_dir.name, t, value, tokens)
             tokens = value
+            if usd is not None:  # older runs without a recorded cumulative cost keep cost_usd None (a gap, not zero)
+                assert usd >= cost, (run_dir.name, t, usd, cost)
+                cost = usd
         else:
-            submits.append(dict(wall_min=t / 60, tokens=tokens))
+            submits.append(dict(wall_min=t / 60, tokens=tokens, cost_usd=cost if any(e[3] is not None for e in kept) else None))
     history = json.loads((run_dir / "metric-history.json").read_text())["checkpoints"]
     assert len(history) == len(submits), (run_dir.name, len(history), len(submits))
     for row, checkpoint in zip(submits, history):
         row.update(submission=checkpoint["submission"], status=checkpoint["status"])
-    return run_dir.name, dict(checkpoints=submits, final_tokens=tokens, final_wall_min=kept[-1][1] / 60 if kept else None)
+    return run_dir.name, dict(checkpoints=submits, final_tokens=tokens, final_wall_min=kept[-1][1] / 60 if kept else None,
+                              final_cost_usd=cost if any(e[3] is not None for e in kept) else None)
 
 
 def at(checkpoints, wall_min=None, tokens=None):
