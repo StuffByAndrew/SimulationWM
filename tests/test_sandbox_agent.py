@@ -351,6 +351,8 @@ def test_harness_realtime_predictor_task_frames_and_controller_channel(tmp_path)
     lockstep = agent.Agent(Controller([], now=lambda: 1000.), workspace=tmp_path, now=lambda: 1000.)
     lockstep.task["submission"]["kind"] = "predictor"
     assert agent.prompts(lockstep.task)[0] == agent.SYSTEM_PREDICTOR % agent.PREDICTOR_WORLDS["lockstep"] and agent.prompts(controller.task)[2] == agent.GUARD_PREDICTOR
+    lockstep.task["submission"]["kind"] = "parameters"
+    assert all("predictor" not in text and "estimates" in text for text in agent.prompts(lockstep.task))
     assert "world" not in loop.schemas["throw"]["properties"] and loop.schemas["observe"]["required"] == []
     rendered = loop.render({"ok": True, "frames": [{"rgb": PNG, "frame": 3}, {"rgb": PNG, "frame": 4}]}, "reference")
     reply = json.loads(rendered[0]["text"])

@@ -316,6 +316,15 @@ that cannot produce a value (an empty scene's Chamfer or COM, hinges without a
 hinge, or a zero baseline error) leaves a gap, never a ratio. Hinge relative
 errors already compare with the zero-parameter default.
 
+## Low-rank parameter answer (`lowrank`)
+
+`lowrank` (selector; needs a private manifest `[lowrank]` table naming a `body` and a spring `joint`; `evaluation._lowrank`)
+scores a JSON answer instead of a scene and combines with no other metric. The answer holds exactly `mass` (kg),
+`stiffness` (N/m), `com` (world m) and `inertia` (3x3, kg m², about the COM in world axes), the last two in the scene's
+initial state (`qpos0`; keyframed scenes are rejected). Truth comes from the fresh source: the body's mass, its world
+COM, R·diag(I)·Rᵀ, and the joint's stiffness. Scores: relative mass and stiffness errors, COM distance (m), and the
+inertia's relative Frobenius error; the answer and truth are kept with them. A malformed answer fails the evaluation.
+
 ## Positioning fixture (`fixture`)
 
 `fixture` (selector; needs a private manifest `[fixture]` table and a predictor submission, see

@@ -682,6 +682,11 @@ entrypoint` to the program (`predictor.py`, `predict.py`); the task's `submissio
 line for lock-step or real-time worlds, `COMPACT_PREDICTOR`, `GUARD_PREDICTOR`); scene conditions keep theirs. The metric
 states its own contract (`submission.predictor` for `fixture`, `die.predictor` for `die`).
 
+A parameter answer replaces the scene when `[evaluation] metrics = ["lowrank"]`: the submission is a ZIP holding the JSON
+file named by `[evaluation] entrypoint` (`parameters.json`), and the task's `submission.kind = "parameters"` makes the
+harness use the lock-step predictor texts with the `PARAMETERS` substitutions (estimates instead of a predictor). The
+task statement gives the answer's keys and units; the evaluator scores it in its ordinary container (docs/evaluation.md).
+
 On `submit`, while the agent is paused, the metric starts one container per submission (`predictor.container`,
 `python -m sim2sim.predictor MODE`): `--network=none`, a read-only root, no mounts, no source scene, manifest, controller
 or credentials. The host first sends `{"op":"load","project_b64","entrypoint","call_seconds"}`; the worker extracts the

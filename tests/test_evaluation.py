@@ -65,3 +65,18 @@ def test_base64_bounds():
 def test_malformed_or_external_references(tmp_path, files):
     with pytest.raises((ValueError, OSError, ET.ParseError)):
         extract_submission(archive(files), tmp_path)
+
+
+def test_lowrank_parameter_answer(tmp_path):
+    import json
+    a = 0.05
+    exact = {'mass': 0.0481, 'stiffness': 21.7, 'com': [0, -0.15, 0.425], 'inertia': (0.0481 * a * a / 6 * __import__('numpy').eye(3)).tolist()}
+    config = {'source_dir': 'environments/cube_spring_block', 'source_entrypoint': 'scene.xml', 'metrics': ['lowrank'],
+              'entrypoint': 'parameters.json', 'output_dir': str(tmp_path)}
+    report = evaluate_submission(archive({'parameters.json': json.dumps(exact)}), config)
+    scores = report['scores']['lowrank']
+    assert report['status'] == 'ok' and max(scores[k] for k in ('mass_relative_error', 'stiffness_relative_error', 'com_error_m',
+                                                                'inertia_relative_error')) < 1e-6, scores
+    report = evaluate_submission(archive({'parameters.json': json.dumps({**exact, 'mass': 0.0962, 'com': [0, -0.15, 0.435]})}), config)
+    assert abs(report['scores']['lowrank']['mass_relative_error'] - 1) < 1e-9 and abs(report['scores']['lowrank']['com_error_m'] - 0.01) < 1e-9
+    assert evaluate_submission(archive({'parameters.json': json.dumps({'mass': 1})}), config)['status'] == 'failed'

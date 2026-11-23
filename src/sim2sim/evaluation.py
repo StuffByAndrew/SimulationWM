@@ -67,8 +67,9 @@ def extract_submission(data: bytes, destination: Path, entrypoint='scene.xml'):
     scene = destination.joinpath(*_relative(entrypoint).parts)
     if not scene.is_file():
         raise ValueError('missing scene entrypoint')
-    # Every XML file is checked as MJCF, and so is the entrypoint unless it is a predictor program (src/sim2sim/predictor.py).
-    pending = [scene] * (scene.suffix != '.py') + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
+    # Every XML file is checked as MJCF, and so is the entrypoint unless it is a predictor program (src/sim2sim/predictor.py)
+    # or a low-rank parameter answer (JSON, metric `lowrank`).
+    pending = [scene] * (scene.suffix not in ('.py', '.json')) + [p for p in destination.rglob('*') if p.is_file() and p.suffix.lower() == '.xml']
     checked = set()
     while pending:
         xml = pending.pop()
@@ -195,6 +196,37 @@ def _parameters(source, candidate, correspondence, hinge_correspondence=None):
                              ('hinge_range', sm.jnt_range[sj], cm.jnt_range[cj])]:
             errors[sname][name] = relative(sa, ca)
     return errors
+
+
+LOWRANK_KEYS = {'mass', 'stiffness', 'com', 'inertia'}
+
+
+def _lowrank(source, answer_path, table):
+    """Errors of a parameter answer {mass (kg), stiffness (N/m), com (world m at the initial state), inertia (3x3 world-axes
+    tensor about the COM at the initial state, kg m^2)} against manifest [lowrank] body and spring joint of the fresh source."""
+    import mujoco
+    import numpy as np
+    answer = json.loads(answer_path.read_text())
+    assert isinstance(answer, dict) and set(answer) == LOWRANK_KEYS, f'answer keys must be exactly {sorted(LOWRANK_KEYS)}'
+    mass, stiffness = (float(answer[k]) for k in ('mass', 'stiffness'))
+    com, inertia = np.asarray(answer['com'], dtype=float), np.asarray(answer['inertia'], dtype=float)
+    assert com.shape == (3,) and inertia.shape == (3, 3) and np.isfinite([mass, stiffness, *com, *inertia.ravel()]).all(), 'malformed answer'
+    model = source._model
+    assert model.nkey == 0, 'the initial state of a lowrank scene is qpos0 (no keyframes)'
+    data = mujoco.MjData(model)
+    body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, table['body'])
+    joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, table['joint'])
+    assert body >= 0 and joint >= 0, 'manifest [lowrank] names a missing body or joint'
+    mujoco.mj_forward(model, data)
+    rotation = data.ximat[body].reshape(3, 3)
+    truth = {'mass': float(model.body_mass[body]), 'stiffness': float(model.jnt_stiffness[joint]), 'com': data.xipos[body].tolist(),
+             'inertia': (rotation @ np.diag(model.body_inertia[body]) @ rotation.T).tolist()}
+    true_inertia = np.asarray(truth['inertia'])
+    return {'answer': {'mass': mass, 'stiffness': stiffness, 'com': com.tolist(), 'inertia': inertia.tolist()}, 'truth': truth,
+            'mass_relative_error': abs(mass - truth['mass']) / truth['mass'],
+            'stiffness_relative_error': abs(stiffness - truth['stiffness']) / truth['stiffness'],
+            'com_error_m': float(np.linalg.norm(com - np.asarray(truth['com']))),
+            'inertia_relative_error': float(np.linalg.norm(inertia - true_inertia) / np.linalg.norm(true_inertia))}
 
 
 def _hinges(source, candidate, correspondence, matching=None, *, object_only=False):
@@ -628,7 +660,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die'})  # die: host-side, src/sim2sim/die.py
+                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die', 'lowrank'})  # die: host-side, src/sim2sim/die.py
 
 
 def selected_metrics(config):
@@ -659,7 +691,8 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             import tomllib
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
-                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture'):
+                        'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture',
+                        'lowrank'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -684,6 +717,13 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             assert selection == {'fixture'}, 'the fixture metric scores a predictor program and combines with no scene metric'
             from .fixture import evaluate as fixture
             scores = {'fixture': fixture(source, config['fixture'], config['predictions'], output / 'artifacts' / version / 'fixture')}
+            json.dumps(scores, allow_nan=False)
+            report.update(status='ok', scores=scores)
+            return report
+        if 'lowrank' in selection:
+            # A low-rank answer (parameters JSON, no scene) scored against the source's named body and spring joint.
+            assert selection == {'lowrank'}, 'the lowrank metric scores a parameter answer and combines with no scene metric'
+            scores = {'lowrank': _lowrank(source, target / 'project' / config['entrypoint'], config['lowrank'])}
             json.dumps(scores, allow_nan=False)
             report.update(status='ok', scores=scores)
             return report

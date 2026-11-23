@@ -71,9 +71,40 @@ COMPACT_PREDICTOR = """Your context is nearly full, so older turns will now be r
 GUARD_PREDICTOR = """finish was not executed yet (%s of wall time remain). Before ending, list every assumption in your predictor that you have NOT checked against what actually happens in the world. If any remain, design and run those experiments and resubmit when the predictor improves. If none remain, call finish again in a later turn and it will be executed."""
 
 
+# Tasks whose submission is a parameter answer (task["submission"]["kind"] == "parameters": the low-rank identification
+# levels) reuse the lockstep predictor texts with these substitutions.
+PARAMETERS = {
+    "build a model that predicts its behavior, and submit that model as a predictor program, as the task statement specifies":
+        "estimate the physical parameters the task statement asks for, and submit them in the format it specifies",
+    "and write and test your predictor": "and fit and check your estimates",
+    "Only submitted predictors are evaluated, by hidden tests that run your predictor program in isolation on new trials, at conditions "
+    "you may not have tried, and compare its answers with what actually happens there, as the task statement describes.":
+        "Only submitted estimates are evaluated, by hidden tests that compare them with the true values of the reference world, as the "
+        "task statement describes.",
+    "First versions of a predictor are almost always wrong in respects that were not directly tested. Treat every assumption in your "
+    "predictor as a hypothesis until experiments in the world support it.":
+        "First estimates are almost always wrong in respects that were not directly tested. Treat every estimate and every assumption "
+        "behind it as a hypothesis until experiments in the world support it.",
+    "compare your predictor's answers with what actually happens quantitatively, update it, and resubmit whenever it improves":
+        "compare what your estimates imply with what actually happens quantitatively, update them, and resubmit whenever they improve",
+    "Call it when you believe your predictor's answers match the world: every assumption in it has been checked against experiments":
+        "Call it when you believe your estimates match the world: every estimate has been checked against experiments",
+    "keep your best current predictor submitted": "keep your best current estimates submitted",
+    "the current predictor and where its files are": "the current estimates and where their files are",
+    "list every assumption in your predictor that you have NOT checked": "list every estimate or assumption behind it that you have NOT checked",
+    "resubmit when the predictor improves": "resubmit when the estimates improve"}
+
+
 def prompts(task):
     """(system, compaction, finish guard) texts for a task."""
-    if task["submission"].get("kind") != "predictor":
+    kind = task["submission"].get("kind")
+    if kind == "parameters":
+        texts = SYSTEM_PREDICTOR % PREDICTOR_WORLDS["lockstep"], COMPACT_PREDICTOR, GUARD_PREDICTOR
+        assert sum(text.count(old) for text in texts for old in PARAMETERS) == len(PARAMETERS)
+        for old, new in PARAMETERS.items():
+            texts = tuple(text.replace(old, new) for text in texts)
+        return texts
+    if kind != "predictor":
         return SYSTEM, COMPACT, GUARD
     return SYSTEM_PREDICTOR % PREDICTOR_WORLDS["realtime" if "realtime" in task else "lockstep"], COMPACT_PREDICTOR, GUARD_PREDICTOR
 

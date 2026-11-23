@@ -1995,6 +1995,10 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             task["submission"]["kind"] = "predictor"
             task["action_schema"]["submit"] = {"project_b64": "base64 ZIP of your predictor program (%s and its files); scores stay private"
                                                               % task["submission"]["entrypoint"]}
+        if metrics == ["lowrank"]:  # a parameter answer (evaluation._lowrank), not a scene
+            task["submission"]["kind"] = "parameters"
+            task["action_schema"]["submit"] = {"project_b64": "base64 ZIP holding your parameter answer %s; scores stay private"
+                                                              % task["submission"]["entrypoint"]}
         if "channel" in tools:
             task["code_channel"] = {
                 "path": CHANNEL_SOCKET, "availability": "only while a bash command runs; one connection at a time",

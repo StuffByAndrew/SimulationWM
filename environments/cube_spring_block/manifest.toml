@@ -168,3 +168,8 @@ actions = [{op = "grasp", body = "spring_top", local_point = [0, 0, 0.004]},
            {op = "move", displacement = [0, 0, -0.0010272], ticks = 40},
            {op = "release", ticks = 1000}]
 
+
+# Metric `lowrank` (parameter answer instead of a scene): the cube's inertial properties and the spring's stiffness.
+[lowrank]
+body = "cube"
+joint = "spring"
