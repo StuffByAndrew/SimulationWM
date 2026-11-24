@@ -20,7 +20,7 @@ factor = "Franka, ideal spring stated, block of stated mass, no force sensing"
 scene = "environments/panda_small/tetra_spring_block/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"

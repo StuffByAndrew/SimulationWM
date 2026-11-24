@@ -20,7 +20,7 @@ factor = "Franka + Shadow hand, touch only, mug, banana, hammer stated (L2); seq
 scene = "environments/panda_shadow/table_objects/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py", "--bash-mode", "pausable"]
 process_limit_backend = "slurm_step"

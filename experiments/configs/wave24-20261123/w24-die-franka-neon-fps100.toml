@@ -20,7 +20,7 @@ factor = "biased die; Franka with joint efforts; real time at 100 frames/s (cont
 scene = "environments/panda_small/die_biased/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"

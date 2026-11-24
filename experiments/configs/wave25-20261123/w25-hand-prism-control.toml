@@ -20,7 +20,7 @@ factor = "Shadow hand, touch only, sequence tool (w21 harness); gemini-4-neon"
 scene = "environments/shadow_hand/hand_prism/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"

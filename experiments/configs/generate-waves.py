@@ -577,7 +577,7 @@ seed = 2026110208
 scene = "{source_dir}/{entry}scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"{', "--bash-mode", "pausable"' if o.get("pausable") else ""}]
 process_limit_backend = "slurm_step"

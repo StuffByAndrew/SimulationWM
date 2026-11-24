@@ -20,7 +20,7 @@ factor = "tetrahedral cluster + ideal spring, k stated; point grasp without forc
 scene = "environments/tetra_spring/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"

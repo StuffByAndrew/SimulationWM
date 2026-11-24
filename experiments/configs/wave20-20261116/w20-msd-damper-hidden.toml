@@ -20,7 +20,7 @@ factor = "1D mass on an ideal spring + damper, does not look like one; point gra
 scene = "environments/msd_damper_hidden/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"
