@@ -141,8 +141,7 @@ def _checkpoint(sim, render=True):
 
 def main(*, project_dir=Path("/workspace/project")):
     from .simulation import Simulation
-    from .evaluation import extract_submission
-    from .runtime import decode_submission
+    from .submission import decode_submission, extract_submission
 
     sim = None
     episode = 0
@@ -163,7 +162,7 @@ def main(*, project_dir=Path("/workspace/project")):
                 if op == "load":
                     if sim is not None:
                         raise ValueError("Use a new worker for each immutable candidate version")
-                    project = decode_submission(message.get("project_b64"), 8 * 1024 * 1024)
+                    project = decode_submission(message.get("project_b64"))
                     scene = extract_submission(project, Path(project_dir), message.get("entrypoint", "scene.xml"))
                     supplied = message.get("config", {})
                     if not isinstance(supplied, dict) or set(supplied) - PUBLIC_CONFIG:

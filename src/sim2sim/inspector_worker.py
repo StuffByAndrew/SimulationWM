@@ -16,7 +16,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from .evaluation import _relative, extract_submission
+from .submission import _relative, extract_submission
 from .inspector import PROPERTIES
 from .runtime import decode_submission, extract_bundle
 from .robots import ROBOTS

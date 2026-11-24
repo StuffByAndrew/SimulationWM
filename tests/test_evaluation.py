@@ -4,7 +4,8 @@ from pathlib import Path
 import zipfile
 import xml.etree.ElementTree as ET
 import pytest
-from sim2sim.evaluation import decode_submission, extract_submission, evaluate_submission
+from sim2sim.evaluation import evaluate_submission
+from sim2sim.submission import decode_submission, extract_submission
 
 
 def archive(files):

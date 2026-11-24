@@ -116,7 +116,7 @@ class Simulation:
         world = root.find("worldbody")
         if world is None:
             raise ValueError("scene needs a worldbody")
-        if "scene_edit" in self.config:  # researcher-only probe fixtures (src/sim2sim/cloth.py) edit the parsed MJCF
+        if "scene_edit" in self.config:  # researcher-only probe fixtures edit the parsed MJCF
             self.config["scene_edit"](root)
         trusted_camera = self.config.get("trusted_camera")
         if trusted_camera is not None:
@@ -184,8 +184,10 @@ class Simulation:
         if self.robot is not None:
             self._init_robot()
             self._reset_robot()
-        from .fixture import Mechanism, is_fixture  # positioning-fixture scenes: private carriage mechanism (fixture.py)
-        self.fixture = Mechanism(self, self.config.get("fixture_seed")) if is_fixture(self._model) else None
+        self.fixture = None
+        if mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_NUMERIC, "fixture_compression") >= 0:  # positioning-fixture scene
+            from .fixture import Mechanism  # private carriage mechanism: evaluator image only, absent from the agent image
+            self.fixture = Mechanism(self, self.config.get("fixture_seed"))
         mujoco.mj_forward(self._model, self._data)
         self._camera_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera)
         if self._camera_id < 0:
