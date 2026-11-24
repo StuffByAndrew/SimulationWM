@@ -375,16 +375,18 @@ evaluation fails with that error. It combines with other scene metrics but the l
 `dynamics` image metric scores every visible body and so can never rate a model without gears like one with them.
 
 - `accuracy`: each probe runs `evaluation._probe_actions` (grasp, four moves, release, three waits) plus `settle_ticks` of
-  waiting, from reset, in the fresh source and the candidate (a missed candidate grasp turns its moves into waits). Every tick
-  records the **world** rotation of `crank` and `hand` about the panel normal (the source crank's hinge axis) relative to
+  waiting, from reset, in the fresh source and the candidate (a missed candidate grasp turns its moves into waits). Unlike the
+  other scene metrics the candidate keeps **its own submitted timestep**: each action lasts the same time (rounded to its
+  steps) and its samples are interpolated to the source's. Every step records the **world** rotation of `crank` and `hand` about the panel normal (the source crank's hinge axis) relative to
   their reset orientation, unwrapped, so a flipped hinge axis, another zero angle or other joint names cost nothing. Per probe
   and body the RMS difference (rad) and the source's range are kept; `probe_error_rad` is their mean over probes and both bodies.
 - `structure`: hinge bodies other than crank and hand whose axis is within 5° of the panel normal are axles. Source gears are
   matched one-to-one to candidate axles by axle position in the panel plane within `axle_tolerance_m` (nearest first;
   names, sizes and masses play no part). `depth_class` is `shallow` (no gear matched), `deep` (≥ 80 % matched) or `partial`;
   also hinge/axle body counts, unmatched candidate axles and couplings (equality constraints by type, tendons).
-- `sim_cost`: candidate, shallow and deep reference, each compiled as submitted (no evaluation grasp targets) at the source
-  timestep, from rest with a constant crank torque `cost_torque_nm` about the panel normal: wall seconds per simulated second
+- `sim_cost`: candidate, shallow and deep reference, each compiled as submitted (no evaluation grasp targets) at **its own
+  timestep** (the deep reference at the source's, the shallow reference at the largest step that passes the gate, the
+  candidate at its submitted one: big steps are part of why a shallow model is cheap), from rest with a constant crank torque `cost_torque_nm` about the panel normal: wall seconds per simulated second
   of `mj_step(nstep)` over `cost_seconds`, `cost_runs` runs interleaved across the three models, median (`runs` kept), and
   `relative_to_shallow`; plus body, joint, dof, equality, tendon, geom, peak contact and peak constraint-row counts. Times
   come from the evaluation worker (2 CPUs) and are only comparable within one report.

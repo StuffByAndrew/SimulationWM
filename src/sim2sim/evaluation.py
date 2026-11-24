@@ -814,7 +814,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
         if 'gear_train' in selection:
             from .gear_train import evaluate as gear_train
             assert config.get('gear_train'), 'gear_train metric requires a private [gear_train] table'
-            scores['gear_train'] = gear_train(source, candidate, source_path, candidate_path, simconfig, candidate_config, config, artifacts / 'gear_train')
+            scores['gear_train'] = gear_train(source, source_path, candidate_path, simconfig, candidate_config, config, artifacts / 'gear_train')
         hook = config.get('metrics_hook')
         if hook:
             import importlib
