@@ -337,7 +337,11 @@ def _assignments(path,names=None):
     at statement level or file writes). The wave generator writes configs when run, so it is never imported."""
     import ast
     tree=ast.parse(Path(path).read_text())
-    body=[node for node in tree.body if isinstance(node,ast.Assign) and (names is None or any(isinstance(t,ast.Name) and t.id in names for t in node.targets))]
+    # with names=None also keep function definitions and statement-level ``NAME.update(...)`` calls: later assignments read keys they add
+    update=lambda node:(isinstance(node,ast.Expr) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Attribute)
+                        and node.value.func.attr=='update' and isinstance(node.value.func.value,ast.Name))
+    body=[node for node in tree.body if (isinstance(node,ast.Assign) and (names is None or any(isinstance(t,ast.Name) and t.id in names for t in node.targets)))
+          or (names is None and (isinstance(node,ast.FunctionDef) or update(node)))]
     namespace={'Path':Path,'__file__':str(path)}
     exec(compile(ast.Module(body=body,type_ignores=[]),str(path),'exec'),namespace)
     return namespace
