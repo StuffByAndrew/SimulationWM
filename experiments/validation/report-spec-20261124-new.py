@@ -127,7 +127,7 @@ SUMMARIES = tuple(((f[0] if isinstance(f, tuple) else f), set(NAMES)) for f in B
             ((B.MAIN / "validation" / "results-gemini-carbon-20261123.json", set(NAMES)), (B.MAIN / "validation" / "results-w26-mjcf-20261123.json", set(NAMES)))
 INVALID, CONTINUATIONS, COMPARISONS, NOTE_FLAGS, EXAMPLES = set(), {}, {}, {}, {}
 MODELS = B.MODELS + (WORK / "models.json",)
-CHECKPOINTS = G.CHECKPOINTS + B.CHECKPOINTS + (WORK / "checkpoints-cost.json",)
+CHECKPOINTS = G.CHECKPOINTS + (WORK / "checkpoints-cube-astra.json", WORK / "checkpoints-cost.json")  # cube astra: its entry from the cumulative report (no cost)
 TRACES, CHAT = B.TRACES + (WORK / "traces",), B.CHAT + (WORK / "chat",)
 VENDOR, TOOLS = B.VENDOR, B.TOOLS
 EDITS = WORK / "edits.json"
@@ -227,24 +227,27 @@ def sections(ctx):
     for r in NEW:
         if STATE[r][0] == "failed":
             fails[STATE[r][1]] = fails.get(STATE[r][1], 0) + 1
-    n_sub = sum(1 for r in NEW if STATE[r][3])
+    n_sub = len(scored)
+    batch1 = sum(1 for r in NEW if STATE[r][3] and BATCH_OF[r] is BATCHES[1])
     old = sorted(r for r in REPORTED if re.search(r"-(\d{8})-\d{3}$", r).group(1) >= SINCE)
     sec = [dict(id="status", nav="Status", tag=f"{len(NEW)} new runs · as of {AS_OF}",
         title=f"1 · {len(NEW)} new runs since 17 November: {count(NEW, 'completed')} completed, {count(NEW, 'running')} running, "
               f"{count(NEW, 'failed')} failed on infrastructure, {n_sub} with a scored submission",
         q=None, answer=L(f"Since 17 November, {len(NEW) + len(old)} strict runs were started. {len(old)} of them (astra replicates of 17–18 November "
                          f"and the Gemini Neon/Hydrogen batch of 19–20 November) are already in the 2026-11-24 reports. Of the other {len(NEW)}, only "
-                         f"{count(NEW, 'completed')} completed: Carbon on cloth-holes. {count(NEW, 'running')} are running (most started at about 18:07 UTC "
-                         f"today), {count(NEW, 'never started')} were prepared but never started (most superseded by a re-prepared copy), "
+                         f"{count(NEW, 'completed')} completed: Carbon on cloth-holes. {count(NEW, 'running')} are running, "
+                         f"{count(NEW, 'never started')} were prepared but never started (most superseded by a re-prepared copy), "
                          f"{count(NEW, 'cancelled')} were cancelled, and {count(NEW, 'failed')} failed, none for a reason the agent caused: " +
                          "; ".join(f"{v} × {k}" for k, v in sorted(fails.items(), key=lambda kv: -kv[1])) +
-                         f". {n_sub} runs reached a scored submission; sections 2 and 3 compare them with earlier runs of the same levels. "
+                         f". {n_sub} runs reached a scored submission; sections 2–4 compare them with earlier runs of the same levels ({batch1} batch-1 runs "
+                         "also submitted before dying and stay excluded, as in the Gemini report). "
                          "Waves 23 (fixture), 24 (die), 25 (touch harness) and 29 (low-rank prompt) have no scored submission yet."),
         blocks=[cap("Table", L("<b>New runs by batch</b> (state from each run's records and Slurm job log; appendix A1 lists every run).")),
                 blk(type="table", head=["batch and question", "model", "runs"] + states + ["submissions"], rows=rows)])]
 
     # ---- 2, 3 · scored levels
-    def level(lv, title, tag, text):
+    def level(lv, title, tag, text, new):
+        text = text.format(*(f"{R[r]['wall_min']:.0f}" for r in new))  # run-clock minutes of the level's new runs
         keys = KEYS[lv]
         key = keys[0]
         members = [r for m in MODEL_ORDER for r in RUNS.get((lv, m), [])]
@@ -285,19 +288,22 @@ def sections(ctx):
             if stills:
                 blocks += [cap("Figure", "<b>Cloth at rest, stiffness field and lift forces</b>: truth (left) against each final model (right)."),
                            blk(type="images", items=[dict(src=f"clips/{c['file']}", label=f"{NAMES[r][1]}: {c['clip']}", run=r) for r, c in stills])]
-        return dict(id=lv, nav=SCENE[lv], tag=tag, q=None, answer=None, blocks=blocks,
-                    title=title + ": " + ", ".join(f"{m} ×{v:.2g}" for m, v in ratio.items() if v is not None) + " astra's error (last submission)")
+        head = (": " + ", ".join(f"{m} ×{v:.2g}" for m, v in ratio.items() if v is not None) + " astra's error (last submission)") if astra is not None and astra >= 1e-3 else \
+            (f": astra {LABEL.get(key, key)} {fmt(key, final(RUNS[(lv, 'gpt-6-astra')][0], key))}; " +  # astra exact: a ratio to it is meaningless
+             ", ".join(f"{m} run {RUNS[(lv, m)].index(r) + 1} {fmt(key, final(r, key))}" for m in MODEL_ORDER[1:] for r in RUNS.get((lv, m), [])))
+        return dict(id=lv, nav=SCENE[lv], tag=tag, q=None, answer=None, blocks=blocks, title=title + head)
 
     sec.append(level("w22-cloth-holes", "2 · Gemini 4 Carbon, cloth with holes and cuts", "the only completed new run",
-                     G.LEVEL_TEXT["w22-cloth-holes"] + " Carbon finished on its own at 356 of 360 run-clock minutes with a single submission."))
-    sec.append(level("w11-tetra-spring-k", "3 · Gemini 4 Carbon, spring level with stated stiffness", "Carbon run truncated at minute 232 of 240",
-                     G.LEVEL_TEXT["w11-tetra-spring-k"] + " The Carbon run died at run-clock minute 232 of 240, when Google's outages outlasted the 4 h hold "
-                     "allowance; it had submitted once. Its rerun (36 h allowance) is running."))
+                     G.LEVEL_TEXT["w22-cloth-holes"] + " Carbon finished on its own at run-clock minute {} of 360 with a single submission.",
+                     CARBON["w22-cloth-holes"]))
+    sec.append(level("w11-tetra-spring-k", "3 · Gemini 4 Carbon, spring level with stated stiffness", "Carbon run truncated before its 240-minute budget",
+                     G.LEVEL_TEXT["w11-tetra-spring-k"] + " The Carbon run died at run-clock minute {} of 240, when Google's outages outlasted the 4 h hold "
+                     "allowance; it had submitted once. Its rerun (36 h allowance) is running.", CARBON["w11-tetra-spring-k"]))
     sec.append(level("w26", "4 · Wave 26, full-MJCF arm (Gemini 4 Neon), cube on a spring", "both runs truncated; the low-rank arm has no submission",
                      "A cube and a known-mass block lie next to a spring that fits a hole; point grasp, no force reading, camera. The MJCF arm builds a "
                      "full MuJoCo scene, as in wave 20. Both 2026-11-23 runs died when Google's outages outlasted the 4 h hold allowance, at run-clock "
-                     "minutes 235 and 306, each after one submission; the low-rank arm's two runs died before submitting, so the wave's question "
-                     "(low-rank answer vs MJCF) cannot be answered yet. All four are rerunning with a 36 h allowance. Shown against astra's wave-20 run."))
+                     "minutes {} and {}, each after one submission; the low-rank arm's two runs died before submitting, so the wave's question "
+                     "(low-rank answer vs MJCF) cannot be answered yet. All four are rerunning with a 36 h allowance. Shown against astra's wave-20 run.", W26_MJCF))
 
     # ---- appendices
     order = {st: i for i, st in enumerate(states)}
