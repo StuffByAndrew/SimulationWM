@@ -1,0 +1,652 @@
+<mujoco model="gear_train">
+  <compiler angle="degree"/>
+  <option timestep="0.0005" tolerance="1e-12"/>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <worldbody>
+    <light name="key" directional="true" pos="-1 -3 3" dir="1 3 -2" diffuse=".8 .78 .72"/>
+    <light name="fill" directional="true" pos="2 -1 2" dir="-2 1 -1" diffuse=".35 .38 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.000000 -0.950000 0.700000" xyaxes="1.000000 -0.000000 0.000000 0.000000 0.254493 0.967075" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <geom name="stand" type="box" pos="0 .03 0.125000" size=".14 .06 0.125000" rgba=".3 .32 .35 1"/>
+    <geom name="panel" type="box" pos="0 0.01 0.45" size="0.460000 0.010000 0.200000" rgba=".86 .87 .84 1"/>
+    <geom name="dial_face" type="cylinder" pos="0.344856 -.001 0.502857" size=".09 .001" euler="90 0 0" contype="0" conaffinity="0" rgba=".97 .97 .94 1"/>
+    <geom name="dial_tick_00" type="box" size=".002 .001 .008" pos="0.344856 -0.002500 0.580857" euler="0 0.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_01" type="box" size=".002 .001 .008" pos="0.383856 -0.002500 0.570407" euler="0 30.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_02" type="box" size=".002 .001 .008" pos="0.412406 -0.002500 0.541857" euler="0 60.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_03" type="box" size=".002 .001 .008" pos="0.422856 -0.002500 0.502857" euler="0 90.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_04" type="box" size=".002 .001 .008" pos="0.412406 -0.002500 0.463857" euler="0 120.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_05" type="box" size=".002 .001 .008" pos="0.383856 -0.002500 0.435307" euler="0 150.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_06" type="box" size=".002 .001 .008" pos="0.344856 -0.002500 0.424857" euler="0 180.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_07" type="box" size=".002 .001 .008" pos="0.305856 -0.002500 0.435307" euler="0 210.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_08" type="box" size=".002 .001 .008" pos="0.277306 -0.002500 0.463857" euler="0 240.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_09" type="box" size=".002 .001 .008" pos="0.266856 -0.002500 0.502857" euler="0 270.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_10" type="box" size=".002 .001 .008" pos="0.277306 -0.002500 0.541857" euler="0 300.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <geom name="dial_tick_11" type="box" size=".002 .001 .008" pos="0.305856 -0.002500 0.570407" euler="0 330.0000 0" contype="0" conaffinity="0" rgba=".1 .1 .1 1"/>
+    <body name="crank" pos="-0.344856 0 0.450000">
+      <joint name="crank_hinge" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="crank_l0" type="cylinder" size="0.045 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".62 .64 .68 1"/>
+      <geom name="crank_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.045500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="crank_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.044769 -0.007000 0.008124" euler="0 -10.2857 0"/>
+      <geom name="crank_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.042599 -0.007000 0.015988" euler="0 -20.5714 0"/>
+      <geom name="crank_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.039059 -0.007000 0.023337" euler="0 -30.8571 0"/>
+      <geom name="crank_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.034265 -0.007000 0.029936" euler="0 -41.1429 0"/>
+      <geom name="crank_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.028369 -0.007000 0.035573" euler="0 -51.4286 0"/>
+      <geom name="crank_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.021561 -0.007000 0.040067" euler="0 -61.7143 0"/>
+      <geom name="crank_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.014060 -0.007000 0.043273" euler="0 -72.0000 0"/>
+      <geom name="crank_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.006108 -0.007000 0.045088" euler="0 -82.2857 0"/>
+      <geom name="crank_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.002041 -0.007000 0.045454" euler="0 -92.5714 0"/>
+      <geom name="crank_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.010125 -0.007000 0.044359" euler="0 -102.8571 0"/>
+      <geom name="crank_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.017883 -0.007000 0.041839" euler="0 -113.1429 0"/>
+      <geom name="crank_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.025066 -0.007000 0.037973" euler="0 -123.4286 0"/>
+      <geom name="crank_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.031443 -0.007000 0.032887" euler="0 -133.7143 0"/>
+      <geom name="crank_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.036810 -0.007000 0.026744" euler="0 -144.0000 0"/>
+      <geom name="crank_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.040994 -0.007000 0.019742" euler="0 -154.2857 0"/>
+      <geom name="crank_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.043860 -0.007000 0.012105" euler="0 -164.5714 0"/>
+      <geom name="crank_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.045317 -0.007000 0.004079" euler="0 -174.8571 0"/>
+      <geom name="crank_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.045317 -0.007000 -0.004079" euler="0 -185.1429 0"/>
+      <geom name="crank_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.043860 -0.007000 -0.012105" euler="0 -195.4286 0"/>
+      <geom name="crank_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.040994 -0.007000 -0.019742" euler="0 -205.7143 0"/>
+      <geom name="crank_l0_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.036810 -0.007000 -0.026744" euler="0 -216.0000 0"/>
+      <geom name="crank_l0_t22" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.031443 -0.007000 -0.032887" euler="0 -226.2857 0"/>
+      <geom name="crank_l0_t23" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.025066 -0.007000 -0.037973" euler="0 -236.5714 0"/>
+      <geom name="crank_l0_t24" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.017883 -0.007000 -0.041839" euler="0 -246.8571 0"/>
+      <geom name="crank_l0_t25" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.010125 -0.007000 -0.044359" euler="0 -257.1429 0"/>
+      <geom name="crank_l0_t26" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.002041 -0.007000 -0.045454" euler="0 -267.4286 0"/>
+      <geom name="crank_l0_t27" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.006108 -0.007000 -0.045088" euler="0 -277.7143 0"/>
+      <geom name="crank_l0_t28" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.014060 -0.007000 -0.043273" euler="0 -288.0000 0"/>
+      <geom name="crank_l0_t29" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.021561 -0.007000 -0.040067" euler="0 -298.2857 0"/>
+      <geom name="crank_l0_t30" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.028369 -0.007000 -0.035573" euler="0 -308.5714 0"/>
+      <geom name="crank_l0_t31" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.034265 -0.007000 -0.029936" euler="0 -318.8571 0"/>
+      <geom name="crank_l0_t32" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.039059 -0.007000 -0.023337" euler="0 -329.1429 0"/>
+      <geom name="crank_l0_t33" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.042599 -0.007000 -0.015988" euler="0 -339.4286 0"/>
+      <geom name="crank_l0_t34" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.044769 -0.007000 -0.008124" euler="0 -349.7143 0"/>
+      <geom name="crank_arm" type="box" size=".006 0.003 0.04" pos="0 -0.024 0" density="2700" contype="0" conaffinity="0" rgba=".45 .47 .5 1"/>
+      <geom name="crank_counterweight" type="cylinder" size="0.016000 0.003" pos="0 -0.024 0.04" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".3 .31 .33 1"/>
+      <geom name="crank_knob" type="cylinder" size="0.008 0.012" pos="0 -0.039000 -0.04" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".8 .15 .12 1"/>
+      <geom name="crank_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.027000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_01" pos="-0.299218 0 0.504389">
+      <joint name="gear_01" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_01_l0" type="cylinder" size="0.026 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_01_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.026500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_01_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.025203 -0.007000 0.008189" euler="0 -18.0000 0"/>
+      <geom name="gear_01_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.021439 -0.007000 0.015576" euler="0 -36.0000 0"/>
+      <geom name="gear_01_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.015576 -0.007000 0.021439" euler="0 -54.0000 0"/>
+      <geom name="gear_01_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.008189 -0.007000 0.025203" euler="0 -72.0000 0"/>
+      <geom name="gear_01_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.000000 -0.007000 0.026500" euler="0 -90.0000 0"/>
+      <geom name="gear_01_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.008189 -0.007000 0.025203" euler="0 -108.0000 0"/>
+      <geom name="gear_01_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.015576 -0.007000 0.021439" euler="0 -126.0000 0"/>
+      <geom name="gear_01_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021439 -0.007000 0.015576" euler="0 -144.0000 0"/>
+      <geom name="gear_01_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.025203 -0.007000 0.008189" euler="0 -162.0000 0"/>
+      <geom name="gear_01_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.026500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_01_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.025203 -0.007000 -0.008189" euler="0 -198.0000 0"/>
+      <geom name="gear_01_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021439 -0.007000 -0.015576" euler="0 -216.0000 0"/>
+      <geom name="gear_01_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.015576 -0.007000 -0.021439" euler="0 -234.0000 0"/>
+      <geom name="gear_01_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.008189 -0.007000 -0.025203" euler="0 -252.0000 0"/>
+      <geom name="gear_01_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.000000 -0.007000 -0.026500" euler="0 -270.0000 0"/>
+      <geom name="gear_01_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.008189 -0.007000 -0.025203" euler="0 -288.0000 0"/>
+      <geom name="gear_01_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.015576 -0.007000 -0.021439" euler="0 -306.0000 0"/>
+      <geom name="gear_01_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.021439 -0.007000 -0.015576" euler="0 -324.0000 0"/>
+      <geom name="gear_01_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.025203 -0.007000 -0.008189" euler="0 -342.0000 0"/>
+      <geom name="gear_01_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_02" pos="-0.268364 0 0.467619">
+      <joint name="gear_02" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_02_l0" type="cylinder" size="0.022 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_02_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_02_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020981 -0.007000 0.008128" euler="0 -21.1765 0"/>
+      <geom name="gear_02_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.016628 -0.007000 0.015158" euler="0 -42.3529 0"/>
+      <geom name="gear_02_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010029 -0.007000 0.020141" euler="0 -63.5294 0"/>
+      <geom name="gear_02_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002076 -0.007000 0.022404" euler="0 -84.7059 0"/>
+      <geom name="gear_02_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006157 -0.007000 0.021641" euler="0 -105.8824 0"/>
+      <geom name="gear_02_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013559 -0.007000 0.017955" euler="0 -127.0588 0"/>
+      <geom name="gear_02_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.019130 -0.007000 0.011845" euler="0 -148.2353 0"/>
+      <geom name="gear_02_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022117 -0.007000 0.004134" euler="0 -169.4118 0"/>
+      <geom name="gear_02_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022117 -0.007000 -0.004134" euler="0 -190.5882 0"/>
+      <geom name="gear_02_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.019130 -0.007000 -0.011845" euler="0 -211.7647 0"/>
+      <geom name="gear_02_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013559 -0.007000 -0.017955" euler="0 -232.9412 0"/>
+      <geom name="gear_02_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006157 -0.007000 -0.021641" euler="0 -254.1176 0"/>
+      <geom name="gear_02_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002076 -0.007000 -0.022404" euler="0 -275.2941 0"/>
+      <geom name="gear_02_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010029 -0.007000 -0.020141" euler="0 -296.4706 0"/>
+      <geom name="gear_02_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.016628 -0.007000 -0.015158" euler="0 -317.6471 0"/>
+      <geom name="gear_02_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020981 -0.007000 -0.008128" euler="0 -338.8235 0"/>
+      <geom name="gear_02_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_03" pos="-0.234939 0 0.507453">
+      <joint name="gear_03" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_03_l0" type="cylinder" size="0.03 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_03_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.030500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_03_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.029461 -0.007000 0.007894" euler="0 -15.0000 0"/>
+      <geom name="gear_03_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.026414 -0.007000 0.015250" euler="0 -30.0000 0"/>
+      <geom name="gear_03_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.021567 -0.007000 0.021567" euler="0 -45.0000 0"/>
+      <geom name="gear_03_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.015250 -0.007000 0.026414" euler="0 -60.0000 0"/>
+      <geom name="gear_03_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.007894 -0.007000 0.029461" euler="0 -75.0000 0"/>
+      <geom name="gear_03_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.000000 -0.007000 0.030500" euler="0 -90.0000 0"/>
+      <geom name="gear_03_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.007894 -0.007000 0.029461" euler="0 -105.0000 0"/>
+      <geom name="gear_03_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.015250 -0.007000 0.026414" euler="0 -120.0000 0"/>
+      <geom name="gear_03_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021567 -0.007000 0.021567" euler="0 -135.0000 0"/>
+      <geom name="gear_03_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.026414 -0.007000 0.015250" euler="0 -150.0000 0"/>
+      <geom name="gear_03_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.029461 -0.007000 0.007894" euler="0 -165.0000 0"/>
+      <geom name="gear_03_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.030500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_03_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.029461 -0.007000 -0.007894" euler="0 -195.0000 0"/>
+      <geom name="gear_03_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.026414 -0.007000 -0.015250" euler="0 -210.0000 0"/>
+      <geom name="gear_03_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021567 -0.007000 -0.021567" euler="0 -225.0000 0"/>
+      <geom name="gear_03_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.015250 -0.007000 -0.026414" euler="0 -240.0000 0"/>
+      <geom name="gear_03_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.007894 -0.007000 -0.029461" euler="0 -255.0000 0"/>
+      <geom name="gear_03_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.000000 -0.007000 -0.030500" euler="0 -270.0000 0"/>
+      <geom name="gear_03_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.007894 -0.007000 -0.029461" euler="0 -285.0000 0"/>
+      <geom name="gear_03_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.015250 -0.007000 -0.026414" euler="0 -300.0000 0"/>
+      <geom name="gear_03_l0_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.021567 -0.007000 -0.021567" euler="0 -315.0000 0"/>
+      <geom name="gear_03_l0_t22" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.026414 -0.007000 -0.015250" euler="0 -330.0000 0"/>
+      <geom name="gear_03_l0_t23" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.029461 -0.007000 -0.007894" euler="0 -345.0000 0"/>
+      <geom name="gear_03_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_04" pos="-0.200228 0 0.466087">
+      <joint name="gear_04" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_04_l0" type="cylinder" size="0.024 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_04_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.024500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_04_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023173 -0.007000 0.007955" euler="0 -18.9474 0"/>
+      <geom name="gear_04_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.019334 -0.007000 0.015048" euler="0 -37.8947 0"/>
+      <geom name="gear_04_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.013400 -0.007000 0.020511" euler="0 -56.8421 0"/>
+      <geom name="gear_04_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.006014 -0.007000 0.023750" euler="0 -75.7895 0"/>
+      <geom name="gear_04_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.002023 -0.007000 0.024416" euler="0 -94.7368 0"/>
+      <geom name="gear_04_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.009842 -0.007000 0.022436" euler="0 -113.6842 0"/>
+      <geom name="gear_04_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.016593 -0.007000 0.018025" euler="0 -132.6316 0"/>
+      <geom name="gear_04_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021547 -0.007000 0.011661" euler="0 -151.5789 0"/>
+      <geom name="gear_04_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024166 -0.007000 0.004033" euler="0 -170.5263 0"/>
+      <geom name="gear_04_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024166 -0.007000 -0.004033" euler="0 -189.4737 0"/>
+      <geom name="gear_04_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021547 -0.007000 -0.011661" euler="0 -208.4211 0"/>
+      <geom name="gear_04_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.016593 -0.007000 -0.018025" euler="0 -227.3684 0"/>
+      <geom name="gear_04_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.009842 -0.007000 -0.022436" euler="0 -246.3158 0"/>
+      <geom name="gear_04_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.002023 -0.007000 -0.024416" euler="0 -265.2632 0"/>
+      <geom name="gear_04_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.006014 -0.007000 -0.023750" euler="0 -284.2105 0"/>
+      <geom name="gear_04_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.013400 -0.007000 -0.020511" euler="0 -303.1579 0"/>
+      <geom name="gear_04_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.019334 -0.007000 -0.015048" euler="0 -322.1053 0"/>
+      <geom name="gear_04_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023173 -0.007000 -0.007955" euler="0 -341.0526 0"/>
+      <geom name="gear_04_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_05" pos="-0.166803 0 0.505921">
+      <joint name="gear_05" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_05_l0" type="cylinder" size="0.028 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_05_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.028500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_05_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.027346 -0.007000 0.008029" euler="0 -16.3636 0"/>
+      <geom name="gear_05_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023976 -0.007000 0.015408" euler="0 -32.7273 0"/>
+      <geom name="gear_05_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018664 -0.007000 0.021539" euler="0 -49.0909 0"/>
+      <geom name="gear_05_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011839 -0.007000 0.025925" euler="0 -65.4545 0"/>
+      <geom name="gear_05_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004056 -0.007000 0.028210" euler="0 -81.8182 0"/>
+      <geom name="gear_05_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004056 -0.007000 0.028210" euler="0 -98.1818 0"/>
+      <geom name="gear_05_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011839 -0.007000 0.025925" euler="0 -114.5455 0"/>
+      <geom name="gear_05_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018664 -0.007000 0.021539" euler="0 -130.9091 0"/>
+      <geom name="gear_05_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023976 -0.007000 0.015408" euler="0 -147.2727 0"/>
+      <geom name="gear_05_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027346 -0.007000 0.008029" euler="0 -163.6364 0"/>
+      <geom name="gear_05_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.028500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_05_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027346 -0.007000 -0.008029" euler="0 -196.3636 0"/>
+      <geom name="gear_05_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023976 -0.007000 -0.015408" euler="0 -212.7273 0"/>
+      <geom name="gear_05_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018664 -0.007000 -0.021539" euler="0 -229.0909 0"/>
+      <geom name="gear_05_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011839 -0.007000 -0.025925" euler="0 -245.4545 0"/>
+      <geom name="gear_05_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004056 -0.007000 -0.028210" euler="0 -261.8182 0"/>
+      <geom name="gear_05_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004056 -0.007000 -0.028210" euler="0 -278.1818 0"/>
+      <geom name="gear_05_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011839 -0.007000 -0.025925" euler="0 -294.5455 0"/>
+      <geom name="gear_05_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018664 -0.007000 -0.021539" euler="0 -310.9091 0"/>
+      <geom name="gear_05_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023976 -0.007000 -0.015408" euler="0 -327.2727 0"/>
+      <geom name="gear_05_l0_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.027346 -0.007000 -0.008029" euler="0 -343.6364 0"/>
+      <geom name="gear_05_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_06" pos="-0.134021 0 0.466853">
+      <joint name="gear_06" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_06_l0" type="cylinder" size="0.023 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_06_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_06_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022083 -0.007000 0.008037" euler="0 -20.0000 0"/>
+      <geom name="gear_06_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018002 -0.007000 0.015106" euler="0 -40.0000 0"/>
+      <geom name="gear_06_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011750 -0.007000 0.020352" euler="0 -60.0000 0"/>
+      <geom name="gear_06_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004081 -0.007000 0.023143" euler="0 -80.0000 0"/>
+      <geom name="gear_06_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004081 -0.007000 0.023143" euler="0 -100.0000 0"/>
+      <geom name="gear_06_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011750 -0.007000 0.020352" euler="0 -120.0000 0"/>
+      <geom name="gear_06_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018002 -0.007000 0.015106" euler="0 -140.0000 0"/>
+      <geom name="gear_06_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022083 -0.007000 0.008037" euler="0 -160.0000 0"/>
+      <geom name="gear_06_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_06_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022083 -0.007000 -0.008037" euler="0 -200.0000 0"/>
+      <geom name="gear_06_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018002 -0.007000 -0.015106" euler="0 -220.0000 0"/>
+      <geom name="gear_06_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011750 -0.007000 -0.020352" euler="0 -240.0000 0"/>
+      <geom name="gear_06_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004081 -0.007000 -0.023143" euler="0 -260.0000 0"/>
+      <geom name="gear_06_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004081 -0.007000 -0.023143" euler="0 -280.0000 0"/>
+      <geom name="gear_06_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011750 -0.007000 -0.020352" euler="0 -300.0000 0"/>
+      <geom name="gear_06_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018002 -0.007000 -0.015106" euler="0 -320.0000 0"/>
+      <geom name="gear_06_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022083 -0.007000 -0.008037" euler="0 -340.0000 0"/>
+      <geom name="gear_06_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_07" pos="-0.108952 0 0.496729">
+      <joint name="gear_07" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_07_l0" type="cylinder" size="0.016 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_07_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.016500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_07_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.014610 -0.007000 0.007668" euler="0 -27.6923 0"/>
+      <geom name="gear_07_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.009373 -0.007000 0.013579" euler="0 -55.3846 0"/>
+      <geom name="gear_07_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.001989 -0.007000 0.016380" euler="0 -83.0769 0"/>
+      <geom name="gear_07_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.005851 -0.007000 0.015428" euler="0 -110.7692 0"/>
+      <geom name="gear_07_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.012350 -0.007000 0.010942" euler="0 -138.4615 0"/>
+      <geom name="gear_07_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016021 -0.007000 0.003949" euler="0 -166.1538 0"/>
+      <geom name="gear_07_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016021 -0.007000 -0.003949" euler="0 -193.8462 0"/>
+      <geom name="gear_07_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.012350 -0.007000 -0.010942" euler="0 -221.5385 0"/>
+      <geom name="gear_07_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.005851 -0.007000 -0.015428" euler="0 -249.2308 0"/>
+      <geom name="gear_07_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.001989 -0.007000 -0.016380" euler="0 -276.9231 0"/>
+      <geom name="gear_07_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.009373 -0.007000 -0.013579" euler="0 -304.6154 0"/>
+      <geom name="gear_07_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.014610 -0.007000 -0.007668" euler="0 -332.3077 0"/>
+      <geom name="gear_07_l1" type="cylinder" size="0.032 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_07_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.032500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_07_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.031479 -0.015000 0.008082" euler="0 -14.4000 0"/>
+      <geom name="gear_07_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.028480 -0.015000 0.015657" euler="0 -28.8000 0"/>
+      <geom name="gear_07_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023691 -0.015000 0.022248" euler="0 -43.2000 0"/>
+      <geom name="gear_07_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017414 -0.015000 0.027441" euler="0 -57.6000 0"/>
+      <geom name="gear_07_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010043 -0.015000 0.030909" euler="0 -72.0000 0"/>
+      <geom name="gear_07_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002041 -0.015000 0.032436" euler="0 -86.4000 0"/>
+      <geom name="gear_07_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006090 -0.015000 0.031924" euler="0 -100.8000 0"/>
+      <geom name="gear_07_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013838 -0.015000 0.029407" euler="0 -115.2000 0"/>
+      <geom name="gear_07_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020716 -0.015000 0.025042" euler="0 -129.6000 0"/>
+      <geom name="gear_07_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026293 -0.015000 0.019103" euler="0 -144.0000 0"/>
+      <geom name="gear_07_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.030218 -0.015000 0.011964" euler="0 -158.4000 0"/>
+      <geom name="gear_07_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.032244 -0.015000 0.004073" euler="0 -172.8000 0"/>
+      <geom name="gear_07_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.032244 -0.015000 -0.004073" euler="0 -187.2000 0"/>
+      <geom name="gear_07_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.030218 -0.015000 -0.011964" euler="0 -201.6000 0"/>
+      <geom name="gear_07_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026293 -0.015000 -0.019103" euler="0 -216.0000 0"/>
+      <geom name="gear_07_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020716 -0.015000 -0.025042" euler="0 -230.4000 0"/>
+      <geom name="gear_07_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013838 -0.015000 -0.029407" euler="0 -244.8000 0"/>
+      <geom name="gear_07_l1_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006090 -0.015000 -0.031924" euler="0 -259.2000 0"/>
+      <geom name="gear_07_l1_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002041 -0.015000 -0.032436" euler="0 -273.6000 0"/>
+      <geom name="gear_07_l1_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010043 -0.015000 -0.030909" euler="0 -288.0000 0"/>
+      <geom name="gear_07_l1_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017414 -0.015000 -0.027441" euler="0 -302.4000 0"/>
+      <geom name="gear_07_l1_t22" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023691 -0.015000 -0.022248" euler="0 -316.8000 0"/>
+      <geom name="gear_07_l1_t23" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.028480 -0.015000 -0.015657" euler="0 -331.2000 0"/>
+      <geom name="gear_07_l1_t24" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.031479 -0.015000 -0.008082" euler="0 -345.6000 0"/>
+      <geom name="gear_07_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_08" pos="-0.074242 0 0.455362">
+      <joint name="gear_08" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_08_l1" type="cylinder" size="0.022 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_08_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.022500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_08_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.020981 -0.015000 0.008128" euler="0 -21.1765 0"/>
+      <geom name="gear_08_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.016628 -0.015000 0.015158" euler="0 -42.3529 0"/>
+      <geom name="gear_08_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010029 -0.015000 0.020141" euler="0 -63.5294 0"/>
+      <geom name="gear_08_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002076 -0.015000 0.022404" euler="0 -84.7059 0"/>
+      <geom name="gear_08_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006157 -0.015000 0.021641" euler="0 -105.8824 0"/>
+      <geom name="gear_08_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013559 -0.015000 0.017955" euler="0 -127.0588 0"/>
+      <geom name="gear_08_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.019130 -0.015000 0.011845" euler="0 -148.2353 0"/>
+      <geom name="gear_08_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.022117 -0.015000 0.004134" euler="0 -169.4118 0"/>
+      <geom name="gear_08_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.022117 -0.015000 -0.004134" euler="0 -190.5882 0"/>
+      <geom name="gear_08_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.019130 -0.015000 -0.011845" euler="0 -211.7647 0"/>
+      <geom name="gear_08_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013559 -0.015000 -0.017955" euler="0 -232.9412 0"/>
+      <geom name="gear_08_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006157 -0.015000 -0.021641" euler="0 -254.1176 0"/>
+      <geom name="gear_08_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002076 -0.015000 -0.022404" euler="0 -275.2941 0"/>
+      <geom name="gear_08_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010029 -0.015000 -0.020141" euler="0 -296.4706 0"/>
+      <geom name="gear_08_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.016628 -0.015000 -0.015158" euler="0 -317.6471 0"/>
+      <geom name="gear_08_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.020981 -0.015000 -0.008128" euler="0 -338.8235 0"/>
+      <geom name="gear_08_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_09" pos="-0.042745 0 0.492898">
+      <joint name="gear_09" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_09_l1" type="cylinder" size="0.027 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_09_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.027500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_09_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.026278 -0.015000 0.008106" euler="0 -17.1429 0"/>
+      <geom name="gear_09_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.022722 -0.015000 0.015491" euler="0 -34.2857 0"/>
+      <geom name="gear_09_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017146 -0.015000 0.021500" euler="0 -51.4286 0"/>
+      <geom name="gear_09_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010047 -0.015000 0.025599" euler="0 -68.5714 0"/>
+      <geom name="gear_09_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002055 -0.015000 0.027423" euler="0 -85.7143 0"/>
+      <geom name="gear_09_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006119 -0.015000 0.026811" euler="0 -102.8571 0"/>
+      <geom name="gear_09_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013750 -0.015000 0.023816" euler="0 -120.0000 0"/>
+      <geom name="gear_09_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020159 -0.015000 0.018705" euler="0 -137.1429 0"/>
+      <geom name="gear_09_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.024777 -0.015000 0.011932" euler="0 -154.2857 0"/>
+      <geom name="gear_09_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.027193 -0.015000 0.004099" euler="0 -171.4286 0"/>
+      <geom name="gear_09_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.027193 -0.015000 -0.004099" euler="0 -188.5714 0"/>
+      <geom name="gear_09_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.024777 -0.015000 -0.011932" euler="0 -205.7143 0"/>
+      <geom name="gear_09_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020159 -0.015000 -0.018705" euler="0 -222.8571 0"/>
+      <geom name="gear_09_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013750 -0.015000 -0.023816" euler="0 -240.0000 0"/>
+      <geom name="gear_09_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006119 -0.015000 -0.026811" euler="0 -257.1429 0"/>
+      <geom name="gear_09_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002055 -0.015000 -0.027423" euler="0 -274.2857 0"/>
+      <geom name="gear_09_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010047 -0.015000 -0.025599" euler="0 -291.4286 0"/>
+      <geom name="gear_09_l1_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017146 -0.015000 -0.021500" euler="0 -308.5714 0"/>
+      <geom name="gear_09_l1_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.022722 -0.015000 -0.015491" euler="0 -325.7143 0"/>
+      <geom name="gear_09_l1_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.026278 -0.015000 -0.008106" euler="0 -342.8571 0"/>
+      <geom name="gear_09_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_10" pos="-0.009963 0 0.453830">
+      <joint name="gear_10" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_10_l1" type="cylinder" size="0.024 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_10_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.024500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_10_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023173 -0.015000 0.007955" euler="0 -18.9474 0"/>
+      <geom name="gear_10_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.019334 -0.015000 0.015048" euler="0 -37.8947 0"/>
+      <geom name="gear_10_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.013400 -0.015000 0.020511" euler="0 -56.8421 0"/>
+      <geom name="gear_10_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.006014 -0.015000 0.023750" euler="0 -75.7895 0"/>
+      <geom name="gear_10_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.002023 -0.015000 0.024416" euler="0 -94.7368 0"/>
+      <geom name="gear_10_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.009842 -0.015000 0.022436" euler="0 -113.6842 0"/>
+      <geom name="gear_10_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016593 -0.015000 0.018025" euler="0 -132.6316 0"/>
+      <geom name="gear_10_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021547 -0.015000 0.011661" euler="0 -151.5789 0"/>
+      <geom name="gear_10_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.024166 -0.015000 0.004033" euler="0 -170.5263 0"/>
+      <geom name="gear_10_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.024166 -0.015000 -0.004033" euler="0 -189.4737 0"/>
+      <geom name="gear_10_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021547 -0.015000 -0.011661" euler="0 -208.4211 0"/>
+      <geom name="gear_10_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016593 -0.015000 -0.018025" euler="0 -227.3684 0"/>
+      <geom name="gear_10_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.009842 -0.015000 -0.022436" euler="0 -246.3158 0"/>
+      <geom name="gear_10_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.002023 -0.015000 -0.024416" euler="0 -265.2632 0"/>
+      <geom name="gear_10_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.006014 -0.015000 -0.023750" euler="0 -284.2105 0"/>
+      <geom name="gear_10_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.013400 -0.015000 -0.020511" euler="0 -303.1579 0"/>
+      <geom name="gear_10_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.019334 -0.015000 -0.015048" euler="0 -322.1053 0"/>
+      <geom name="gear_10_l1_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023173 -0.015000 -0.007955" euler="0 -341.0526 0"/>
+      <geom name="gear_10_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_11" pos="0.024747 0 0.495197">
+      <joint name="gear_11" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_11_l1" type="cylinder" size="0.03 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_11_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.030500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_11_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.029461 -0.015000 0.007894" euler="0 -15.0000 0"/>
+      <geom name="gear_11_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.026414 -0.015000 0.015250" euler="0 -30.0000 0"/>
+      <geom name="gear_11_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.021567 -0.015000 0.021567" euler="0 -45.0000 0"/>
+      <geom name="gear_11_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.015250 -0.015000 0.026414" euler="0 -60.0000 0"/>
+      <geom name="gear_11_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.007894 -0.015000 0.029461" euler="0 -75.0000 0"/>
+      <geom name="gear_11_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.000000 -0.015000 0.030500" euler="0 -90.0000 0"/>
+      <geom name="gear_11_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.007894 -0.015000 0.029461" euler="0 -105.0000 0"/>
+      <geom name="gear_11_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.015250 -0.015000 0.026414" euler="0 -120.0000 0"/>
+      <geom name="gear_11_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021567 -0.015000 0.021567" euler="0 -135.0000 0"/>
+      <geom name="gear_11_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026414 -0.015000 0.015250" euler="0 -150.0000 0"/>
+      <geom name="gear_11_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.029461 -0.015000 0.007894" euler="0 -165.0000 0"/>
+      <geom name="gear_11_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.030500 -0.015000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_11_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.029461 -0.015000 -0.007894" euler="0 -195.0000 0"/>
+      <geom name="gear_11_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026414 -0.015000 -0.015250" euler="0 -210.0000 0"/>
+      <geom name="gear_11_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021567 -0.015000 -0.021567" euler="0 -225.0000 0"/>
+      <geom name="gear_11_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.015250 -0.015000 -0.026414" euler="0 -240.0000 0"/>
+      <geom name="gear_11_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.007894 -0.015000 -0.029461" euler="0 -255.0000 0"/>
+      <geom name="gear_11_l1_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.000000 -0.015000 -0.030500" euler="0 -270.0000 0"/>
+      <geom name="gear_11_l1_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.007894 -0.015000 -0.029461" euler="0 -285.0000 0"/>
+      <geom name="gear_11_l1_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.015250 -0.015000 -0.026414" euler="0 -300.0000 0"/>
+      <geom name="gear_11_l1_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.021567 -0.015000 -0.021567" euler="0 -315.0000 0"/>
+      <geom name="gear_11_l1_t22" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.026414 -0.015000 -0.015250" euler="0 -330.0000 0"/>
+      <geom name="gear_11_l1_t23" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.029461 -0.015000 -0.007894" euler="0 -345.0000 0"/>
+      <geom name="gear_11_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_12" pos="0.058815 0 0.454596">
+      <joint name="gear_12" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_12_l1" type="cylinder" size="0.023 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_12_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_12_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.022083 -0.015000 0.008037" euler="0 -20.0000 0"/>
+      <geom name="gear_12_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.018002 -0.015000 0.015106" euler="0 -40.0000 0"/>
+      <geom name="gear_12_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.011750 -0.015000 0.020352" euler="0 -60.0000 0"/>
+      <geom name="gear_12_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.004081 -0.015000 0.023143" euler="0 -80.0000 0"/>
+      <geom name="gear_12_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.004081 -0.015000 0.023143" euler="0 -100.0000 0"/>
+      <geom name="gear_12_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.011750 -0.015000 0.020352" euler="0 -120.0000 0"/>
+      <geom name="gear_12_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.018002 -0.015000 0.015106" euler="0 -140.0000 0"/>
+      <geom name="gear_12_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.022083 -0.015000 0.008037" euler="0 -160.0000 0"/>
+      <geom name="gear_12_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.023500 -0.015000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_12_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.022083 -0.015000 -0.008037" euler="0 -200.0000 0"/>
+      <geom name="gear_12_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.018002 -0.015000 -0.015106" euler="0 -220.0000 0"/>
+      <geom name="gear_12_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.011750 -0.015000 -0.020352" euler="0 -240.0000 0"/>
+      <geom name="gear_12_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.004081 -0.015000 -0.023143" euler="0 -260.0000 0"/>
+      <geom name="gear_12_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.004081 -0.015000 -0.023143" euler="0 -280.0000 0"/>
+      <geom name="gear_12_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.011750 -0.015000 -0.020352" euler="0 -300.0000 0"/>
+      <geom name="gear_12_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.018002 -0.015000 -0.015106" euler="0 -320.0000 0"/>
+      <geom name="gear_12_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.022083 -0.015000 -0.008037" euler="0 -340.0000 0"/>
+      <geom name="gear_12_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_13" pos="0.090312 0 0.492132">
+      <joint name="gear_13" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_13_l1" type="cylinder" size="0.026 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_13_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.026500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_13_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.025203 -0.015000 0.008189" euler="0 -18.0000 0"/>
+      <geom name="gear_13_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.021439 -0.015000 0.015576" euler="0 -36.0000 0"/>
+      <geom name="gear_13_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.015576 -0.015000 0.021439" euler="0 -54.0000 0"/>
+      <geom name="gear_13_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.008189 -0.015000 0.025203" euler="0 -72.0000 0"/>
+      <geom name="gear_13_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.000000 -0.015000 0.026500" euler="0 -90.0000 0"/>
+      <geom name="gear_13_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.008189 -0.015000 0.025203" euler="0 -108.0000 0"/>
+      <geom name="gear_13_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.015576 -0.015000 0.021439" euler="0 -126.0000 0"/>
+      <geom name="gear_13_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021439 -0.015000 0.015576" euler="0 -144.0000 0"/>
+      <geom name="gear_13_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.025203 -0.015000 0.008189" euler="0 -162.0000 0"/>
+      <geom name="gear_13_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026500 -0.015000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_13_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.025203 -0.015000 -0.008189" euler="0 -198.0000 0"/>
+      <geom name="gear_13_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.021439 -0.015000 -0.015576" euler="0 -216.0000 0"/>
+      <geom name="gear_13_l1_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.015576 -0.015000 -0.021439" euler="0 -234.0000 0"/>
+      <geom name="gear_13_l1_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.008189 -0.015000 -0.025203" euler="0 -252.0000 0"/>
+      <geom name="gear_13_l1_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.000000 -0.015000 -0.026500" euler="0 -270.0000 0"/>
+      <geom name="gear_13_l1_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.008189 -0.015000 -0.025203" euler="0 -288.0000 0"/>
+      <geom name="gear_13_l1_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.015576 -0.015000 -0.021439" euler="0 -306.0000 0"/>
+      <geom name="gear_13_l1_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.021439 -0.015000 -0.015576" euler="0 -324.0000 0"/>
+      <geom name="gear_13_l1_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.025203 -0.015000 -0.008189" euler="0 -342.0000 0"/>
+      <geom name="gear_13_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_14" pos="0.117309 0 0.459959">
+      <joint name="gear_14" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_14_l0" type="cylinder" size="0.032 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_14_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.032500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_14_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.031479 -0.007000 0.008082" euler="0 -14.4000 0"/>
+      <geom name="gear_14_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.028480 -0.007000 0.015657" euler="0 -28.8000 0"/>
+      <geom name="gear_14_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023691 -0.007000 0.022248" euler="0 -43.2000 0"/>
+      <geom name="gear_14_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017414 -0.007000 0.027441" euler="0 -57.6000 0"/>
+      <geom name="gear_14_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010043 -0.007000 0.030909" euler="0 -72.0000 0"/>
+      <geom name="gear_14_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002041 -0.007000 0.032436" euler="0 -86.4000 0"/>
+      <geom name="gear_14_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006090 -0.007000 0.031924" euler="0 -100.8000 0"/>
+      <geom name="gear_14_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013838 -0.007000 0.029407" euler="0 -115.2000 0"/>
+      <geom name="gear_14_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020716 -0.007000 0.025042" euler="0 -129.6000 0"/>
+      <geom name="gear_14_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026293 -0.007000 0.019103" euler="0 -144.0000 0"/>
+      <geom name="gear_14_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.030218 -0.007000 0.011964" euler="0 -158.4000 0"/>
+      <geom name="gear_14_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.032244 -0.007000 0.004073" euler="0 -172.8000 0"/>
+      <geom name="gear_14_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.032244 -0.007000 -0.004073" euler="0 -187.2000 0"/>
+      <geom name="gear_14_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.030218 -0.007000 -0.011964" euler="0 -201.6000 0"/>
+      <geom name="gear_14_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.026293 -0.007000 -0.019103" euler="0 -216.0000 0"/>
+      <geom name="gear_14_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.020716 -0.007000 -0.025042" euler="0 -230.4000 0"/>
+      <geom name="gear_14_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.013838 -0.007000 -0.029407" euler="0 -244.8000 0"/>
+      <geom name="gear_14_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.006090 -0.007000 -0.031924" euler="0 -259.2000 0"/>
+      <geom name="gear_14_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.002041 -0.007000 -0.032436" euler="0 -273.6000 0"/>
+      <geom name="gear_14_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.010043 -0.007000 -0.030909" euler="0 -288.0000 0"/>
+      <geom name="gear_14_l0_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.017414 -0.007000 -0.027441" euler="0 -302.4000 0"/>
+      <geom name="gear_14_l0_t22" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.023691 -0.007000 -0.022248" euler="0 -316.8000 0"/>
+      <geom name="gear_14_l0_t23" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.028480 -0.007000 -0.015657" euler="0 -331.2000 0"/>
+      <geom name="gear_14_l0_t24" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.031479 -0.007000 -0.008082" euler="0 -345.6000 0"/>
+      <geom name="gear_14_l1" type="cylinder" size="0.016 0.003" pos="0 -0.015 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".72 .5 .2 1"/>
+      <geom name="gear_14_l1_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.016500 -0.015000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_14_l1_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.014610 -0.015000 0.007668" euler="0 -27.6923 0"/>
+      <geom name="gear_14_l1_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.009373 -0.015000 0.013579" euler="0 -55.3846 0"/>
+      <geom name="gear_14_l1_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.001989 -0.015000 0.016380" euler="0 -83.0769 0"/>
+      <geom name="gear_14_l1_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.005851 -0.015000 0.015428" euler="0 -110.7692 0"/>
+      <geom name="gear_14_l1_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.012350 -0.015000 0.010942" euler="0 -138.4615 0"/>
+      <geom name="gear_14_l1_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016021 -0.015000 0.003949" euler="0 -166.1538 0"/>
+      <geom name="gear_14_l1_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.016021 -0.015000 -0.003949" euler="0 -193.8462 0"/>
+      <geom name="gear_14_l1_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.012350 -0.015000 -0.010942" euler="0 -221.5385 0"/>
+      <geom name="gear_14_l1_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="-0.005851 -0.015000 -0.015428" euler="0 -249.2308 0"/>
+      <geom name="gear_14_l1_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.001989 -0.015000 -0.016380" euler="0 -276.9231 0"/>
+      <geom name="gear_14_l1_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.009373 -0.015000 -0.013579" euler="0 -304.6154 0"/>
+      <geom name="gear_14_l1_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".72 .5 .2 1" pos="0.014610 -0.015000 -0.007668" euler="0 -332.3077 0"/>
+      <geom name="gear_14_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.018000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_15" pos="0.153948 0 0.503623">
+      <joint name="gear_15" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_15_l0" type="cylinder" size="0.025 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_15_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.025500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_15_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.024252 -0.007000 0.007880" euler="0 -18.0000 0"/>
+      <geom name="gear_15_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020630 -0.007000 0.014989" euler="0 -36.0000 0"/>
+      <geom name="gear_15_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.014989 -0.007000 0.020630" euler="0 -54.0000 0"/>
+      <geom name="gear_15_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.007880 -0.007000 0.024252" euler="0 -72.0000 0"/>
+      <geom name="gear_15_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.000000 -0.007000 0.025500" euler="0 -90.0000 0"/>
+      <geom name="gear_15_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.007880 -0.007000 0.024252" euler="0 -108.0000 0"/>
+      <geom name="gear_15_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.014989 -0.007000 0.020630" euler="0 -126.0000 0"/>
+      <geom name="gear_15_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.020630 -0.007000 0.014989" euler="0 -144.0000 0"/>
+      <geom name="gear_15_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024252 -0.007000 0.007880" euler="0 -162.0000 0"/>
+      <geom name="gear_15_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.025500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_15_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024252 -0.007000 -0.007880" euler="0 -198.0000 0"/>
+      <geom name="gear_15_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.020630 -0.007000 -0.014989" euler="0 -216.0000 0"/>
+      <geom name="gear_15_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.014989 -0.007000 -0.020630" euler="0 -234.0000 0"/>
+      <geom name="gear_15_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.007880 -0.007000 -0.024252" euler="0 -252.0000 0"/>
+      <geom name="gear_15_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.000000 -0.007000 -0.025500" euler="0 -270.0000 0"/>
+      <geom name="gear_15_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.007880 -0.007000 -0.024252" euler="0 -288.0000 0"/>
+      <geom name="gear_15_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.014989 -0.007000 -0.020630" euler="0 -306.0000 0"/>
+      <geom name="gear_15_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020630 -0.007000 -0.014989" euler="0 -324.0000 0"/>
+      <geom name="gear_15_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.024252 -0.007000 -0.007880" euler="0 -342.0000 0"/>
+      <geom name="gear_15_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_16" pos="0.184159 0 0.467619">
+      <joint name="gear_16" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_16_l0" type="cylinder" size="0.022 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_16_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_16_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020981 -0.007000 0.008128" euler="0 -21.1765 0"/>
+      <geom name="gear_16_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.016628 -0.007000 0.015158" euler="0 -42.3529 0"/>
+      <geom name="gear_16_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010029 -0.007000 0.020141" euler="0 -63.5294 0"/>
+      <geom name="gear_16_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002076 -0.007000 0.022404" euler="0 -84.7059 0"/>
+      <geom name="gear_16_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006157 -0.007000 0.021641" euler="0 -105.8824 0"/>
+      <geom name="gear_16_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013559 -0.007000 0.017955" euler="0 -127.0588 0"/>
+      <geom name="gear_16_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.019130 -0.007000 0.011845" euler="0 -148.2353 0"/>
+      <geom name="gear_16_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022117 -0.007000 0.004134" euler="0 -169.4118 0"/>
+      <geom name="gear_16_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022117 -0.007000 -0.004134" euler="0 -190.5882 0"/>
+      <geom name="gear_16_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.019130 -0.007000 -0.011845" euler="0 -211.7647 0"/>
+      <geom name="gear_16_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013559 -0.007000 -0.017955" euler="0 -232.9412 0"/>
+      <geom name="gear_16_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006157 -0.007000 -0.021641" euler="0 -254.1176 0"/>
+      <geom name="gear_16_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002076 -0.007000 -0.022404" euler="0 -275.2941 0"/>
+      <geom name="gear_16_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010029 -0.007000 -0.020141" euler="0 -296.4706 0"/>
+      <geom name="gear_16_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.016628 -0.007000 -0.015158" euler="0 -317.6471 0"/>
+      <geom name="gear_16_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.020981 -0.007000 -0.008128" euler="0 -338.8235 0"/>
+      <geom name="gear_16_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_17" pos="0.216298 0 0.505921">
+      <joint name="gear_17" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_17_l0" type="cylinder" size="0.028 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_17_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.028500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_17_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.027346 -0.007000 0.008029" euler="0 -16.3636 0"/>
+      <geom name="gear_17_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023976 -0.007000 0.015408" euler="0 -32.7273 0"/>
+      <geom name="gear_17_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018664 -0.007000 0.021539" euler="0 -49.0909 0"/>
+      <geom name="gear_17_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011839 -0.007000 0.025925" euler="0 -65.4545 0"/>
+      <geom name="gear_17_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004056 -0.007000 0.028210" euler="0 -81.8182 0"/>
+      <geom name="gear_17_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004056 -0.007000 0.028210" euler="0 -98.1818 0"/>
+      <geom name="gear_17_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011839 -0.007000 0.025925" euler="0 -114.5455 0"/>
+      <geom name="gear_17_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018664 -0.007000 0.021539" euler="0 -130.9091 0"/>
+      <geom name="gear_17_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023976 -0.007000 0.015408" euler="0 -147.2727 0"/>
+      <geom name="gear_17_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027346 -0.007000 0.008029" euler="0 -163.6364 0"/>
+      <geom name="gear_17_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.028500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_17_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027346 -0.007000 -0.008029" euler="0 -196.3636 0"/>
+      <geom name="gear_17_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023976 -0.007000 -0.015408" euler="0 -212.7273 0"/>
+      <geom name="gear_17_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018664 -0.007000 -0.021539" euler="0 -229.0909 0"/>
+      <geom name="gear_17_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011839 -0.007000 -0.025925" euler="0 -245.4545 0"/>
+      <geom name="gear_17_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004056 -0.007000 -0.028210" euler="0 -261.8182 0"/>
+      <geom name="gear_17_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004056 -0.007000 -0.028210" euler="0 -278.1818 0"/>
+      <geom name="gear_17_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011839 -0.007000 -0.025925" euler="0 -294.5455 0"/>
+      <geom name="gear_17_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018664 -0.007000 -0.021539" euler="0 -310.9091 0"/>
+      <geom name="gear_17_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023976 -0.007000 -0.015408" euler="0 -327.2727 0"/>
+      <geom name="gear_17_l0_t21" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.027346 -0.007000 -0.008029" euler="0 -343.6364 0"/>
+      <geom name="gear_17_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_18" pos="0.249723 0 0.466087">
+      <joint name="gear_18" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_18_l0" type="cylinder" size="0.024 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_18_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.024500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_18_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023173 -0.007000 0.007955" euler="0 -18.9474 0"/>
+      <geom name="gear_18_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.019334 -0.007000 0.015048" euler="0 -37.8947 0"/>
+      <geom name="gear_18_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.013400 -0.007000 0.020511" euler="0 -56.8421 0"/>
+      <geom name="gear_18_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.006014 -0.007000 0.023750" euler="0 -75.7895 0"/>
+      <geom name="gear_18_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.002023 -0.007000 0.024416" euler="0 -94.7368 0"/>
+      <geom name="gear_18_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.009842 -0.007000 0.022436" euler="0 -113.6842 0"/>
+      <geom name="gear_18_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.016593 -0.007000 0.018025" euler="0 -132.6316 0"/>
+      <geom name="gear_18_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021547 -0.007000 0.011661" euler="0 -151.5789 0"/>
+      <geom name="gear_18_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024166 -0.007000 0.004033" euler="0 -170.5263 0"/>
+      <geom name="gear_18_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024166 -0.007000 -0.004033" euler="0 -189.4737 0"/>
+      <geom name="gear_18_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.021547 -0.007000 -0.011661" euler="0 -208.4211 0"/>
+      <geom name="gear_18_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.016593 -0.007000 -0.018025" euler="0 -227.3684 0"/>
+      <geom name="gear_18_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.009842 -0.007000 -0.022436" euler="0 -246.3158 0"/>
+      <geom name="gear_18_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.002023 -0.007000 -0.024416" euler="0 -265.2632 0"/>
+      <geom name="gear_18_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.006014 -0.007000 -0.023750" euler="0 -284.2105 0"/>
+      <geom name="gear_18_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.013400 -0.007000 -0.020511" euler="0 -303.1579 0"/>
+      <geom name="gear_18_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.019334 -0.007000 -0.015048" euler="0 -322.1053 0"/>
+      <geom name="gear_18_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023173 -0.007000 -0.007955" euler="0 -341.0526 0"/>
+      <geom name="gear_18_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_19" pos="0.282505 0 0.505155">
+      <joint name="gear_19" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_19_l0" type="cylinder" size="0.027 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_19_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.027500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_19_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.026278 -0.007000 0.008106" euler="0 -17.1429 0"/>
+      <geom name="gear_19_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022722 -0.007000 0.015491" euler="0 -34.2857 0"/>
+      <geom name="gear_19_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.017146 -0.007000 0.021500" euler="0 -51.4286 0"/>
+      <geom name="gear_19_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010047 -0.007000 0.025599" euler="0 -68.5714 0"/>
+      <geom name="gear_19_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002055 -0.007000 0.027423" euler="0 -85.7143 0"/>
+      <geom name="gear_19_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006119 -0.007000 0.026811" euler="0 -102.8571 0"/>
+      <geom name="gear_19_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013750 -0.007000 0.023816" euler="0 -120.0000 0"/>
+      <geom name="gear_19_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.020159 -0.007000 0.018705" euler="0 -137.1429 0"/>
+      <geom name="gear_19_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024777 -0.007000 0.011932" euler="0 -154.2857 0"/>
+      <geom name="gear_19_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027193 -0.007000 0.004099" euler="0 -171.4286 0"/>
+      <geom name="gear_19_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.027193 -0.007000 -0.004099" euler="0 -188.5714 0"/>
+      <geom name="gear_19_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.024777 -0.007000 -0.011932" euler="0 -205.7143 0"/>
+      <geom name="gear_19_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.020159 -0.007000 -0.018705" euler="0 -222.8571 0"/>
+      <geom name="gear_19_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.013750 -0.007000 -0.023816" euler="0 -240.0000 0"/>
+      <geom name="gear_19_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.006119 -0.007000 -0.026811" euler="0 -257.1429 0"/>
+      <geom name="gear_19_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.002055 -0.007000 -0.027423" euler="0 -274.2857 0"/>
+      <geom name="gear_19_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.010047 -0.007000 -0.025599" euler="0 -291.4286 0"/>
+      <geom name="gear_19_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.017146 -0.007000 -0.021500" euler="0 -308.5714 0"/>
+      <geom name="gear_19_l0_t19" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022722 -0.007000 -0.015491" euler="0 -325.7143 0"/>
+      <geom name="gear_19_l0_t20" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.026278 -0.007000 -0.008106" euler="0 -342.8571 0"/>
+      <geom name="gear_19_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="gear_20" pos="0.314645 0 0.466853">
+      <joint name="gear_20" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="gear_20_l0" type="cylinder" size="0.023 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".80 .62 .25 1"/>
+      <geom name="gear_20_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.023500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="gear_20_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022083 -0.007000 0.008037" euler="0 -20.0000 0"/>
+      <geom name="gear_20_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018002 -0.007000 0.015106" euler="0 -40.0000 0"/>
+      <geom name="gear_20_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011750 -0.007000 0.020352" euler="0 -60.0000 0"/>
+      <geom name="gear_20_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004081 -0.007000 0.023143" euler="0 -80.0000 0"/>
+      <geom name="gear_20_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004081 -0.007000 0.023143" euler="0 -100.0000 0"/>
+      <geom name="gear_20_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011750 -0.007000 0.020352" euler="0 -120.0000 0"/>
+      <geom name="gear_20_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018002 -0.007000 0.015106" euler="0 -140.0000 0"/>
+      <geom name="gear_20_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022083 -0.007000 0.008037" euler="0 -160.0000 0"/>
+      <geom name="gear_20_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.023500 -0.007000 0.000000" euler="0 -180.0000 0"/>
+      <geom name="gear_20_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.022083 -0.007000 -0.008037" euler="0 -200.0000 0"/>
+      <geom name="gear_20_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.018002 -0.007000 -0.015106" euler="0 -220.0000 0"/>
+      <geom name="gear_20_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.011750 -0.007000 -0.020352" euler="0 -240.0000 0"/>
+      <geom name="gear_20_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="-0.004081 -0.007000 -0.023143" euler="0 -260.0000 0"/>
+      <geom name="gear_20_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.004081 -0.007000 -0.023143" euler="0 -280.0000 0"/>
+      <geom name="gear_20_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.011750 -0.007000 -0.020352" euler="0 -300.0000 0"/>
+      <geom name="gear_20_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.018002 -0.007000 -0.015106" euler="0 -320.0000 0"/>
+      <geom name="gear_20_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".80 .62 .25 1" pos="0.022083 -0.007000 -0.008037" euler="0 -340.0000 0"/>
+      <geom name="gear_20_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.010000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+    <body name="hand" pos="0.344856 0 0.502857">
+      <joint name="hand_hinge" type="hinge" axis="0 1 0" damping="0.0001"/>
+      <geom name="hand_l0" type="cylinder" size="0.024 0.003" pos="0 -0.007 0" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".62 .64 .68 1"/>
+      <geom name="hand_l0_t00" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.024500 -0.007000 0.000000" euler="0 -0.0000 0"/>
+      <geom name="hand_l0_t01" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.023173 -0.007000 0.007955" euler="0 -18.9474 0"/>
+      <geom name="hand_l0_t02" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.019334 -0.007000 0.015048" euler="0 -37.8947 0"/>
+      <geom name="hand_l0_t03" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.013400 -0.007000 0.020511" euler="0 -56.8421 0"/>
+      <geom name="hand_l0_t04" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.006014 -0.007000 0.023750" euler="0 -75.7895 0"/>
+      <geom name="hand_l0_t05" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.002023 -0.007000 0.024416" euler="0 -94.7368 0"/>
+      <geom name="hand_l0_t06" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.009842 -0.007000 0.022436" euler="0 -113.6842 0"/>
+      <geom name="hand_l0_t07" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.016593 -0.007000 0.018025" euler="0 -132.6316 0"/>
+      <geom name="hand_l0_t08" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.021547 -0.007000 0.011661" euler="0 -151.5789 0"/>
+      <geom name="hand_l0_t09" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.024166 -0.007000 0.004033" euler="0 -170.5263 0"/>
+      <geom name="hand_l0_t10" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.024166 -0.007000 -0.004033" euler="0 -189.4737 0"/>
+      <geom name="hand_l0_t11" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.021547 -0.007000 -0.011661" euler="0 -208.4211 0"/>
+      <geom name="hand_l0_t12" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.016593 -0.007000 -0.018025" euler="0 -227.3684 0"/>
+      <geom name="hand_l0_t13" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.009842 -0.007000 -0.022436" euler="0 -246.3158 0"/>
+      <geom name="hand_l0_t14" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="-0.002023 -0.007000 -0.024416" euler="0 -265.2632 0"/>
+      <geom name="hand_l0_t15" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.006014 -0.007000 -0.023750" euler="0 -284.2105 0"/>
+      <geom name="hand_l0_t16" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.013400 -0.007000 -0.020511" euler="0 -303.1579 0"/>
+      <geom name="hand_l0_t17" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.019334 -0.007000 -0.015048" euler="0 -322.1053 0"/>
+      <geom name="hand_l0_t18" type="box" size="0.0015 0.003 0.0018" mass="0" contype="0" conaffinity="0" rgba=".62 .64 .68 1" pos="0.023173 -0.007000 -0.007955" euler="0 -341.0526 0"/>
+      <geom name="hand_pointer" type="box" size="0.005 0.003 0.035" pos="0 -0.024 0.035" density="2700" contype="0" conaffinity="0" rgba=".08 .08 .1 1"/>
+      <geom name="hand_counterweight" type="cylinder" size="0.016123 0.003" pos="0 -0.024 -0.03" euler="90 0 0" density="2700" contype="0" conaffinity="0" rgba=".08 .08 .1 1"/>
+      <geom name="hand_hub" type="cylinder" fromto="0 -0.004000 0 0 -0.027000 0" size=".006" mass="0" contype="0" conaffinity="0" rgba=".25 .25 .27 1"/>
+    </body>
+  </worldbody>
+  <equality>
+    <joint joint1="gear_01" joint2="crank_hinge" polycoef="0 -1.73076923077 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_02" joint2="gear_01" polycoef="0 -1.18181818182 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_03" joint2="gear_02" polycoef="0 -0.733333333333 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_04" joint2="gear_03" polycoef="0 -1.25 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_05" joint2="gear_04" polycoef="0 -0.857142857143 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_06" joint2="gear_05" polycoef="0 -1.21739130435 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_07" joint2="gear_06" polycoef="0 -1.4375 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_08" joint2="gear_07" polycoef="0 -1.45454545455 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_09" joint2="gear_08" polycoef="0 -0.814814814815 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_10" joint2="gear_09" polycoef="0 -1.125 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_11" joint2="gear_10" polycoef="0 -0.8 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_12" joint2="gear_11" polycoef="0 -1.30434782609 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_13" joint2="gear_12" polycoef="0 -0.884615384615 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_14" joint2="gear_13" polycoef="0 -1.625 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_15" joint2="gear_14" polycoef="0 -1.28 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_16" joint2="gear_15" polycoef="0 -1.13636363636 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_17" joint2="gear_16" polycoef="0 -0.785714285714 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_18" joint2="gear_17" polycoef="0 -1.16666666667 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_19" joint2="gear_18" polycoef="0 -0.888888888889 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_20" joint2="gear_19" polycoef="0 -1.17391304348 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="hand_hinge" joint2="gear_20" polycoef="0 -0.958333333333 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+  </equality>
+</mujoco>

@@ -11,7 +11,7 @@ from .robots import ROBOTS
 MAX_LINE = 48 * 1024 * 1024
 MAX_STATE = 4 * 1024 * 1024
 PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "movable_camera",
-                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "recording_fps"}
+                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "recording_fps"}
 
 
 # Public proprioception fields per robot; actuator_effort_nm is added unless simulation.effort = false.
