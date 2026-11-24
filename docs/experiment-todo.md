@@ -31,6 +31,12 @@ Keep this list current: strike items when a log entry covers them.
   extract the MJCF runs' cube mass/COM/inertia and spring stiffness from their submissions for the same errors.
 - [ ] Hydrogen configs of waves 23/24 exist but were not launched (Neon is the default).
 
+## Explanation-depth gear train (user, 2026-11-24): designed, to build and queue
+- [ ] Build and queue per [level-designs/gear-train-depth-20261124.md](level-designs/gear-train-depth-20261124.md): visible
+  ~20-gear train, deep and shallow models equal in prediction (deep ≥ 10× costlier); neutral task × {none, cheap-use,
+  intervention-use} sentence = 3 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are
+  user-approved; do not re-ask.
+
 ## Touch-only tabletop levels (user, 2026-11-24): designed, to build and queue
 - [ ] Build and queue per [level-designs/touch-tabletop-20261124.md](level-designs/touch-tabletop-20261124.md): Franka +
   Shadow hand, touch only; L1 abstract shapes, L2 mug/banana/hammer (categories unstated vs stated), L3 spiky ball in a
