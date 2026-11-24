@@ -10,6 +10,7 @@ import argparse
 import base64
 import hashlib
 import json
+import traceback
 import re
 import math
 import os
@@ -341,7 +342,8 @@ def _model_id(model, kind, index):
 
 
 def _empty_layer():
-    return dict(frames={}, nodes=[], markers=None, model=None, positions=None, tendons=[], meshes={}, fade=1.0, com=None)
+    return dict(frames={}, nodes=[], markers=None, model=None, positions=None, tendons=[], flexes=[], meshes={}, fade=1.0,
+                com=None)
 
 
 def _server(port, label):
@@ -505,11 +507,22 @@ class Viewer:
             tendons = [scene.add_line_segments(f'/{world}/tendon{k}', np.zeros((1, 2, 3), np.float32), _rgb(t['rgba']),
                                                thickness=2 * float(t['width']), thickness_units='world')
                        for k, t in enumerate(model.get('tendons', []))]
+            # Flexes (e.g. a cloth) are meshes over vertex bodies without geoms; their vertices follow each state.
+            flexes = []
+            for k, flex in enumerate(model.get('flexes', [])):
+                vertices, faces = _decode(flex['vertices'], '<f4', 3), _decode(flex['faces'], '<i4', 3)
+                if faces.size and (faces.min() < 0 or faces.max() >= len(vertices)):
+                    raise ValueError('flex face index out of range')
+                alpha = float(flex['rgba'][3]) * fade
+                flexes.append(scene.add_mesh_simple(f'/{world}/flex{k}', vertices.astype(np.float32), faces.astype(np.uint32),
+                                                    color=_rgb(flex['rgba']), opacity=None if alpha >= 1 else alpha,
+                                                    side='double'))
+                flexes[-1].on_click(lambda event: self._clicked(world, None, event))
             com = scene.add_icosphere(f'/{world}/com', radius=1.5 * radius, color=COM_COLORS[world], visible=False)
             coms = [scene.add_icosphere(f'/{world}/coms/b{body}', radius=.7 * radius, color=COM_COLORS[world], visible=False)
                     for body in model['objects']]
-            layer.update(frames=frames, nodes=nodes + list(markers) + tendons + [com] + coms, markers=markers, model=model,
-                         tendons=tendons, meshes=meshes, fade=fade, com=(com, coms))
+            layer.update(frames=frames, nodes=nodes + list(markers) + tendons + flexes + [com] + coms, markers=markers,
+                         model=model, tendons=tendons, flexes=flexes, meshes=meshes, fade=fade, com=(com, coms))
             if self.single:
                 self.summary = dict(status='ready', message='Loaded' + (f'; {skipped} unsupported geoms hidden' if skipped else ''))
 
@@ -561,9 +574,11 @@ class Viewer:
                 client.camera.up_direction = camera.up_direction
 
     def _clicked(self, world, index, event):
+        """``index`` is a geom, or None for a flex (cloth), which is grasped but is not an editable item."""
         if self.editor.click.value != 'grasp':
-            self.editor.pick(world, index)
-        elif self.layers[world]['model']['geoms'][index]['body']:  # world geometry is never grasped
+            if index is not None:
+                self.editor.pick(world, index)
+        elif index is None or self.layers[world]['model']['geoms'][index]['body']:  # world geometry is never grasped
             self.app.control('grasp', world, {'origin': list(event.ray_origin), 'direction': list(event.ray_direction)})
 
     def restyle(self, world, index, attribute, value):
@@ -614,6 +629,10 @@ class Viewer:
                     path = np.asarray(path, np.float32)
                     if len(path) > 1 and np.isfinite(path).all():
                         line.points = np.stack([path[:-1], path[1:]], axis=1)
+                for mesh, vertices in zip(layer['flexes'], state.get('flexes', [])):
+                    vertices = np.asarray(vertices, np.float32)
+                    if vertices.shape == mesh.vertices.shape and np.isfinite(vertices).all():
+                        mesh.vertices = vertices
                 com, coms = layer['com']
                 com.visible = self.show_com.value and state['com'] is not None
                 if state['com'] is not None:
@@ -1057,6 +1076,9 @@ def _handler(app, directory, live=None):
                     body = live.catalog_script()
                 except AuditFailure as exc:  # e.g. a run directory present in two roots: say so, keep the last list
                     body = ('window.__dashboardCatalogError=' + json.dumps(str(exc)) + ';').encode()
+                except Exception as exc:  # e.g. a config edit the prompt reader cannot evaluate: report it rather than drop the connection
+                    traceback.print_exc()
+                    body = ('window.__dashboardCatalogError=' + json.dumps(f'{type(exc).__name__}: {exc}') + ';').encode()
                 return self._send(200, body, 'text/javascript; charset=utf-8')
             match = re.fullmatch(r'/runs/([0-9a-f]{16})\.js', route)
             if live is not None and match:

@@ -49,11 +49,14 @@ apart, each resting stably.
 - The three bolded dimensions are the *prior-defeating dimensions*, scored separately.
 
 ### L3 `panda_shadow_bin_spiky`
-A rigid open-top bin (inner 20 × 20 cm, walls 8 cm, *builder*) holding four free balls of equal diameter (Ø 55 mm) and
-equal mass (~60 g): one **spiky** (sphere plus ~14 cones, height ~10 mm, base wider than the fingertip taxel spacing so
-scripted presses distinguish it) and three smooth (density adjusted to equal mass). Seeded, deterministic positions on
-the bin floor. A touch-discriminability check is mandatory before configs: scripted presses on the spiky and a smooth
-ball must give clearly different taxel patterns.
+A rigid open-top bin (inner ~24 × 24 cm, walls 30 mm so the forearm clears the rim with a pitched wrist, *builder*)
+holding four free balls of equal mass (~60 g), **equal outer envelope (~90 mm) and equal inertia** (explicit inertials):
+one **spiky** (55 mm core plus 6–8 cones 15–20 mm tall, bases at least one palm taxel cell wide) and three smooth spheres
+as wide as the spike-tip envelope. Seeded, deterministic positions on the bin floor. Revised 2026-11-24 (user) after the
+first check (jobs `63317646`, `63319921`, `63320350`) found the fine spikes unreadable by the taxel grid and a size
+shortcut (spiky envelope 75 mm vs 55 mm smooth). The check is mandatory before configs: scripted palm presses give
+clearly different taxel patterns; top height and contact envelope agree within a few mm; inertia agrees within
+tolerance; a scripted grab lifts a 90 mm ball.
 
 ## Conditions (8 runs, gemini-4-neon, n = 1)
 

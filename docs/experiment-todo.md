@@ -19,6 +19,21 @@ Keep this list current: strike items when a log entry covers them.
 - Run on netscratch (`SIM2SIM_EXPERIMENTS_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments`); the lab root
   is over its quota (2026-11-23).
 
+## Roles (user, 2026-11-24)
+- Level building belongs to the "s2s builder role" session; the runner session (this log's author) orchestrates runs:
+  it prepares, queues, reviews holds and logs batches once a builder hands over merged configs and an image record.
+  Touch-tabletop (wave 27, WIP branch `worktree-agent-a873b0bc2546edb50`) and gear-train (wave 28) were handed over.
+
+## Queue priority (user, 2026-11-24)
+1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
+2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
+   (`scontrol top`).
+   Blocked (builder, 2026-11-24): the premise check failed. Soft gear couplings make the deep train compliant, so the
+   deep and shallow models do not predict identically, and the cost ratio is 5× rather than 10×. The decision is with the
+   designer and the user. Do not queue `wave28-20261124` from any branch until a merged handoff arrives.
+3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
+4. Carbon evaluation last: its reruns carry `Nice=200000`.
+
 ## 2026-11-23 batch (launched; see the log)
 - [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
   the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
@@ -30,6 +45,18 @@ Keep this list current: strike items when a log entry covers them.
 - [ ] Wave 26: low-rank answer vs full MJCF on cube_spring_block (n=2 each): parameter errors vs wall minutes and tokens;
   extract the MJCF runs' cube mass/COM/inertia and spring stiffness from their submissions for the same errors.
 - [ ] Hydrogen configs of waves 23/24 exist but were not launched (Neon is the default).
+
+## Cable tangles (user, 2026-11-24): designed, to build and queue
+- [ ] Build and queue per [level-designs/cable-tangle-20261124.md](level-designs/cable-tangle-20261124.md): C1 one knotted
+  cable vs C2 cable + hidden unlinked closed loop (both show two ends); new two-point-grasp capability; {base, 2 grasps,
+  + MJCF} × {C1, C2} = 6 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are user-approved;
+  do not re-ask.
+
+## Explanation-depth gear train (user, 2026-11-24): designed, to build and queue
+- [ ] Build and queue per [level-designs/gear-train-depth-20261124.md](level-designs/gear-train-depth-20261124.md): visible
+  ~20-gear train, deep and shallow models equal in prediction (deep ≥ 10× costlier); neutral task × {none, cheap-use,
+  intervention-use} sentence = 3 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are
+  user-approved; do not re-ask.
 
 ## Touch-only tabletop levels (user, 2026-11-24): designed, to build and queue
 - [ ] Build and queue per [level-designs/touch-tabletop-20261124.md](level-designs/touch-tabletop-20261124.md): Franka +

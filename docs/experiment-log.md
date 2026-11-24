@@ -6,6 +6,26 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 — Wave 29 queued: low-rank prompt on the spring-as-a-scale levels (8 runs)
+- **Question (user):** does asking the agent to find the scene's important low-rank structure make it converge faster on the
+  properties that matter (target mass, spring stiffness)? To be compared with the earlier runs for the report.
+- **Factor:** one sentence appended to each original task: "First identify the important low-rank structure of this
+  scene: the few physical properties that govern most of its behavior. Estimate those first, and make sure your model gets
+  them right." It names no property. Everything else equals the originals.
+- **Runs** (`experiments/configs/wave29-20261124/`, gemini-4-neon, 36 h provider-hold allowance, pool `gemini-20261124`):
+  - Low-rank prompt on w20 tetra-spring, cube-spring, tetra-spring-block and cube-spring-block (6 h, 4 h checkpoint), and
+    on w11 tetra-spring-k (the gemini-20261120 recipe: original wall, no checkpoint).
+  - Neon baselines with the original prompt where none existed: w20 tetra-spring, cube-spring and tetra-spring-block.
+  - Other baselines: cube-spring-block is `w26-cube-spring-block-mjcf` (reruns `-20261124-00{1,2}`); w11 is
+    `w11-tetra-spring-k-neon-20261120-001`; the astra originals are the w20/w11 runs.
+- **Sources:** byte-identical to the originals' (`prepare-w29.sh`). The only differences are private-side: the
+  cube-spring-block manifest's unused `[lowrank]` table, and the new sibling `panda_small` levels in the w11 copy.
+- **Jobs** (sapphire, 3 days, each prompted run paired with its baseline; image `42f70708fdcc`): see
+  `experiments/validation/jobs-20261123.txt` (wave 29 lines).
+- **Analysis plan:** per submission, the target mass (and COM) and the spring stiffness from the candidate MJCF, plus the
+  `expert` weighing metric, against wall minutes and cumulative tokens. Measure the time to within 10% of the truth, prompted vs
+  baselines (Neon and astra).
+
 ## 2026-11-24 03:10 UTC — Provider-hold allowance exhausted: two Carbon runs died; unstarted runs re-prepared with 36 h
 - **Died (infrastructure, rerun):** `w19-marble-heavy-hint-carbon-20261123-001` (206 run-minutes) and
   `w21-hand-smooth-mesh-carbon-20261123-001` (193), job `63158114`, at about 02:30 UTC, with no submissions.
@@ -27,7 +47,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - `w26-cube-spring-block-lowrank-20261123-001` (221 min) and `-002` (231 min): neither submitted.
   - `w26-cube-spring-block-mjcf-20261123-001`: 241 min, 1 submission.
   - All count as infrastructure failures (truncated). `mjcf-002` was resumed at its 4 h checkpoint, then died the same
-    way at 04:30 UTC (312 run-minutes, 1 submission, held 14,855 s). Carbon cloth continues.
+    way at 04:30 UTC (312 run-minutes, 1 submission, held 14,855 s).
+  - `w22-cloth-holes-carbon-20261123-001` **completed** at about 05:30 UTC (356 run-minutes, 644 real, 1 submission):
+    the only full-length run of the 2026-11-23 launch. It is the first complete Carbon data point.
 - **Sapphire backlog:** about 4,400 pending jobs and no start estimate for the 15 reruns. `test` (12 h cap) is too short
   with these outages; other partitions are not approved for strict runs.
 - **Wave 26 rerun in full:** both conditions, n=2, from `experiments/configs/wave26-20261124/` (36 h allowance, image

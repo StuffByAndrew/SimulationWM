@@ -233,6 +233,14 @@ docs/protocol.md). The models are `gemini-4-neon` and `gemini-4-hydrogen`.
     call before the harness compacts.
   - The broker retries HTTP 429/5xx within each call's deadline.
   - Gemini configs still carry a host-priced `max_cost_usd`/pool for accounting only; answer their holds with resume.
+- **Second key (user, 2026-11-24):** `GEMINI_API_KEY_BYCOST` (in `~/.env`) is billed by cost, with a **lifetime cap of
+  $15000**.
+  - Every run on it uses the single cost pool `gemini-bycost` with `cost_pool_usd = 15000`; that pool is the lifetime
+    cap, so never rename or reset it.
+  - Generator: merge `BYCOST` into a run's options (`api_key_env`, pool and a $1000 per-run safety cap).
+  - Use it for extra capacity, for example when the first key's rate limits would be hit.
+  - Never answer a hold on this pool with `cost_pool_usd` above 15000.
+  - There is no CPU-only Kempner partition: the Kempner cluster is GPU-only by policy, so use `test` or `sapphire`.
 - **Fair comparison:** despite unlimited spend, compare Gemini fairly with the existing gpt-6-astra runs.
   - Use the astra original's config, changing only the model route and the cost lines.
   - Keep the same harness, image, task, tools, observations, `reasoning_effort`, `max_output_tokens` and wall budget.
