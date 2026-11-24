@@ -29,7 +29,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     after it.
   - A separate semantic issue: the live world kept running during failed provider attempts, which are only credited
     back afterwards. Runner's decision: **B**, snapshot at each call and restore plus clock shift on a failure, so failed
-    attempts are frozen as docs/protocol.md says. It will go into the isolated image.
+    attempts are frozen as docs/protocol.md says. Merged into main (builder commit 4c73571; job 63459448, 62 passed).
+    The `provider_hold` audit event records `discarded_ticks`/`discarded_frames`. Runs launched earlier keep the
+    old behaviour.
 - **Agent-image leak (designer and builder; user approved the fix):**
   - The trusted agent image installs all of `src/sim2sim`, so evaluator modules are readable in the agent container:
     `fixture.py` describes the hidden pad perturbation; `tabletop.py` names labels and prior-defeating dimensions.
