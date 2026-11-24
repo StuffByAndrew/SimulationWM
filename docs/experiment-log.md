@@ -22,7 +22,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   audit reservation" after about 3 run-minutes.
   - The real-time world kept stepping and recording through provider-held failed attempts: 166,907 frames against
     175 s of run clock and 1,966 s held.
-  - The builder session is fixing it.
+  - Root cause (builder, corrected): a real-time `frames` reply of up to 100 frames was reserved as a single
+    observation (about 3.5 MB), yet one reply was 4.8 to 5.6 MB. It fails at any frame rate once a call asks for
+    about 70 frames or more.
+  - The fix is merged into main (a3b8623, regression test jobs 63455271/63456054/63457376) and applies to jobs launched
+    after it.
+  - A separate semantic issue: the live world kept running during failed provider attempts, which are only credited
+    back afterwards. Runner's decision: **B**, snapshot at each call and restore plus clock shift on a failure, so failed
+    attempts are frozen as docs/protocol.md says. It will go into the isolated image.
 - **Agent-image leak (designer and builder; user approved the fix):**
   - The trusted agent image installs all of `src/sim2sim`, so evaluator modules are readable in the agent container:
     `fixture.py` describes the hidden pad perturbation; `tabletop.py` names labels and prior-defeating dimensions.
