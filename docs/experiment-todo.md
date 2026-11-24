@@ -19,6 +19,11 @@ Keep this list current: strike items when a log entry covers them.
 - Run on netscratch (`SIM2SIM_EXPERIMENTS_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments`); the lab root
   is over its quota (2026-11-23).
 
+## Roles (user, 2026-11-24)
+- Level building belongs to the "s2s builder role" session; the runner session (this log's author) orchestrates runs:
+  it prepares, queues, reviews holds and logs batches once a builder hands over merged configs and an image record.
+  Touch-tabletop (wave 27, WIP branch `worktree-agent-a873b0bc2546edb50`) and gear-train (wave 28) were handed over.
+
 ## 2026-11-23 batch (launched; see the log)
 - [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
   the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
