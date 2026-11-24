@@ -342,11 +342,13 @@ IDEAL_BLOCK = (" The spring between the two plates is an ideal linear spring (Ho
                "of exactly 0.0235 kg.")
 TETRA_METRICS = ["chamfer", "center_of_mass", "density", "image_mse", "dynamics", "expert"]
 ENVS.update({f"{t}_spring{b}": (TETRA_METRICS, RECON) for t in ("tetra", "cube") for b in ("", "_block")})
-RUNS22.update({f"w20-{t}-spring{b.replace('_', '-')}": (f"{t}_spring{b}", f"{'tetrahedral cluster' if t == 'tetra' else 'cube of unknown mass'} "
+# A plain assignment (not only an update) so the dashboard's _assignments, which runs assignments only, sees these entries.
+SCALE_RUNS = {f"w20-{t}-spring{b.replace('_', '-')}": (f"{t}_spring{b}", f"{'tetrahedral cluster' if t == 'tetra' else 'cube of unknown mass'} "
                f"+ ideal spring{' + block of stated mass' if b else ', k stated'}; point grasp without force, RGBD, movable camera, sequence tool",
                {**W20, "movecam": True, "wrench": False, "metrics": TETRA_METRICS, "eval_timeout": 600,
                 "task": TASK_CONVERGE + (TETRA_INERTIA if t == "tetra" else CUBE_INERTIA) + (IDEAL_BLOCK if b else IDEAL_K)})
-               for t in ("tetra", "cube") for b in ("", "_block")})
+               for t in ("tetra", "cube") for b in ("", "_block")}
+RUNS22.update(SCALE_RUNS)
 RUNS22.update({f"{name}-lit": (RUNS22[name][0], RUNS22[name][1] + ", ground-truth lighting stated",
                                {**RUNS22[name][2], "task": RUNS22[name][2]["task"] + lighting(RUNS22[name][0])})
                for name in ("w20-tetra-spring", "w20-cube-spring")})
@@ -441,6 +443,22 @@ WAVES["wave24-20261123"] = ("Wave 24", "gemini-20261123", 1e6, RUNS26)
 # levels on Neon): the four w21 touch-only hand levels with the local reconstruction-world copy (tools.local_controller) and
 # pausable bash (no command time limit; code is paused while the model thinks), against the exact w21 config on Neon.
 NEON = {"model": "gemini-4-neon", "provider_hold": PROVIDER_HOLD, "cost": 1e6, "pool_usd": 1e6}
+# Wave 29 (user, 2026-11-24): the spring-as-a-scale levels (w20 point-grasp tetra/cube + spring [+ block], w11 Panda tetra +
+# spring) with one appended sentence asking for the scene's important low-rank structure; the only factor vs the originals.
+# Neon baselines (original prompt) where none existed: w20 tetra-spring, cube-spring, tetra-spring-block (cube-spring-block's
+# is w26-cube-spring-block-mjcf; w11's is gemini-20261120 w11-tetra-spring-k-neon, whose recipe the w11 run copies: no 4 h checkpoint).
+LOWRANK_PROMPT = (" First identify the important low-rank structure of this scene: the few physical properties that govern most of "
+                  "its behavior. Estimate those first, and make sure your model gets them right.")
+SCALES = (("tetra", ""), ("cube", ""), ("tetra", "-block"), ("cube", "-block"))
+RUNS29 = {**{f"w29-{t}-spring{b}-lowrank-prompt": (SCALE_RUNS[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; low-rank prompt; neon",
+                                                   {**SCALE_RUNS[f"w20-{t}-spring{b}"][2], **NEON, "task": SCALE_RUNS[f"w20-{t}-spring{b}"][2]["task"] + LOWRANK_PROMPT})
+             for t, b in SCALES},
+          **{f"w29-{t}-spring{b}-neon": (SCALE_RUNS[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; original prompt; neon",
+                                         {**SCALE_RUNS[f"w20-{t}-spring{b}"][2], **NEON}) for t, b in SCALES[:3]}}
+_env, _factor, _o = WAVES["wave11-20261106"][3]["w11-tetra-spring-k"]
+RUNS29["w29-w11-tetra-spring-k-lowrank-prompt"] = (_env, "Panda tetra + spring, w11 harness; low-rank prompt; neon",
+    {**{k: v for k, v in _o.items() if k != "checkpoint"}, **NEON, "hold": 129600, "task": _o.get("task", TASK) + LOWRANK_PROMPT})
+WAVES["wave29-20261124"] = ("Wave 29", "gemini-20261124", 1e6, RUNS29)
 # Second Gemini key (user, 2026-11-24): GEMINI_API_KEY_BYCOST is billed by cost, with a LIFETIME cap of $15000. Every run on it
 # uses the one pool "gemini-bycost" (never renamed or reset), so the pool is the lifetime cap; the per-run cap is a safety net.
 # Use it for extra capacity when the first key's rate limits would be hit. Never resume a hold above the pool's $15000.
@@ -460,7 +478,7 @@ TASK_LOWRANK = ("Identify the physical parameters of this scene that matter, usi
                 "centre of mass, in world axes, in the scene's initial state. Hidden tests compare these values with the reference "
                 "world's. Resubmit whenever your estimates improve, and call finish when you believe they cannot be improved further.")
 LOWRANK_CONSTRAINTS = ["Submit a ZIP whose parameters.json holds exactly the keys mass, stiffness, com and inertia, as numbers in SI units."]
-CUBE_MJCF = RUNS22["w20-cube-spring-block"]
+CUBE_MJCF = SCALE_RUNS["w20-cube-spring-block"]
 RUNS28 = {"w26-cube-spring-block-lowrank": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; parameter answer",
                                              {**CUBE_MJCF[2], **NEON, "provider_hold": 14400, "task": TASK_LOWRANK + IDEAL_BLOCK, "metrics": ["lowrank"], "extra": "",
                                               "entrypoint": "parameters.json", "candidate_changes": False, "constraints": LOWRANK_CONSTRAINTS}),

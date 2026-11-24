@@ -65,8 +65,8 @@ Never say "simple", "lumped", "detailed" or "every gear" in any condition.
 | --- | --- | --- |
 | `structure`: rotating bodies and couplings between `crank` and `hand`; candidate gears matched to source gears by axle position (geometry only); depth class shallow / partial / deep (≥ 80% of gears matched) | primary, all conditions | new |
 | `sim_cost`: median step time per simulated second over 5 runs in the evaluation worker, plus body, constraint and contact counts | all; G-cheap score | new |
-| `dynamics` probes: crank turns (slow, fast, step) and hand pushes; crank and hand trajectories | accuracy, all | existing (`[[probes]]`) |
-| G-cheap score: accuracy gate (probe error within k × the shallow reference's), then cost relative to the shallow reference | G-cheap | new, small |
+| Probe accuracy: crank turns (slow, fast, step) and hand pushes; unwrapped world-frame rotation of the `crank` and `hand` bodies about the panel normal, relative to their initial orientation (not joint qpos, not image masks, which would penalize visibly different gears) | accuracy, all; continuous error always recorded | `[[probes]]` with a rotation comparison |
+| G-cheap score: accuracy gate = the worst probe error of the shallow reference over {armature ±10%} × {damping ±10%} (one manifest value; the exact reference itself has ≈ 0 error); over the gate is "fails accuracy gate" with no score (not zero), under it the score is step cost relative to the shallow reference | G-cheap | new, small |
 | G-deep score: for each of a few gears, remove it from source and candidate (matched by axle position), then the same probes; a candidate without that gear is "cannot answer" (a gap, never a zero or fabricated error) | G-deep (reported for all) | new |
 | Depth comparison in traces: did the agent build ≥ 2 model variants of different depth, simulate and time them | H4 | new researcher-side classifier over the audit (never agent-visible) |
 

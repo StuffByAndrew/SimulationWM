@@ -34,6 +34,7 @@ EDITS = B.MAIN / "reports" / "report-work-20261123" / "edits.json"  # text edits
 estimates, extra_metrics, METRICS = B.estimates, B.extra_metrics, B.METRICS
 CLIPS = {r: B.CLIPS[r] for r in NAMES if r in B.CLIPS}
 FIGURES = {f"clips/{c['file']}": str(B.EV[r] / c["file"]) for r, cs in CLIPS.items() for c in cs}
+RECORDINGS = B.recordings(NAMES)
 VIEWER = {"hand": RUNS[("w21-hand-smooth-mesh", "gpt-6-astra")] + [r for m in GEM_MODELS.values() for r in RUNS[("w21-hand-smooth-mesh", m)]]}
 L = lambda s: s
 

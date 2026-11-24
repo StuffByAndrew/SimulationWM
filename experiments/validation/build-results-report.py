@@ -311,6 +311,14 @@ def data(spec_path, work, out):
         src = next(Path(d) / run for d in chats if (Path(d) / run / "chat.js").is_file())
         same_fs = os.stat(src).st_dev == os.stat(out).st_dev  # hard links need one filesystem (some chat pages live on lab storage)
         shutil.copytree(src, out / "runs" / run, copy_function=os.link if same_fs else shutil.copy2)
+        if hasattr(S, "RECORDINGS"):  # optional spec field: {run: recordings/<run> folder from run-video.py}; every reported run needs one
+            rec = Path(S.RECORDINGS[run])
+            index = json.loads((rec / "recording.json").read_text())
+            assert index["run"] == run, (run, index["run"])
+            (out / "runs" / run / "recording").mkdir()
+            for world in index["worlds"].values():
+                shutil.copy2(rec / world["file"], out / "runs" / run / "recording" / world["file"])
+            (out / "runs" / run / "recording" / "recording.js").write_text("window.RECORDING=" + json.dumps(index, separators=(",", ":")) + ";")
     (out / "data.js").write_text("window.R=" + json.dumps(R, separators=(",", ":")) + ";")
     (out / "taxonomy-labels.json").write_text(json.dumps(dict(rules=dict(notes=TAX.NOTE_RULES, appearance=TAX.APPEARANCE, scripts=TAX.SCRIPT_RULES),
                                                              validation=validation, labels=labels_out), indent=1))

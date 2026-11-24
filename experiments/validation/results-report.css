@@ -72,4 +72,4 @@ details.long summary{cursor:pointer;list-style:none}details.long summary .pre{di
 .mark{margin:10px 0;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--third) 14%,transparent);font-size:13px}
 .hide-tool .msg.tool,.hide-img img.obs{display:none}
 .fig{margin:0}.fig img{width:100%;height:auto;display:block;border-radius:4px;background:#fff}.fig figcaption{font-size:13px;margin-top:6px}
-.fig video,.clip video,.clip img{width:100%;height:auto;display:block;border-radius:4px;background:#000}
+.fig video,.clip video,.clip img{width:100%;height:auto;display:block;border-radius:4px;background:#000}.rec-panes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:10px}.rec-panes figure{margin:0}.rec-panes video{width:100%;background:#000;border-radius:4px;display:block}.rec-panes figcaption{font-size:12px;margin-top:4px}.rec-ctl{display:flex;gap:8px;align-items:center;margin-top:10px}.rec-ctl input[type=range]{flex:1}#rec-clock{font-size:12px;min-width:110px}#rec-marks{width:100%;height:34px;cursor:pointer;margin-top:4px}.rec-now{font-size:13px;margin-top:6px}#rec-note{margin-top:4px;max-height:5.5em;overflow:auto}
