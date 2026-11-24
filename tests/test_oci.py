@@ -661,7 +661,17 @@ thrown = client.request("throw", protocol="spin")["observation"]
 time.sleep(.3)
 frames = client.request("frames", since=thrown["frame"] - 1, limit=10)["frames"]
 assert all(abs(f["time"] - .04 * i) < 1e-9 for i, f in enumerate(frames)) and len(frames) >= 4, [f["time"] for f in frames]
-PREDICT = """import json, os, socket, sys
+import subprocess, sys, types  # the channel tool in the agent image: the harness relays a program's request
+sys.path.insert(0, "/opt/agent")
+import sandbox_agent
+shim = types.SimpleNamespace(task=task, client=client, channel_requests=0)
+channel = sandbox_agent.ControllerChannel(shim)
+channel.serve(True)
+relayed = subprocess.run([sys.executable, "-c", "from sim2sim.client import Channel; print(len(Channel().request('frames', since=0, limit=2)['frames']))"],
+                         capture_output=True, text=True, timeout=60)
+channel.close()
+assert relayed.stdout.strip() == "2" and shim.channel_requests == 1, relayed
+PREDICT ="""import json, os, socket, sys
 from pathlib import Path
 hits = [str(p) for root in ("/opt", "/workspace", "/tmp", "/home", "/usr/local", "/etc", "/srv", "/mnt", "/var") if Path(root).is_dir()
         for p in Path(root).rglob("*") if p.name in ("manifest.toml", "scene.xml", "trials.json") or "die_slug" in p.name]
@@ -698,7 +708,7 @@ class DieRealtimeOCITests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         output = root / "experiments/validation/die-oci" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         scene = root / "environments/die_biased/scene.xml"
-        config = {"source": {"scene": str(scene)},
+        config = {"source": {"scene": str(scene)}, "tools": {"channel": True},
                   "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE, "command": ["python", "-c", DIE_AGENT],
                               "memory": "1g", "cpus": 1, "pids": 64},
                   "output_dir": str(output), "record_video": False, "budget": {"wall_only": True, "wall_seconds": 900},
