@@ -12,7 +12,7 @@ Python:
   world.act({"op": "hand_target", "actuator_targets": [...], "ticks": 20})  # one action object, as in a sequence steps file
   world.run(steps)       # a list of action objects; returns per-step records like /workspace/sequences/NNNN.json
   world.act({"op": "reset"})
-  localsim.taxels(joint_positions_rad)  # tactile cells for a hand pose: the 24 proprioception joint positions
+  localsim.taxels(joint_positions_rad)  # tactile cells for a hand pose: the %(joints)d proprioception joint positions
 
 taxels returns, per tactile pad (thumb, first, middle, ring, little, palm), the pad body's world position and rotation
 (columns are the body x, y, z axes in world coordinates) and its grid of cells, rows distal to proximal, columns by
@@ -25,7 +25,7 @@ robot fixture is used: no object is involved.
 
 CLI (prints JSON):
   python3 localsim.py run PROJECT_DIR STEPS_FILE [--entrypoint scene.xml] [--camera fixed]
-  python3 localsim.py taxels JOINT_POSITIONS_JSON_FILE   (a JSON list of 24 joint positions; omit for the reset pose)
+  python3 localsim.py taxels JOINT_POSITIONS_JSON_FILE   (a JSON list of %(joints)d joint positions; omit for the reset pose)
 """
 import argparse
 import functools
@@ -36,7 +36,7 @@ import mujoco
 import numpy as np
 
 from sim2sim.candidate_worker import allowed_actions, public_observation
-from sim2sim.robots import HAND_HOME, HAND_JOINTS
+from sim2sim.robots import ARM_HOME, ARM_JOINTS, HAND_HOME, ROBOTS, joints
 from sim2sim.simulation import Simulation, TACTILE
 
 CONFIG_FILE = Path(__file__).with_name("public_tool_config.json")
@@ -66,25 +66,34 @@ class LocalController:
         self.sim.close()
 
 
+def _robot(robot_dir):
+    """The hand robot whose fixture file the public robot directory holds."""
+    (robot,) = [robot for robot, entry in ROBOTS.items() if "hand_target" in entry[2] and (Path(robot_dir) / entry[0]).is_file()]
+    return robot
+
+
 @functools.lru_cache(maxsize=4)
 def _fixture(robot_dir):
+    robot = _robot(robot_dir)
     model = mujoco.MjModel.from_xml_string('<mujoco><compiler angle="radian" autolimits="true" meshdir="%s/assets"/>'
-                                           '<include file="%s/shadow_hand.xml"/></mujoco>' % (robot_dir, robot_dir))
+                                           '<include file="%s/%s"/></mujoco>' % (robot_dir, robot_dir, ROBOTS[robot][0]))
     model.geom_rgba[:, 3] = 1  # mj_ray skips fully transparent geoms; groups (set per pad below) select the pad's collision geoms
     pads = []
-    for name, body, x_range, z_range, rows, columns, y_max in TACTILE["shadow_hand"][2]:
+    for name, body, x_range, z_range, rows, columns, y_max in TACTILE[robot][2]:
         body_id = model.body(body).id
         geoms = [g for g in range(model.ngeom) if model.geom_bodyid[g] == body_id and (model.geom_contype[g] or model.geom_conaffinity[g])]
         assert geoms, body
         pads.append((name, body, body_id, geoms, x_range, z_range, rows, columns, y_max))
-    return model, mujoco.MjData(model), [model.joint(name).qposadr[0] for name in HAND_JOINTS], pads
+    names = joints(robot)
+    home = {**(dict(zip(ARM_JOINTS, ARM_HOME[robot])) if "arm_target" in ROBOTS[robot][2] else {}), **HAND_HOME}
+    return model, mujoco.MjData(model), [model.joint(name).qposadr[0] for name in names], pads, [home.get(name, 0.0) for name in names]
 
 
 def taxels(joint_positions=None, robot_dir=FIXTURE):
-    model, data, qpos, pads = _fixture(str(robot_dir))
-    joints = np.array([HAND_HOME.get(name, 0.0) for name in HAND_JOINTS] if joint_positions is None else joint_positions, dtype=float)
-    assert joints.shape == (len(HAND_JOINTS),) and np.isfinite(joints).all(), "joint_positions needs %d finite values" % len(HAND_JOINTS)
-    data.qpos[qpos] = joints
+    model, data, qpos, pads, home = _fixture(str(robot_dir))
+    values = np.array(home if joint_positions is None else joint_positions, dtype=float)
+    assert values.shape == (len(qpos),) and np.isfinite(values).all(), "joint_positions needs %d finite values" % len(qpos)
+    data.qpos[qpos] = values
     mujoco.mj_kinematics(model, data)
     result, mask, hit, normal = {}, np.array([0, 1, 0, 0, 0, 0], np.uint8), np.zeros(1, np.int32), np.zeros(3)
     for name, body, body_id, geoms, (x0, x1), (z0, z1), rows, columns, y_max in pads:
@@ -108,7 +117,7 @@ def taxels(joint_positions=None, robot_dir=FIXTURE):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__ % {"joints": len(joints(_robot(FIXTURE)))}, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="run a steps file on a fresh load of your project")
     run.add_argument("project_dir")

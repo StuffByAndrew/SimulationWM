@@ -296,6 +296,21 @@ for action in [{"op":"hand_target","actuator_targets":[0.1]*20,"ticks":2}, {"op"
             actions = [event["resolved_action"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "hand_target"]
             self.assertEqual(actions, [{"op": "hand_target", "world": "reference", "ticks": 2, "actuator_targets": [0.1]*20}])
 
+    def test_arm_with_hand_offers_both_actions_without_gripper(self):
+        script = '''
+assert task["actions"][1:3] == ["arm_target", "hand_target"] and not set(["grasp", "move", "release"]) & set(task["actions"])
+assert set(task["action_schema"]["arm_target"]) == {"joint_targets", "ticks"}
+assert "robot/panda_shadow.xml" in task["action_schema"]["hand_target"]["actuator_targets"]
+contract = task["observation_contract"]["proprioception"]
+assert "joint_positions_rad[31]" in contract and "joint1, joint2" in contract and "actuator_effort_nm[27]" in contract
+for action in [{"op":"arm_target","joint_targets":[0]*7,"ticks":1}, {"op":"hand_target","actuator_targets":[0.1]*20,"ticks":1}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ assert json.loads(input())["ok"]
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.run_agent(directory, script, simulation={"robot": "panda_shadow", "rgb": False, "depth": False,
+                                                                           "calibration": False})["total_ticks"], 2)
+
     def test_fixture_actions_contract_private_seed_and_reference_only(self):
         script = '''
 assert task["actions"].index("reset_carriage") < task["actions"].index("reset") and "release_carriage" in task["actions"]

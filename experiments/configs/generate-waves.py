@@ -465,6 +465,35 @@ RUNS28 = {"w26-cube-spring-block-lowrank": (CUBE_MJCF[0], "cube + ideal spring +
 WAVES["wave26-20261123"] = ("Wave 26", "gemini-20261123", 1e6, RUNS28)
 WAVES["wave26-20261124"] = ("Wave 26", "gemini-20261123", 1e6, {name: (env, factor, {**o, "provider_hold": PROVIDER_HOLD})
                                                                 for name, (env, factor, o) in RUNS28.items()})
+# Wave 27 (user, 2026-11-24; planned, not launched): touch-only tabletop levels (docs/level-designs/touch-tabletop-20261124.md;
+# experiments/validation/touch-scenes.py, environments/panda_shadow): the Franka arm with the Shadow hand in place of its gripper
+# (robot "panda_shadow": arm_target + hand_target), joint proprioception and efforts plus fingertip/palm taxels, no images, no
+# wrench. L1 three abstract objects matched to L2's mug, banana and hammer; L2 unstated vs stated categories; L3 the spiky ball
+# in a bin (identification by parameters.json, grab at finish). Each level with the w21 harness (sequence tool) and the w25 one
+# (+ local controller copy, pausable bash). Gemini Neon, 4 h wall, no checkpoint hold, provider holds, accounting-only caps.
+TOUCH_CONSTRAINTS = ["Model the objects with standard MuJoCo primitives, joints and inline convex meshes (<mesh vertex=\"...\"/>, "
+                     "each collided as the convex hull of its vertices); preserve the provided Franka arm and Shadow hand robot "
+                     "fixture unchanged.", CONSTRAINTS[1]]
+NAME_OBJECTS = " Name each object's body in your scene.xml after what the object is."
+OBJECTS_STATED = " The objects are a mug, a banana and a hammer."
+SPIKY_TASK = (" One of the balls in the bin is spiky. Find it and report its initial position in every submission: put parameters.json "
+              "at the root of the submitted ZIP, beside scene.xml, holding a JSON object whose key \"spiky_ball_xyz\" is [x, y, z], the "
+              "spiky ball's initial centre in world coordinates in metres. Only this file is used to judge which ball you identified. "
+              "Model the scene in scene.xml as usual. Before you call finish, pick up the spiky ball in the reference world and hold it "
+              "in the hand above the bin rim.")
+TABLE_METRICS = ["objects", "chamfer", "center_of_mass", "density"]
+TOUCH = {"wall": 14400, "hold": 129600, "audit": 17179869184, "depth": False, "tactile": True, "constraints": TOUCH_CONSTRAINTS, **NEON}
+RUNS29 = {f"w27-{name}{suffix}": ("panda_shadow/" + level, f"Franka + Shadow hand, touch only, {label}; {harness}; gemini-4-neon",
+                                  {**TOUCH, "task": TASK_CONVERGE + task, "metrics": metrics, **o})
+          for name, level, label, task, metrics in (
+              ("shapes", "table_shapes", "three abstract shapes (L1)", NAME_OBJECTS, TABLE_METRICS),
+              ("objects-unstated", "table_objects", "mug, banana, hammer unstated (L2)", NAME_OBJECTS, TABLE_METRICS),
+              ("objects-stated", "table_objects", "mug, banana, hammer stated (L2)", NAME_OBJECTS + OBJECTS_STATED, TABLE_METRICS),
+              ("bin-spiky", "bin_spiky", "spiky ball in a bin (L3)", SPIKY_TASK, ["objects", "identification"]))
+          for suffix, harness, o in (("", "sequence tool (w21 harness)", {"tools": ("sequence",)}),
+                                     ("-touch", "sequence tool + local controller copy, pausable bash (w25 harness)",
+                                      {"tools": ("sequence", "local_controller"), "pausable": True}))}
+WAVES["wave27-20261124"] = ("Wave 27", "gemini-20261124", 1e6, RUNS29)
 
 
 def q(value):
@@ -487,9 +516,13 @@ def route(model):
             f'api_key_env = "GEMINI_API_KEY"\nprice_usd_per_mtok = {{ input = {price[0]}, cached_input = {price[1]}, output = {price[2]} }}\n')
 
 
+ROBOT_FAMILIES = {"panda": "panda", "panda_small": "panda", "shadow_hand": "shadow_hand", "panda_shadow": "panda_shadow"}
+
+
 def config(wave, pool, cap, env, factor, o):
-    panda = env.split("/")[0] in ("panda", "panda_small")
-    hand = env.split("/")[0] == "shadow_hand"
+    robot = ROBOT_FAMILIES.get(env.split("/")[0])
+    panda = robot == "panda"
+    hand = robot in ("shadow_hand", "panda_shadow")
     hinged = panda and "hinges" in ENVS.get(env.split("/")[1], ([], ""))[0]
     metrics, extra = ((["dynamics", "hinges", "image_mse"], ENVS[env.split("/")[1]][1]) if hinged else
                       (["dynamics", "chamfer", "center_of_mass", "image_mse"], RECON)) if panda else (["dynamics", "chamfer", "center_of_mass"], RECON) if hand else ENVS[env]
@@ -545,7 +578,7 @@ audit_bytes = {o.get("audit", 8589934592)}
 event_log_bytes = 67108864
 
 [simulation]
-{'robot = "panda"' + chr(10) if panda else 'robot = "shadow_hand"' + chr(10) if hand else ""}rgb = {str(vision).lower()}
+{f'robot = "{robot}"' + chr(10) if robot else ""}rgb = {str(vision).lower()}
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}

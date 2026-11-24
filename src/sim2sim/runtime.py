@@ -29,7 +29,7 @@ import urllib.parse
 import uuid
 import zipfile
 
-from .robots import HAND_ACTUATORS, HAND_JOINTS, ROBOTS
+from .robots import GRIPPER, HAND_ACTUATORS, ROBOTS, joints
 
 
 class RuntimeFailure(RuntimeError):
@@ -491,8 +491,9 @@ def enabled_tools(config):
         raise RuntimeFailure("[tools] accepts only boolean " + ", ".join(AGENT_TOOLS))
     if table.get("planning") and config.get("simulation", {}).get("robot") != "panda":
         raise RuntimeFailure('tools.planning requires simulation.robot = "panda"')
-    if table.get("local_controller") and config.get("simulation", {}).get("robot") != "shadow_hand":
-        raise RuntimeFailure('tools.local_controller requires simulation.robot = "shadow_hand"')
+    robot = config.get("simulation", {}).get("robot")
+    if table.get("local_controller") and (robot not in ROBOTS or "hand_target" not in ROBOTS[robot][2]):
+        raise RuntimeFailure('tools.local_controller requires a hand robot (simulation.robot = "shadow_hand" or "panda_shadow")')
     return tuple(name for name in AGENT_TOOLS if table.get(name))
 
 
@@ -1915,18 +1916,19 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             task["action_schema"]["sam3d"] = {"image_png_b64": "8-bit RGB(A) PNG, at most 2048x2048", "mask_png_b64": "grayscale PNG, same size, nonzero = object",
                                               "seed": "optional integer, default 0", "returns": "mesh_ply_b64 (binary PLY, vertex colors), vertices, faces, layout, frame"}
         if robot:
-            fixture, robot_op = ROBOTS[robot][0], ROBOTS[robot][2]
+            fixture, robot_ops = ROBOTS[robot][0], ROBOTS[robot][2]
             task["actions"] = [op for op in task["actions"] if op not in ("grasp", "move", "release")]
-            task["actions"].insert(1, robot_op)
+            task["actions"][1:1] = robot_ops
             for op in ("grasp", "move", "release"):
                 task["action_schema"].pop(op)
-            task["action_schema"][robot_op] = {
-                "arm_target": {"joint_targets": "seven finite joint position targets in radians, Panda joints 1 through 7",
-                               "gripper_width_m": "finite parallel-finger opening width in meters, 0 through 0.08"},
-                "hand_target": {"actuator_targets": "20 finite position targets in this actuator order: " + ", ".join(HAND_ACTUATORS)
-                                + "; each within that actuator's ctrlrange in robot/shadow_hand.xml (radians; a coupled *J0 target is "
-                                  "the sum of its finger's J1 and J2 angles); interpolated linearly from the current targets over the ticks"},
-            }[robot_op] | {"ticks": "positive integer; default " + str(sim_config["default_ticks"])}
+            for robot_op in robot_ops:
+                task["action_schema"][robot_op] = {
+                    "arm_target": {"joint_targets": "seven finite joint position targets in radians, Panda joints 1 through 7",
+                                   **({"gripper_width_m": "finite parallel-finger opening width in meters, 0 through 0.08"} if robot in GRIPPER else {})},
+                    "hand_target": {"actuator_targets": "20 finite position targets in this actuator order: " + ", ".join(HAND_ACTUATORS)
+                                    + f"; each within that actuator's ctrlrange in robot/{fixture} (radians; a coupled *J0 target is "
+                                      "the sum of its finger's J1 and J2 angles); interpolated linearly from the current targets over the ticks"},
+                }[robot_op] | {"ticks": "positive integer; default " + str(sim_config["default_ticks"])}
             task["action_schema"]["load_reconstruction"]["robot"] = f"Include public robot/{fixture} using <include file=\"robot/{fixture}\"/>; preserve the supplied robot and copy robot/assets with it"
             task["public_robot_path"] = PUBLIC_ROBOT
             if backend is not None:
@@ -1952,8 +1954,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                            "pad_normal_force_n 4x3 taxels over the palmar face of rh_palm (body y <= -4 mm), body z 96..-12 mm in 4 rows "
                            "(distal first) by body x -42..44 mm in 3 columns (increasing x), and total_normal_force_n over the whole palm "
                            "body; contact normal force in newtons summed per taxel; any contact on the body counts")
-                proprioception = ("joint_positions_rad[24] and joint_velocities_rad_s[24] in joint order " + ", ".join(HAND_JOINTS)
-                                  + ("; actuator_effort_nm[20] in hand_target actuator order" if effort else "") + "; robot sensors only")
+                names = joints(robot)
+                proprioception = (f"joint_positions_rad[{len(names)}] and joint_velocities_rad_s[{len(names)}] in joint order " + ", ".join(names)
+                                  + ({("hand_target",): "; actuator_effort_nm[20] in hand_target actuator order",
+                                      ("arm_target", "hand_target"): "; actuator_effort_nm[27]: Panda joints 1 through 7 (arm_target order), then "
+                                                                     "the hand_target actuator order"}[robot_ops] if effort else "") + "; robot sensors only")
             if sim_config["tactile"]:
                 task["observation_contract"]["tactile"] = tactile
                 task["observation_contract"]["modalities"]["tactile"] = True
@@ -2038,7 +2043,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 context["world"] = world
                 if not isinstance(op, str):
                     raise RuntimeFailure("Operation must be a string")
-                if op in INTERACTIONS and op not in ((ROBOTS[robot][2],) if robot else ("grasp", "move", "release")):
+                if op in INTERACTIONS and op not in (ROBOTS[robot][2] if robot else ("grasp", "move", "release")):
                     raise RuntimeFailure("Operation unavailable for configured robot")
                 if op in FIXTURE_OPS and (not fixture_table or world != "reference"):
                     raise RuntimeFailure("Unknown operation" if not fixture_table else f"{op} works only in the reference world")

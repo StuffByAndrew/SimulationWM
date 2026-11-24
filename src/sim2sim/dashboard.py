@@ -316,8 +316,10 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                 data['metrics'].append(dict(name=name if label=='submission' else name+(' (candidate changes)' if label=='candidate_change' else ' (retrospective candidate changes)'),metric_name=name,
                     origin=label,unit=_unit(name),group=_metric_group(name)[0],default_visible=_metric_group(name)[1],points=[
                     dict(checkpoint,values=None,value=checkpoint['values'].get(name),origin=checkpoint.get('origin',label)) for checkpoint in series]))
-        if (run/'die-view.html').is_file():  # researcher die evaluation view (src/sim2sim/die.py); not audit-verified
-            data['links'].append(dict(label='Die evaluation view (researcher-only; not audit-verified)',path=_asset(output,(run/'die-view.html').read_bytes(),'.html',verified_assets)))
+        # Researcher views written after the run (src/sim2sim/die.py, src/sim2sim/tabletop.py); not audit-verified.
+        for page,label in (('die-view.html','Die evaluation view'),('touch-view.html','Touch contact coverage map and grab result')):
+            if (run/page).is_file():
+                data['links'].append(dict(label=label+' (researcher-only; not audit-verified)',path=_asset(output,(run/page).read_bytes(),'.html',verified_assets)))
         for frames in data['frames'].values(): frames.sort(key=lambda f:(f['wall_elapsed'],f['seq']))
         data['progress'].sort(key=lambda item:(item['wall_elapsed'],item['seq']))
     except (AuditFailure,OSError,ValueError,TypeError) as exc:
@@ -358,14 +360,14 @@ def agent_prompts(repo=REPO):
         configured={task for task in configured if task.startswith(base)}
         level=next(iter(configured))[len(base):] if len(configured)==1 else ''
         family=path.split('/')[0]
-        constraints=g['PANDA_CONSTRAINTS'] if family in ('panda','panda_small') else g['HAND_CONSTRAINTS'] if family=='shadow_hand' else g['CONSTRAINTS']
+        constraints={'panda':g['PANDA_CONSTRAINTS'],'panda_small':g['PANDA_CONSTRAINTS'],'shadow_hand':g['HAND_CONSTRAINTS'],'panda_shadow':g['TOUCH_CONSTRAINTS']}.get(family,g['CONSTRAINTS'])
         return dict(task=base+level+'\nModel constraints:\n'+'\n'.join('- '+c for c in constraints),level=level.strip())
     return system,{path:prompt(path) for path in environment_scenes(repo/'environments')}
 
 
 def _environment(value):
     """Recorded environment name -> (robot label, scene, environment path)."""
-    for prefix,robot in (('panda_small_','Panda (small)'),('panda_','Panda'),('shadow_hand_','Shadow hand')):
+    for prefix,robot in (('panda_small_','Panda (small)'),('panda_shadow_','Panda + Shadow hand'),('panda_','Panda'),('shadow_hand_','Shadow hand')):
         if value.startswith(prefix):
             return robot,value[len(prefix):],prefix[:-1]+'/'+value[len(prefix):]
     return 'Point grasp',value,value

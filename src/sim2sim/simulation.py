@@ -16,7 +16,7 @@ import mujoco
 import numpy as np
 from PIL import Image
 
-from .robots import HAND_ACTUATORS, HAND_HOME, HAND_JOINTS, ROBOTS
+from .robots import ARM_ACTUATORS, ARM_HOME, ARM_JOINTS, GRIPPER, HAND_ACTUATORS, HAND_HOME, HAND_JOINTS, ROBOTS, actuators, joints
 
 
 CAMERA_REACH_M = 4.0  # movable_camera bound on |pos| and |lookat| per axis (world frame)
@@ -36,6 +36,7 @@ TACTILE = {"panda": ("finger_normal_force_n", "pad rows distal to proximal, colu
                            [(name, f"rh_{key}distal", *_HAND_TIP) for name, key in
                             (("thumb", "th"), ("first", "ff"), ("middle", "mf"), ("ring", "rf"), ("little", "lf"))]
                            + [("palm", "rh_palm", (-.042, .044), (-.012, .096), 4, 3, -.004)])}
+TACTILE["panda_shadow"] = TACTILE["shadow_hand"]
 
 
 def _load_xml(path, ancestors=()):
@@ -260,44 +261,49 @@ class Simulation:
 
     def _init_robot(self):
         self._proprioception_data = None
+        actions = ROBOTS[self.robot][2]
         if self.config.get("tactile", False):
             self._pads = [(name, int(self._ids(mujoco.mjtObj.mjOBJ_BODY, [body])[0]), *rest)
                           for name, body, *rest in TACTILE[self.robot][2]]
-        if self.robot == "shadow_hand":
-            joints = self._ids(mujoco.mjtObj.mjOBJ_JOINT, HAND_JOINTS)
-            self._hand_qpos, self._hand_dofs = self._model.jnt_qposadr[joints].copy(), self._model.jnt_dofadr[joints].copy()
+        robot_joints = self._ids(mujoco.mjtObj.mjOBJ_JOINT, joints(self.robot))
+        self._joint_qpos, self._joint_dofs = self._model.jnt_qposadr[robot_joints].copy(), self._model.jnt_dofadr[robot_joints].copy()
+        self._effort_actuators = self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, actuators(self.robot))
+        if "hand_target" in actions:
+            hand = self._ids(mujoco.mjtObj.mjOBJ_JOINT, HAND_JOINTS)
+            self._hand_qpos = self._model.jnt_qposadr[hand].copy()
             self._hand_actuators = self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, HAND_ACTUATORS)
             self._hand_home = np.array([HAND_HOME.get(name, 0.0) for name in HAND_JOINTS])
             if not np.all(self._model.actuator_ctrllimited[self._hand_actuators]):
                 raise ValueError("Shadow hand actuators must have control ranges")
-            return
-        joints = self._ids(mujoco.mjtObj.mjOBJ_JOINT, [f"joint{i}" for i in range(1, 8)])
-        fingers = self._ids(mujoco.mjtObj.mjOBJ_JOINT, ["finger_joint1", "finger_joint2"])
-        self._arm_actuators = self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, [f"actuator{i}" for i in range(1, 8)])
-        self._gripper_actuator = int(self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, ["actuator8"])[0])
-        if np.any(self._model.jnt_type[joints] != mujoco.mjtJoint.mjJNT_HINGE):
-            raise ValueError("Panda arm joints must be hinges")
-        if np.any(self._model.jnt_type[fingers] != mujoco.mjtJoint.mjJNT_SLIDE):
-            raise ValueError("Panda finger joints must be slides")
-        self._arm_qpos = self._model.jnt_qposadr[joints].copy()
-        self._arm_dofs = self._model.jnt_dofadr[joints].copy()
-        self._finger_qpos = self._model.jnt_qposadr[fingers].copy()
-        self._finger_dofs = self._model.jnt_dofadr[fingers].copy()
-        self._arm_ranges = self._model.jnt_range[joints].copy()
-        self._arm_limited = self._model.jnt_limited[joints].astype(bool)
+        if "arm_target" in actions:
+            arm = self._ids(mujoco.mjtObj.mjOBJ_JOINT, ARM_JOINTS)
+            self._arm_actuators = self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, ARM_ACTUATORS)
+            if np.any(self._model.jnt_type[arm] != mujoco.mjtJoint.mjJNT_HINGE):
+                raise ValueError("Panda arm joints must be hinges")
+            self._arm_qpos = self._model.jnt_qposadr[arm].copy()
+            self._arm_ranges = self._model.jnt_range[arm].copy()
+            self._arm_limited = self._model.jnt_limited[arm].astype(bool)
+        if self.robot in GRIPPER:
+            fingers = self._ids(mujoco.mjtObj.mjOBJ_JOINT, ["finger_joint1", "finger_joint2"])
+            self._gripper_actuator = int(self._ids(mujoco.mjtObj.mjOBJ_ACTUATOR, ["actuator8"])[0])
+            if np.any(self._model.jnt_type[fingers] != mujoco.mjtJoint.mjJNT_SLIDE):
+                raise ValueError("Panda finger joints must be slides")
+            self._finger_qpos = self._model.jnt_qposadr[fingers].copy()
+            self._finger_dofs = self._model.jnt_dofadr[fingers].copy()
 
     def _reset_robot(self):
-        if self.robot == "shadow_hand":
+        actions = ROBOTS[self.robot][2]
+        if "arm_target" in actions:
+            self._data.qpos[self._arm_qpos] = ARM_HOME[self.robot]
+            self._data.ctrl[self._arm_actuators] = ARM_HOME[self.robot]
+        if self.robot in GRIPPER:
+            self._data.qpos[self._finger_qpos] = .04
+            self._data.ctrl[self._gripper_actuator] = 255
+        if "hand_target" in actions:
             # Position targets equal the home transmission lengths (joint angle, or J1 + J2 for coupled tendons).
             self._data.qpos[self._hand_qpos] = self._hand_home
             mujoco.mj_forward(self._model, self._data)
             self._data.ctrl[self._hand_actuators] = self._data.actuator_length[self._hand_actuators]
-            return
-        home = np.array([0, 0, 0, -1.57079, 0, 1.57079, -.7853])
-        self._data.qpos[self._arm_qpos] = home
-        self._data.qpos[self._finger_qpos] = .04
-        self._data.ctrl[self._arm_actuators] = home
-        self._data.ctrl[self._gripper_actuator] = 255
 
     def _proprioception(self):
         # mj_step forces precede integration. Solve a copied current state so
@@ -306,37 +312,42 @@ class Simulation:
             self._proprioception_data = mujoco.MjData(self._model)
         mujoco.mj_copyData(self._proprioception_data, self._model, self._data)
         mujoco.mj_forward(self._model, self._proprioception_data)
-        if self.robot == "shadow_hand":
-            return {"joint_positions_rad": self._data.qpos[self._hand_qpos].tolist(),
-                    "joint_velocities_rad_s": self._data.qvel[self._hand_dofs].tolist(),
-                    "actuator_effort_nm": self._proprioception_data.actuator_force[self._hand_actuators].tolist()}
-        width = float(np.clip(np.sum(self._data.qpos[self._finger_qpos]), 0, .08))
-        return {"joint_positions_rad": self._data.qpos[self._arm_qpos].tolist(),
-                "joint_velocities_rad_s": self._data.qvel[self._arm_dofs].tolist(),
-                "actuator_effort_nm": self._proprioception_data.actuator_force[self._arm_actuators].tolist(),
-                "finger_positions_m": self._data.qpos[self._finger_qpos].tolist(),
-                "finger_velocities_m_s": self._data.qvel[self._finger_dofs].tolist(),
-                "gripper_width_m": width, "gripper_opening": width / .08}
+        result = {"joint_positions_rad": self._data.qpos[self._joint_qpos].tolist(),
+                  "joint_velocities_rad_s": self._data.qvel[self._joint_dofs].tolist(),
+                  "actuator_effort_nm": self._proprioception_data.actuator_force[self._effort_actuators].tolist()}
+        if self.robot in GRIPPER:
+            width = float(np.clip(np.sum(self._data.qpos[self._finger_qpos]), 0, .08))
+            result.update(finger_positions_m=self._data.qpos[self._finger_qpos].tolist(),
+                          finger_velocities_m_s=self._data.qvel[self._finger_dofs].tolist(), gripper_width_m=width, gripper_opening=width / .08)
+        return result
 
-    def _tactile(self):
-        """Normal contact force binned into each TACTILE pad's taxel grid by contact position in the pad body frame, plus
-        the body's total. Uses the state _proprioception just forwarded; contacts with anything count, as on a real touch
-        sensor, and their positions and identities stay private."""
-        data, force, out = self._proprioception_data, np.zeros(6), {}
-        total_key, layout, _ = TACTILE[self.robot]
+    def _pad_contacts(self, data):
+        """(pad, (row, column) or None outside the taxel grid, normal force, contact index) for every contact on a TACTILE
+        pad body, binned by contact position in the pad body frame (researcher tools reuse it on recorded states)."""
+        force = np.zeros(6)
         for name, body, (x0, x1), (z0, z1), rows, columns, y_max in self._pads:
-            grid, total = np.zeros((rows, columns)), 0.0
             for i in range(data.ncon):
                 contact = data.contact[i]
                 if body not in (self._model.geom_bodyid[contact.geom1], self._model.geom_bodyid[contact.geom2]):
                     continue
                 mujoco.mj_contactForce(self._model, data, i, force)
-                total += abs(force[0])
                 x, y, z = data.xmat[body].reshape(3, 3).T @ (contact.pos - data.xpos[body])
                 column, row = int((x - x0) // ((x1 - x0) / columns)), int((z1 - z) // ((z1 - z0) / rows))
-                if 0 <= row < rows and 0 <= column < columns and (y_max is None or y <= y_max):
-                    grid[row, column] += abs(force[0])
-            out[name] = {"pad_normal_force_n": grid.tolist(), total_key: total}
+                inside = 0 <= row < rows and 0 <= column < columns and (y_max is None or y <= y_max)
+                yield name, (row, column) if inside else None, abs(force[0]), i
+
+    def _tactile(self):
+        """Normal contact force binned into each TACTILE pad's taxel grid by contact position in the pad body frame, plus
+        the body's total. Uses the state _proprioception just forwarded; contacts with anything count, as on a real touch
+        sensor, and their positions and identities stay private."""
+        total_key, layout, _ = TACTILE[self.robot]
+        out = {name: {"pad_normal_force_n": np.zeros((rows, columns)), total_key: 0.0} for name, _, _, _, rows, columns, _ in self._pads}
+        for name, cell, force, _ in self._pad_contacts(self._proprioception_data):
+            out[name][total_key] += force
+            if cell is not None:
+                out[name]["pad_normal_force_n"][cell] += force
+        for pad in out.values():
+            pad["pad_normal_force_n"] = pad["pad_normal_force_n"].tolist()
         return {**out, "unit": "N", "layout": layout}
 
     def observe(self, full=False):
@@ -473,22 +484,26 @@ class Simulation:
         return int(ticks)
 
     def _arm_target(self, action):
-        if self.robot != "panda":
-            raise ValueError("arm_target requires robot='panda'")
+        if self.robot is None or "arm_target" not in ROBOTS[self.robot][2]:
+            raise ValueError("arm_target requires a robot with an arm")
         ticks = self._ticks(action)
         targets = np.asarray(action["joint_targets"], dtype=float)
         if targets.shape != (7,) or not np.isfinite(targets).all():
             raise ValueError("joint_targets must contain seven finite radians")
         if np.any(self._arm_limited & ((targets < self._arm_ranges[:, 0]) | (targets > self._arm_ranges[:, 1]))):
             raise ValueError("joint_targets exceed Panda joint limits")
+        if self.robot not in GRIPPER:
+            if "gripper_width_m" in action:
+                raise ValueError(f"robot={self.robot!r} has no gripper: arm_target takes no gripper_width_m")
+            return self._arm_actuators, targets, ticks
         width = action["gripper_width_m"]
         if isinstance(width, bool) or not isinstance(width, (int, float)) or not np.isfinite(width) or not 0 <= width <= .08:
             raise ValueError("gripper_width_m must be between 0 and 0.08")
         return np.append(self._arm_actuators, self._gripper_actuator), np.append(targets, width / .08 * 255), ticks
 
     def _hand_target(self, action):
-        if self.robot != "shadow_hand":
-            raise ValueError("hand_target requires robot='shadow_hand'")
+        if self.robot is None or "hand_target" not in ROBOTS[self.robot][2]:
+            raise ValueError("hand_target requires a robot with a hand")
         ticks = self._ticks(action)
         targets = np.asarray(action["actuator_targets"], dtype=float)
         if targets.shape != (len(HAND_ACTUATORS),) or not np.isfinite(targets).all():

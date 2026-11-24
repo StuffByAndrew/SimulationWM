@@ -31,9 +31,10 @@ class Client:
     def observe(self, ticks=0, *, world="reference"):
         return self.request("observe", ticks=ticks, world=world)["observation"]
 
-    def arm_target(self, joint_targets, gripper_width_m, ticks=20, *, world="reference"):
-        return self.request("arm_target", joint_targets=list(joint_targets),
-                            gripper_width_m=gripper_width_m, ticks=ticks, world=world)["observation"]
+    def arm_target(self, joint_targets, gripper_width_m=None, ticks=20, *, world="reference"):
+        """gripper_width_m only for an arm with the Panda gripper (robot panda)."""
+        gripper = {} if gripper_width_m is None else {"gripper_width_m": gripper_width_m}
+        return self.request("arm_target", joint_targets=list(joint_targets), **gripper, ticks=ticks, world=world)["observation"]
 
     def hand_target(self, actuator_targets, ticks=20, *, world="reference"):
         return self.request("hand_target", actuator_targets=list(actuator_targets), ticks=ticks, world=world)["observation"]
