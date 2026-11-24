@@ -35,6 +35,9 @@ Keep this list current: strike items when a log entry covers them.
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
 ## 2026-11-23 batch (launched; see the log)
+- [ ] Recordings (a1a65b1): jobs submitted before 2026-11-24 ~07:30 UTC keep their submit-time copy of
+  `experiment-strict.slurm`, so they do not record. Run `.venv/bin/python experiments/validation/run-video.py RUN_DIR`
+  on a test node for each such run before it goes into a report (all queued sapphire jobs of waves 23–26, 29 and Carbon).
 - [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
   the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
 - [ ] Review holds (4 h checkpoint: resume to 6 h while the agent works on the physics or mechanism) for waves 23–26 and
