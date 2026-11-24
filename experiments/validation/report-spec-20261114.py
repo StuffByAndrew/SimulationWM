@@ -147,6 +147,20 @@ for lv, runs in CLOTH.items():
     for r in runs:
         NAMES.setdefault(r, (f"Cloth: {CLOTH_NAME[lv]}", f"run {rep_n(r)}"))
 ORDER = list(NAMES)
+REC_ROOTS = (Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/recordings"), NETRUNS.parent / "recordings", MAIN / "recordings")
+
+
+def recordings(runs):
+    """run -> its recordings/<run> folder (experiments/validation/run-video.py), in whichever experiment root holds it."""
+    out = {}
+    for r in runs:
+        hits = [d / r for d in REC_ROOTS if (d / r / "recording.json").is_file()]
+        assert len(hits) == 1, (r, "needs exactly one recording; run experiments/validation/run-video.py on it", hits)
+        out[r] = hits[0]
+    return out
+
+
+RECORDINGS = recordings(NAMES)
 VIEWER = {"spring-k": SPRING_RUNS[("k", "movable")] + SPRING_RUNS[("k", "fixed")],
           "spring-block": SPRING_RUNS[("block", "movable")] + SPRING_RUNS[("block", "fixed")],
           "box": list(BOX.values()), **({"hand": list(HAND.values())} if WITH_MEDIA else {})}
