@@ -6,6 +6,29 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 19:40 UTC — Isolated image merged; waves 23, 24 and 27 queued on it, on the lab root (netscratch full again)
+- **Agent-image isolation merged** (00001b4 = builder commit 8d4ba23).
+  - Record `experiments/images/trusted-image-isolated.json`: agent `a82e2587b4ab` (`localhost/sim2sim-agent:latest`)
+    and evaluator `0d41008fda1c`.
+  - Builder checks: grep job 63461151 found no evaluation or metric modules in the agent image; OCI 63461413 (9 passed,
+    1 skipped) and 63464604; the old single-image path still works (OCI 63468586, 49 passed).
+  - Configs now carry the agent tag in `[sandbox] image`. Queued old-config jobs run unchanged.
+- **Netscratch over quota again at 19:25 UTC** (writes fail; lab and home writable). The 9 running jobs on netscratch are
+  at risk.
+  - The maintenance move (`~/sim2sim-maintenance/move-to-lab.slurm 60`, job `63470430`, log in
+    `experiments/validation/maintenance/`) moves finished, idle runs to lab, each verified by checksum before the source
+    is removed, to free netscratch.
+  - New preparations go to the lab root.
+- **Re-prepared on the lab root** with the isolated configs; sources byte-identical to the -001 runs:
+  - wave 23 fixture Neon as `-003`, wave 24 die Neon as `-003` (`prepare-isolated-20261124.sh`);
+  - wave 27, all 8 runs, as `-20261124-001`.
+- **Jobs** (`SIM2SIM_TRUSTED_IMAGE_RECORD=trusted-image-isolated.json`, `SIM2SIM_EXPERIMENTS_ROOT` = lab):
+  - Fixture rigid + rubber `63470987`, die grasp, grasp-fps100, franka and franka-fps100 `63470991`, `63470999`,
+    `63471006`, `63471013`; all moved to the top of my queue.
+  - Fixture bimodal on kempner_cpu, `63471018`.
+  - Wave 27 pairs: `63471034`, `63471039`, `63471055`, `63471059`.
+- The hold watcher now checks both roots.
+
 ## 2026-11-24 19:50 UTC — Replicates stopped (user)
 - User: replicates are the lowest priority, and none run until the user says so. The running second wave-26 replicate
   pair `w26-cube-spring-block-{lowrank,mjcf}-20261124-002` (job `63281861`, about 40 min in) was cancelled as a
