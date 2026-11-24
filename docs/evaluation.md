@@ -400,8 +400,11 @@ joint). The candidate must name its crank and dial-hand bodies `crank` and `hand
 evaluation fails with that error. It combines with other scene metrics but the level's configs select it alone: the generic
 `dynamics` image metric scores every visible body and so can never rate a model without gears like one with them.
 
-- `accuracy`: each probe runs `evaluation._probe_actions` (grasp, four moves, release, three waits) plus `settle_ticks` of
-  waiting, from reset, in the fresh source and the candidate (a missed candidate grasp turns its moves into waits). Unlike the
+- `accuracy`: each probe (manifest `body`, `local_point`, `moves` = `[dx, dy, dz, ticks]` list, `settle_ticks`) grasps the
+  body point's pixel through the source camera, runs its moves, releases and waits, from reset, in the fresh source and the
+  candidate, both with the run's public grasp settings including `grasp_slip_m`. The level's moves follow the crank handle's
+  or hand tip's circle in 5° chords, within reach and below the slip threshold; a source grip that misses or slips fails the
+  evaluation, a candidate's is kept as `candidate_grasp_held = false` and its remaining moves become waits. Unlike the
   other scene metrics the candidate keeps **its own submitted timestep**: each action lasts the same time (rounded to its
   steps) and its samples are interpolated to the source's. Every step records the **world** rotation of `crank` and `hand` about the panel normal (the source crank's hinge axis) relative to
   their reset orientation, unwrapped, so a flipped hinge axis, another zero angle or other joint names cost nothing. Per probe

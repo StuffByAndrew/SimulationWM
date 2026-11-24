@@ -28,9 +28,8 @@ Keep this list current: strike items when a log entry covers them.
 1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
 2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
    (`scontrol top`).
-   Blocked (builder, 2026-11-24): the premise check failed. Soft gear couplings make the deep train compliant, so the
-   deep and shallow models do not predict identically, and the cost ratio is 5× rather than 10×. The decision is with the
-   designer and the user. Do not queue `wave28-20261124` from any branch until a merged handoff arrives.
+   Built (builder, 2026-11-24; option (b): public grip slip, 0.5 ms step). Launch only after a trusted image that contains
+   `gear_train.py` and the `grasp_slip_m` knob is built and recorded; see the gear-train section below.
 3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
@@ -60,6 +59,26 @@ Keep this list current: strike items when a log entry covers them.
   ~20-gear train, deep and shallow models equal in prediction (deep ≥ 10× costlier); neutral task × {none, cheap-use,
   intervention-use} sentence = 3 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are
   user-approved; do not re-ask.
+- [x] Built (builder session, 2026-11-24). **Ready to launch once the image below exists.**
+  - Configs `experiments/configs/wave28-20261124/` (`RUNS_W28`): `w28-gear-recon`, `w28-gear-cheap`, `w28-gear-deep`, one
+    run each. gemini-4-neon, point grasp + wrench, RGB-D, movable camera, `sequence` tool, lock-step, 14400 s wall
+    (`wall_only`), no checkpoint hold, budget hold 129600, provider hold 129600, pool `gemini-20261124`, evaluation
+    timeout 600 s, public `simulation.grasp_slip_m = 0.002`.
+  - Image: not built by the builder (the agent/evaluator image split is in progress). The evaluator image must contain
+    `src/sim2sim/gear_train.py` and the `grasp_slip_m` knob (`simulation.py`, `candidate_worker.py`, `realtime.py`). Strict
+    runs on an older image would ignore the slip in the agent's reconstruction world and fail evaluation (unknown metric).
+    No existing baseline needs a rerun: the knob defaults off and the configs of other waves are byte-identical.
+  - Validation: check job `63463232` (all premises; see the `docs/environments.md` gear-train section) and 49 tests in the
+    same job. Smoke: `--prepare-only` of `w28-gear-cheap` on the login node; the dashboard lists the level (with the
+    generic base prompt, since the task is neutral rather than `TASK_CONVERGE`).
+  - Watch in the first runs: how often the agent's grip slips (`grasped` false after a move; pulls of more than 2 mm past
+    the handle's reach or very fast turns), and whether that alone stalls the agent; the depth class of each submission
+    (`scores.gear_train.structure`); and `scores.gear_train.accuracy.candidate_timestep_s`. Agents choose their own
+    timestep; a G-cheap model at a large step is legitimate if it passes the gate.
+  - Weakened from the design: evaluation probes stay within reach and below the slip threshold, so they are gentle
+    (120° in 1.8 s or more). After an over-pull slips, deep and shallow still differ by up to 21 % of the gate, not under
+    10 %. That is far below the 3.39 rad seen without the slip, but an agent comparing over-pulls closely might still
+    notice.
 
 ## Touch-only tabletop levels (user, 2026-11-24): designed, to build and queue
 - [ ] Build and queue per [level-designs/touch-tabletop-20261124.md](level-designs/touch-tabletop-20261124.md): Franka +
