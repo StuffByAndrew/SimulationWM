@@ -99,3 +99,10 @@ reproduce, and the point grasp is softened differently by the deep and lumped cr
   deep at 0.5 ms, shallow at the largest timestep that still passes the accuracy gate. The ≥ 10× premise applies to this
   ratio; keep ~20 gears if it holds. Probes, hard crank pulls and release included, must agree within the gate.
 - Agent-built models choose their own timestep.
+- Second check (jobs `63454396`–`63456297`): cost holds by a wide margin (103× per simulated second with ~20 gears; 20.8×
+  even with the shallow model at 2 ms). Accuracy failed only when the grasp is dragged beyond the handle's reach: the deep
+  chain jitters and springs back ~0.6 rad, a deep-only cue a lumped model cannot match, and a stiffer grasp made it worse.
+  Decision (user): on this level only, **the point grasp releases when stretched past a small public threshold** (new
+  knob, default off; a slipping grip, in the reference world, agent world and evaluator alike); the grasp stiffness
+  returns to the default; evaluation probes stay within reach. The threshold must never trip on in-reach turns and must
+  trip before any over-pull excites springback.
