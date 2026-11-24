@@ -401,7 +401,11 @@ FIXTURE_TASK = ("Calibrate the spring-powered positioning fixture on the table. 
 FIXTURE_CONSTRAINTS = ["Submit a ZIP project with predictor.py at its root, written in Python with numpy, scipy and mujoco available; "
                        "it may read other local files of the project but no native code.",
                        "Any MuJoCo model you load into the reconstruction world must include the provided Panda robot fixture unchanged."]
-FIXTURE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 17179869184, "task": FIXTURE_TASK,
+# PROVIDER_HOLD (2026-11-24): on 2026-11-23 Google's 503 "high demand" outages used up the 4 h provider-hold allowance
+# (14400 s) of runs launched that day, which then died. Held time is outside the run, so the allowance does not change what
+# the agent gets; unstarted waves and reruns get 36 h.
+PROVIDER_HOLD = 129600
+FIXTURE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": PROVIDER_HOLD, "audit": 17179869184, "task": FIXTURE_TASK,
            "vision": True, "depth": True, "movecam": True, "tools": ("sequence",), "metrics": ["fixture"], "entrypoint": "predictor.py",
            "candidate_changes": False, "eval_timeout": 1800, "extra": "", "constraints": FIXTURE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
 RUNS25 = {f"w23-{level.replace('_', '-')}-{model.removeprefix('gemini-4-')}": (
@@ -423,7 +427,7 @@ TASK_DIE = ("Investigate the die resting in the tray and build a model that pred
             "(task realtime). Resubmit whenever your predictor improves, and call finish when you believe it cannot be improved further.")
 DIE_CONSTRAINTS = ["Submit a ZIP whose entry point predict.py follows the predictor protocol in the task (die.predictor); it may use "
                    "the Python standard library, numpy, scipy, mujoco and files you include."]
-DIE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": 14400, "audit": 34359738368, "task": TASK_DIE, "vision": True,
+DIE = {"wall": 21600, "hold": 129600, "checkpoint": 14400, "provider_hold": PROVIDER_HOLD, "audit": 34359738368, "task": TASK_DIE, "vision": True,
        "depth": True, "movecam": True, "wrench": False, "tools": ("sequence", "channel"), "metrics": ["die"], "entrypoint": "predict.py", "extra": "",
        "constraints": DIE_CONSTRAINTS, "cost": 1e6, "pool_usd": 1e6}
 ENVS["die_biased"] = (["die"], "")
@@ -436,7 +440,7 @@ WAVES["wave24-20261123"] = ("Wave 24", "gemini-20261123", 1e6, RUNS26)
 # Wave 25 (analyst session's touch-harness wave; user 2026-11-23: "Yes, but on Neon"; the controls also repeat the original hand
 # levels on Neon): the four w21 touch-only hand levels with the local reconstruction-world copy (tools.local_controller) and
 # pausable bash (no command time limit; code is paused while the model thinks), against the exact w21 config on Neon.
-NEON = {"model": "gemini-4-neon", "provider_hold": 14400, "cost": 1e6, "pool_usd": 1e6}
+NEON = {"model": "gemini-4-neon", "provider_hold": PROVIDER_HOLD, "cost": 1e6, "pool_usd": 1e6}
 RUNS27 = {f"w25-{level.replace('_', '-')}{suffix}": ("shadow_hand/" + level, f"Shadow hand, touch only, {label}; gemini-4-neon", {**HAND, **NEON, **o})
           for level in HAND_LEVELS for suffix, label, o in (
               ("", "sequence tool + local controller copy, pausable bash", {"tools": ("sequence", "local_controller"), "pausable": True}),
@@ -454,10 +458,13 @@ TASK_LOWRANK = ("Identify the physical parameters of this scene that matter, usi
 LOWRANK_CONSTRAINTS = ["Submit a ZIP whose parameters.json holds exactly the keys mass, stiffness, com and inertia, as numbers in SI units."]
 CUBE_MJCF = RUNS22["w20-cube-spring-block"]
 RUNS28 = {"w26-cube-spring-block-lowrank": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; parameter answer",
-                                             {**CUBE_MJCF[2], **NEON, "task": TASK_LOWRANK + IDEAL_BLOCK, "metrics": ["lowrank"], "extra": "",
+                                             {**CUBE_MJCF[2], **NEON, "provider_hold": 14400, "task": TASK_LOWRANK + IDEAL_BLOCK, "metrics": ["lowrank"], "extra": "",
                                               "entrypoint": "parameters.json", "candidate_changes": False, "constraints": LOWRANK_CONSTRAINTS}),
-          "w26-cube-spring-block-mjcf": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; full MJCF (w20 config)", {**CUBE_MJCF[2], **NEON})}
+          "w26-cube-spring-block-mjcf": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; full MJCF (w20 config)",
+                                          {**CUBE_MJCF[2], **NEON, "provider_hold": 14400})}
 WAVES["wave26-20261123"] = ("Wave 26", "gemini-20261123", 1e6, RUNS28)
+WAVES["wave26-20261124"] = ("Wave 26", "gemini-20261123", 1e6, {name: (env, factor, {**o, "provider_hold": PROVIDER_HOLD})
+                                                                for name, (env, factor, o) in RUNS28.items()})
 
 
 def q(value):
@@ -643,12 +650,14 @@ for directory, pool, extra in (("gemini-20261119", "gemini-20261119", {}), ("gem
     print(out.name, sorted(p.name for p in out.glob("*.toml")))
 # 2026-11-23 (user: Neon is the default; evaluate Carbon on the same five hard levels in parallel): the gemini-20261120 recipe
 # (provider holds, accounting-only caps) with gemini-4-carbon.
-out = Path(__file__).parent / "gemini-carbon-20261123"
-out.mkdir(exist_ok=True)
-for wave_dir, run_id in HARD:
-    wave, _, _, runs = WAVES[wave_dir]
-    env, factor, overrides = runs[run_id]
-    overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": "gemini-4-carbon", "cost": 1e6, "pool_usd": 1e6,
-                                                                           "hold": 129600, "provider_hold": 14400}
-    (out / f"{run_id}-carbon.toml").write_text(config(wave, "gemini-carbon-20261123", 1e6, env, factor, overrides))
-print(out.name, sorted(p.name for p in out.glob("*.toml")))
+# gemini-carbon-20261124: the same with the 36 h provider-hold allowance, for reruns of runs that outages killed.
+for directory, allowance in (("gemini-carbon-20261123", 14400), ("gemini-carbon-20261124", PROVIDER_HOLD)):
+    out = Path(__file__).parent / directory
+    out.mkdir(exist_ok=True)
+    for wave_dir, run_id in HARD:
+        wave, _, _, runs = WAVES[wave_dir]
+        env, factor, overrides = runs[run_id]
+        overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": "gemini-4-carbon", "cost": 1e6, "pool_usd": 1e6,
+                                                                               "hold": 129600, "provider_hold": allowance}
+        (out / f"{run_id}-carbon.toml").write_text(config(wave, "gemini-carbon-20261123", 1e6, env, factor, overrides))
+    print(out.name, sorted(p.name for p in out.glob("*.toml")))

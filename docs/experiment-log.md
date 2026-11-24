@@ -6,6 +6,29 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 03:10 UTC — Provider-hold allowance exhausted: two Carbon runs died; unstarted runs re-prepared with 36 h
+- **Died (infrastructure, rerun):** `w19-marble-heavy-hint-carbon-20261123-001` (206 run-minutes) and
+  `w21-hand-smooth-mesh-carbon-20261123-001` (193), job `63158114`, at about 02:30 UTC, with no submissions.
+  - Google's 503 "high demand" outages had used up each run's 4 h provider-hold allowance (`held_seconds` ≈ 14,420 and
+    14,716 s). After that, failed calls reached the harness, which exited: marble on an inference deadline, hand on a 503.
+  - The surviving 2026-11-23 runs (Carbon cloth and w11, wave 26 ×4) have been held about as long and may die the same way;
+    they continue as launched.
+- **Allowance raised to 36 h** (`PROVIDER_HOLD = 129600` in `generate-waves.py`) for unstarted runs and reruns. Held time
+  is outside the run clock, so the agent's conditions are unchanged.
+  - The 10 held sapphire jobs of waves 23–25 were cancelled before starting. Their `-001` runs stay prepared and never
+    started, because moving prepared run directories was not permitted.
+  - Waves 23–25 were re-prepared as `-20261123-002` from the regenerated configs. Each source is byte-identical to its
+    `-001` (job `63263855`).
+- **Carbon reruns** (`experiments/configs/gemini-carbon-20261124/`, sources identical to the -001 runs):
+  `w19-marble-heavy-hint-carbon-20261124-001`, `w21-hand-smooth-mesh-carbon-20261124-001`, and
+  `w20-latch-out-carbon-20261124-001` (replaces the never-started -003, whose job `63210168` was cancelled).
+- **Wave 26:** a rerun set `experiments/configs/wave26-20261124/` (36 h allowance) is ready in case the running runs die.
+- **Jobs** (sapphire, 3-day limit, 40 CPUs):
+  - w25: `63264367`, `63264369`–`71`.
+  - w23: `63264372`–`73`.
+  - w24: `63264374`–`77`.
+  - Carbon: `63264378`–`79`.
+
 ## 2026-11-23 22:50 UTC — Carbon latch-out cancelled for the user's dashboard (infrastructure, rerun queued)
 - The results-explorer session (user-approved) cancelled job `63159055` to free a `test` slot for the user's live
   dashboard (job `63206812`). `w20-latch-out-carbon-20261123-001` died at about 56 min of run wall with no submission; its

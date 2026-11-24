@@ -92,4 +92,4 @@ max_response_bytes = 1048576
 timeout_seconds = 300
 budget_hold_seconds = 129600
 checkpoint_wall_seconds = 14400
-provider_hold_seconds = 14400
+provider_hold_seconds = 129600
