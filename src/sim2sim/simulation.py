@@ -99,6 +99,11 @@ class Simulation:
             raise ValueError("tactile is a boolean and requires a robot")
         if self.config.get("movable_camera", False) not in (True, False):
             raise ValueError("movable_camera is a boolean")
+        for key, size in (("grasp_solref", 2), ("grasp_solimp", 5)):  # public point-grasp softness (connect solref/solimp)
+            value = self.config.get(key, [0] * size)
+            if not isinstance(value, (list, tuple)) or len(value) != size or any(
+                    isinstance(v, bool) or not isinstance(v, (int, float)) or not np.isfinite(v) for v in value):
+                raise ValueError(f"{key} must be a list of {size} finite numbers")
         self.camera = self.config.get("camera", "fixed")
         self.default_ticks = int(self.config.get("default_ticks", 60))
         self.total_ticks = self.ticks = 0

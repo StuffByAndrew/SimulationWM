@@ -183,6 +183,16 @@ default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # grasp_solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
 ```
 
+`grasp_solref` (2 numbers) and `grasp_solimp` (5 numbers) set the point grasp's connect-constraint softness (MuJoCo
+`solref`/`solimp`); the defaults above apply when they are absent, so existing configs and prepared runs are unchanged.
+They are public: `public_tool_config` reports the values in force, and the reference world, the agent's reconstruction
+world (candidate worker, local controller copy) and the evaluator's source and candidate worlds all use them, so the grasp
+behaves the same everywhere. `Simulation` rejects anything but lists of finite numbers of those lengths, so a malformed
+value fails the run on the host at start. MuJoCo clamps a `solref` time constant below two timesteps. The gear-train level
+(`environments/gear_train`, 0.5 ms step) sets a stiffer grasp, `[0.002, 1]` and `[0.99, 0.999, 0.001, 0.5, 2]`: with the
+default the grasp's regularization, which MuJoCo scales by the grasped body's own inertia, distinguishes a train of
+equality-coupled gears from the same train lumped into the crank.
+
 ## Internal Python interface
 
 `Simulation(scene_path, config=None)` exposes `action(dict)`, `step(op, args)`,
