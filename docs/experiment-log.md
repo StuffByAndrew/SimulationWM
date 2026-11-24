@@ -6,6 +6,12 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 19:50 UTC — Replicates stopped (user)
+- User: replicates are the lowest priority, and none run until the user says so. The running second wave-26 replicate
+  pair `w26-cube-spring-block-{lowrank,mjcf}-20261124-002` (job `63281861`, about 40 min in) was cancelled as a
+  user-ordered stop. Wave 26 continues with n=1 per condition (`-20261124-001`, job `63281858`).
+- Reruns of infrastructure-killed runs are not replicates and stay queued.
+
 ## 2026-11-24 19:00 UTC — Infrastructure deaths, a real-time bug, an agent-image leak; reruns; kempner_cpu; wave 27 merged
 - **Netscratch quota, about 10:30 UTC:** "Disk quota exceeded" killed six runs started at 10:04 UTC. Their `status.json`
   may still say `running`. All are infrastructure failures.

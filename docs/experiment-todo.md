@@ -10,7 +10,8 @@ Keep this list current: strike items when a log entry covers them.
   comparable: no filesystem boundary and a different harness.
 - Model: `gemini-4-neon` is the default since 2026-11-23 (AGENTS.md "Gemini models"); `gpt-6-astra` only if Gemini rate
   limits would be hit. Medium reasoning.
-- One run per condition, except replicates to n=3 for the key findings (user, 2026-11-05).
+- One run per condition. **No replicates until the user says so** (user, 2026-11-24; this supersedes the 2026-11-05
+  n=3 rule). Reruns of runs killed by infrastructure are not replicates and continue.
 - Slurm `test` or `sapphire` (CPU) only, never GPU partitions. Pack 2–3 runs per `scripts/experiment-strict.slurm` job.
 - Cost: one pool per ET day, $1000 since 2026-11-06 (user; $700 from 2026-11-04, $500 before) (`cost_pool = "sim2sim-YYYYMMDD"`), and per-run caps (usually $44). Agents never see
   spend. The orchestrator picks and launches the next wave without asking, within the day's pool.
