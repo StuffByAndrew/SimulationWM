@@ -1565,7 +1565,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         from .realtime import RealtimeWorld, WorldFailure
         launcher = Launcher(private_manifest["launcher"]) if "launcher" in private_manifest else None
     supervisor.check()
-    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "realtime", "frame_rate", "default_ticks", "grasp_solref", "grasp_solimp") if k in sim_config}
+    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "realtime", "frame_rate", "default_ticks", "grasp_solref", "grasp_solimp", "grasp_slip_m") if k in sim_config}
     public_config.setdefault("width", getattr(sim, "width", 640))
     public_config.setdefault("height", getattr(sim, "height", 480))
     public_config["timestep"] = float(sim._model.opt.timestep) if hasattr(sim, "_model") else float(sim_config.get("timestep", .002))
@@ -2286,7 +2286,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     evaluation.setdefault("source_dir", str(Path(scene).resolve().parent))
                     evaluation.setdefault("source_entrypoint", Path(scene).resolve().relative_to(source_root).as_posix())
                     evaluation.setdefault("source_config", dict(sim_config))
-                    for key in ("camera", "timestep", "grasp_solref", "grasp_solimp"):
+                    for key in ("camera", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m"):
                         if key in sim_config:
                             evaluation.setdefault(key, sim_config[key])
                     with frozen():

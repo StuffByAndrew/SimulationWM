@@ -715,7 +715,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
                 staging.rename(target)
         report['project_path'] = f'versions/{version}/project'
         simconfig = dict(config.get('source_config', {}))
-        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'default_ticks', 'graspable_bodies'):
+        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'grasp_slip_m', 'default_ticks', 'graspable_bodies'):
             if key in config:
                 simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)

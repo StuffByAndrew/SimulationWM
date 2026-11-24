@@ -23,7 +23,7 @@ import tempfile
 import numpy as np
 
 ROOT = Path("environments/gear_train")
-TIMESTEP = .0005                  # s: the stiff couplings and grasp need a short step (user, 2026-11-24)
+TIMESTEP = .0005                  # s: the near-ideal couplings need a short step (user, 2026-11-24)
 RHO = 2700.                       # kg/m^3, every gear (one material)
 RHO_CRANK = 2700.                 # kg/m^3, crank and hand parts
 Z0 = .45                          # axle height, m
@@ -34,9 +34,9 @@ FRONT_Y = -.024
 TOOTH_PITCH, TOOTH = .008, (.0015, .0018)  # tooth spacing along the pitch circle; tooth radial and tangential half sizes, m
 B = 1.0e-4                        # viscous damping of every axle, N m s/rad: crank coast time constant about 0.12 s
 SOLREF, SOLIMP = ".001 1", ".9999 .9999 .001 .5 2"  # near-ideal gear couplings (time constant at the 2-step minimum)
-GRASP_SOLREF, GRASP_SOLIMP = [.002, 1], [.99, .999, .001, .5, 2]  # public [simulation] grasp softness of this level
+SLIP_M = .002                     # public [simulation] grasp_slip_m: the grip lets go when stretched farther (m)
 SHALLOW_TIMESTEPS = (.0005, .001, .002, .004, .005, .008, .01)  # s: shallow.xml takes the largest that passes the gate
-SOLVER = ""                       # extra <option> attributes
+SOLVER = ' tolerance="1e-12"'     # <option> extra: Newton runs to convergence (the default 1e-8 stops a stiff train early)
 PHI = np.deg2rad(50)              # mesh directions alternate +PHI, -PHI from +x: a zigzag train
 CRANK_R, HANDLE_R, KNOB = .045, .040, (.008, .012)  # crank wheel radius, handle radius; knob radius and half length (along -y)
 HAND_R, POINTER, HAND_CW = .024, (.005, .035), .03  # hand pinion radius; pointer half width and half length; counterweight offset
@@ -48,13 +48,20 @@ GEARS = ([IDLER(0, r) for r in (.026, .022, .030, .024, .028, .023)] + [(0, .016
 REMOVALS = ("gear_03", "gear_10", "gear_14")  # G-deep: a crank-side idler, a mid-train idler, a compound pair
 GATE_P = .1                                   # G-cheap gate perturbation of the lumped armature and damping
 EYE, LOOK, FOVY = np.array([0., -.95, .70]), np.array([0., 0., Z0]), 45
-PROBES = [  # private: crank handle / hand tip pushed tangentially (the crank pulls end 1 cm beyond the handle's reach, then
-    # release and springback); (name, body, local point, displacement m, grasped seconds, settle seconds)
-    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 2.0, .5),
-    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), .32, .8),
-    ("crank_step", "crank", (0, -.051, -HANDLE_R), (-.02, 0, 0), .08, .8),
-    ("hand_push", "hand", (0, FRONT_Y - T, .06), (.03, 0, 0), .4, .8),
-    ("hand_push_fast", "hand", (0, FRONT_Y - T, .06), (-.03, 0, 0), .08, .8),
+PROBES = [  # private, within the handle's reach: the grasped point follows its circle about the axle in CHORD_DEG chords;
+    # (name, body, local point, radius m, start angle deg in the panel's x-z plane, sweep deg, grasped seconds, settle seconds)
+    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 3.0, .8),
+    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 1.8, .8),
+    ("crank_turn_back", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, -60, .9, .8),
+    ("hand_push", "hand", (0, FRONT_Y - T, .06), .06, 90, 30, .8, .8),
+    ("hand_push_fast", "hand", (0, FRONT_Y - T, .06), .06, 90, -40, .8, .8),
+]
+CHORD_DEG = 5
+OVERPULLS = [  # check only: straight pulls ending 1 cm (crank) or 2 cm (hand) beyond reach, which the slip must end first;
+    # (name, body, local point, displacement m, grasped seconds, settle seconds)
+    ("crank_overpull_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 2.0, .5),
+    ("crank_overpull_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), .32, .8),
+    ("hand_overpull", "hand", (0, FRONT_Y - T, .06), (.08, 0, 0), .4, .8),
 ]
 WORLD = 'contype="0" conaffinity="0"'
 
@@ -216,14 +223,25 @@ def calibrate():
     return gate_rad, max(passing), errors
 
 
-SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"],
-                 "grasp_solref": GRASP_SOLREF, "grasp_solimp": GRASP_SOLIMP}
-CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "grasp_solref": GRASP_SOLREF, "grasp_solimp": GRASP_SOLIMP}  # own timestep
+SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"], "grasp_slip_m": SLIP_M}
+CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "grasp_slip_m": SLIP_M}  # own timestep, graspable bodies inferred
 
 
 def probe_tables():
-    return [{"name": n, "body": b, "local_point": list(p), "displacement": list(d), "ticks": round(t / TIMESTEP), "settle_ticks": round(s / TIMESTEP)}
-            for n, b, p, d, t, s in PROBES]
+    """Manifest probes: chords along each probe's circle, equal time each."""
+    out = []
+    for name, body, point, radius, start, sweep, seconds, settle in PROBES:
+        n = round(abs(sweep) / CHORD_DEG)
+        angles = np.deg2rad(start + sweep * np.arange(n + 1) / n)
+        path = radius * np.column_stack([np.cos(angles), np.zeros(n + 1), np.sin(angles)])
+        out.append({"name": name, "body": body, "local_point": list(point), "settle_ticks": round(settle / TIMESTEP),
+                    "moves": [[*np.round(d, 6).tolist(), round(seconds / n / TIMESTEP)] for d in np.diff(path, axis=0)]})
+    return out
+
+
+def overpull_tables():
+    return [{"name": n, "body": b, "local_point": list(p), "settle_ticks": round(s / TIMESTEP),
+             "moves": [[*(np.asarray(d) / 4).tolist(), round(t / 4 / TIMESTEP)] for _ in range(4)]} for n, b, p, d, t, s in OVERPULLS]
 
 
 def axle_tolerance():
@@ -239,8 +257,7 @@ def manifest(gate_rad, shallow_dt, errors):
 name = "{p["name"]}"
 body = "{p["body"]}"
 local_point = [{", ".join(f"{v:g}" for v in p["local_point"])}]
-displacement = [{", ".join(f"{v:g}" for v in p["displacement"])}]
-ticks = {p["ticks"]}
+moves = [{", ".join("[" + ", ".join(f"{v:g}" for v in m) + "]" for m in p["moves"])}]
 settle_ticks = {p["settle_ticks"]}
 ''' for p in probe_tables())
     return f'''name = "gear_train"

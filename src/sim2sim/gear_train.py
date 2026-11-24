@@ -6,8 +6,9 @@ the crank joint, at the largest timestep that passes the accuracy gate). The can
 bodies `crank` and `hand` (the task says so). Every model runs at its own timestep: the candidate's submitted one, the
 references' authored ones.
 
-- `accuracy`: each private [[probes]] entry runs `evaluation._probe_actions` plus `settle_ticks` of waiting, from reset, in
-  the fresh source and the candidate; a candidate at another timestep runs each action for the same duration (rounded to
+- `accuracy`: each private [[probes]] entry (grasp `body` at `local_point`, its `moves`, release, `settle_ticks` of waiting;
+  the level's moves follow the handle's circle, within reach) runs from reset in the fresh source and the candidate, both
+  with the run's public grasp settings (a source grip that misses or slips fails the evaluation); a candidate at another timestep runs each action for the same duration (rounded to
   its steps) and its samples are interpolated to the source's. At reset and after every step the world rotation of `crank`
   and `hand` about the panel normal (the source crank's hinge axis) relative to their reset orientation is recorded and
   unwrapped, so a flipped hinge axis or another zero angle is not penalized. Per probe and body: RMS difference (rad);
@@ -71,15 +72,20 @@ def panel_normal(model, data):
 
 
 def probe_actions(source, probe):
-    from .evaluation import _probe_actions
-    return _probe_actions(source, probe) + [{'op': 'wait', 'ticks': int(probe['settle_ticks'])}]
+    """Reset, grasp the probe's `body` at `local_point` (its pixel through the source camera at reset), its `moves`
+    ([dx, dy, dz, ticks] each, world m), release and `settle_ticks` of waiting."""
+    from .evaluation import _probe_pixel
+    source.action({'op': 'reset'}, render=False)
+    return ([{'op': 'reset'}, {'op': 'grasp', 'pixel': [float(v) for v in _probe_pixel(source, probe)]}]
+            + [{'op': 'move', 'displacement': [float(v) for v in m[:3]], 'ticks': int(m[3])} for m in probe['moves']]
+            + [{'op': 'release'}, {'op': 'wait', 'ticks': int(probe['settle_ticks'])}])
 
 
 def rollout(sim, actions, seconds_per_tick, normal):
     """Run probe actions from reset at the simulation's own timestep: an action of n ticks of `seconds_per_tick` lasts
-    max(1, round(n seconds_per_tick / timestep)) steps (a missed grasp's moves advance as waits). Returns the times (s) and
-    unwrapped world rotations (rad) of crank and hand about `normal` relative to reset, at reset and after every step, and
-    whether every grasp held."""
+    max(1, round(n seconds_per_tick / timestep)) steps (a missed or slipped grasp's moves advance as waits). Returns the
+    times (s) and unwrapped world rotations (rad) of crank and hand about `normal` relative to reset, at reset and after every
+    step, and whether every grasp caught and held (no grasp_slip_m slip) until its release."""
     ids = _ids(sim._model)
     u = np.cross(normal, np.eye(3)[np.argmin(np.abs(normal))])
     u /= np.linalg.norm(u)
@@ -102,6 +108,8 @@ def rollout(sim, actions, seconds_per_tick, normal):
         for action in actions[1:]:
             if 'ticks' in action:
                 action = {**action, 'ticks': max(1, round(action['ticks'] * scale))}
+            if action['op'] == 'release':
+                grasped.append(sim._grasp is not None)
             if action['op'] == 'move' and sim._grasp is None:
                 sim.action({'op': 'wait', 'ticks': action['ticks']}, render=False)
             else:
@@ -122,7 +130,7 @@ def reference_runs(source, probes, normal):
         actions = probe_actions(source, probe)
         times, angles, grasped = rollout(source, actions, dt, normal)
         if not grasped:
-            raise ValueError(f'invalid reference probe: grasp missed in {probe["name"]}')
+            raise ValueError(f'invalid reference probe: grasp missed or slipped in {probe["name"]}')
         runs.append((probe['name'], actions, dt, times, angles))
     return runs
 
@@ -135,7 +143,7 @@ def probe_errors(runs, candidate, normal, trajectories=None):
         ct, cb, grasped = rollout(candidate, actions, dt, normal)
         b = np.column_stack([np.interp(times, ct, cb[:, k]) for k in range(2)])
         rms = np.sqrt(np.mean((a - b) ** 2, axis=0))
-        records.append({'name': name, 'candidate_grasp_success': grasped, 'crank_rms_rad': float(rms[0]), 'hand_rms_rad': float(rms[1]),
+        records.append({'name': name, 'candidate_grasp_held': grasped, 'crank_rms_rad': float(rms[0]), 'hand_rms_rad': float(rms[1]),
                         'source_crank_range_rad': float(np.ptp(a[:, 0])), 'source_hand_range_rad': float(np.ptp(a[:, 1])),
                         'source_duration_s': float(times[-1]), 'candidate_duration_s': float(ct[-1])})
         if trajectories is not None:
@@ -288,7 +296,8 @@ def evaluate(source, source_path, candidate_path, simconfig, candidate_config, c
     from .simulation import Simulation
     table, probes = config['gear_train'], config.get('probes')
     assert set(table) == KEYS, f'[gear_train] needs exactly {sorted(KEYS)}'
-    assert probes and all('settle_ticks' in p and 'name' in p for p in probes), 'gear_train needs named [[probes]] with settle_ticks'
+    assert probes and all({'name', 'body', 'local_point', 'moves', 'settle_ticks'} <= set(p) for p in probes), \
+        'gear_train needs [[probes]] with name, body, local_point, moves and settle_ticks'
     candidate_config = {k: v for k, v in candidate_config.items() if k != 'timestep'}
     plain = {'candidate': compile_plain(candidate_path), 'shallow_reference': compile_plain(source_path.parent / table['shallow_reference']),
              'deep_reference': compile_plain(source_path)}

@@ -1,7 +1,7 @@
 """Tuning aid for the gear-train level (Slurm test node): for variants of the generator's constants (JSON list of
 {NAME: value} overrides, applied cumulatively), the G-cheap gate, the shallow reference's probe error at each candidate
 timestep, the chosen shallow timestep and the deep / shallow cost per simulated second.
-PYTHONPATH=src .venv/bin/python experiments/validation/gear-explore.py '[{"GRASP_SOLIMP": [0.9, 0.95, 0.001, 0.5, 2]}]'"""
+PYTHONPATH=src .venv/bin/python experiments/validation/gear-explore.py '[{"SLIP_M": 0.003}]'"""
 import importlib.util
 import json
 from pathlib import Path
@@ -18,7 +18,7 @@ for variant in json.loads(sys.argv[1]):
     for name, value in variant.items():
         setattr(S, name, value)
     for config in (S.SOURCE_CONFIG, S.CANDIDATE_CONFIG):
-        config.update(grasp_solref=S.GRASP_SOLREF, grasp_solimp=S.GRASP_SOLIMP)
+        config.update(grasp_slip_m=S.SLIP_M)
     gate, shallow_dt, errors = S.calibrate()
     with tempfile.TemporaryDirectory() as temp:
         deep, shallow = Path(temp) / "scene.xml", Path(temp) / "shallow.xml"

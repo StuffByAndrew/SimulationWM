@@ -105,6 +105,10 @@ class Simulation:
             if not isinstance(value, (list, tuple)) or len(value) != size or any(
                     isinstance(v, bool) or not isinstance(v, (int, float)) or not np.isfinite(v) for v in value):
                 raise ValueError(f"{key} must be a list of {size} finite numbers")
+        self._slip = self.config.get("grasp_slip_m")  # public: the point grasp lets go when stretched farther (m); None never
+        if self._slip is not None and (isinstance(self._slip, bool) or not isinstance(self._slip, (int, float))
+                                       or not np.isfinite(self._slip) or not 0 < self._slip <= 1):
+            raise ValueError("grasp_slip_m must be a number of meters in (0, 1]")
         self.camera = self.config.get("camera", "fixed")
         self.default_ticks = int(self.config.get("default_ticks", 60))
         self.total_ticks = self.ticks = 0
@@ -454,11 +458,27 @@ class Simulation:
     def _advance(self, ticks, displacement=None):
         self._run(*self._push(ticks, displacement))
 
+    def grasp_stretch(self):
+        """Distance (m) from the point grasp's pinned body point to its target, or None without a grasp. After mj_step the
+        body pose is that of the state the step started from."""
+        if self._grasp is None:
+            return None
+        eq, mocap = self._grasp
+        body = self._model.eq_obj1id[eq]
+        point = self._data.xpos[body] + self._data.xmat[body].reshape(3, 3) @ self._model.eq_data[eq, :3]
+        return float(np.linalg.norm(point - self._data.mocap_pos[mocap]))
+
+    def slip(self):
+        """After each physics step: with grasp_slip_m set, release the point grasp once it is stretched farther."""
+        if self._slip is not None and self._grasp is not None and self.grasp_stretch() > self._slip:
+            self._grasp_controller.release()
+
     def _run(self, ticks, apply):
         """Step physics ticks times, calling apply(i) before step i."""
         for i in range(ticks):
             apply(i)
             mujoco.mj_step(self._model, self._data)
+            self.slip()
             self.ticks += 1
             self.total_ticks += 1
             if self._callback:

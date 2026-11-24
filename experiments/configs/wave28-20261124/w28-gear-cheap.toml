@@ -52,8 +52,7 @@ width = 320
 height = 240
 camera = "fixed"
 default_ticks = 20
-grasp_solref = [0.002, 1]
-grasp_solimp = [0.99, 0.999, 0.001, 0.5, 2]
+grasp_slip_m = 0.002
 
 [evaluation]
 manifest = "manifest.toml"

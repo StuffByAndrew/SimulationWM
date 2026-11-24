@@ -13,7 +13,7 @@ from sim2sim.simulation import Simulation
 ROOT = Path(__file__).resolve().parents[1]
 LEVEL = ROOT / 'environments/gear_train'
 _SIM = tomllib.loads((ROOT / 'experiments/configs/wave28-20261124/w28-gear-recon.toml').read_text())['simulation']
-GRASP = {key: _SIM[key] for key in ('grasp_solref', 'grasp_solimp')}  # the level's public grasp softness
+GRASP = {'grasp_slip_m': _SIM['grasp_slip_m']}  # the level's public grip slip
 
 PAIR = '''<mujoco><worldbody><camera name="fixed" pos="0 -1 0" xyaxes="1 0 0 0 0 1"/>
   <body name="a"><joint name="ja" axis="0 1 0"/><geom size=".02"/></body>
@@ -51,11 +51,12 @@ def test_grasp_softness_knob_is_validated_and_sets_the_grasp_constraint(tmp_path
     for bad in ({'grasp_solimp': [.99, .999, .001]}, {'grasp_solref': [.002, float('nan')]}, {'grasp_solref': '0.002 1'}):
         with pytest.raises(ValueError, match='finite numbers'):
             Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48, **bad})
-    sim = Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48, **GRASP})
+    stiff = {'grasp_solref': [.002, 1], 'grasp_solimp': [.99, .999, .001, .5, 2]}
+    sim = Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48, **stiff})
     try:
         eq = sim._constraints[1][0]
-        assert list(sim._model.eq_solref[eq]) == pytest.approx(GRASP['grasp_solref'])
-        assert list(sim._model.eq_solimp[eq]) == pytest.approx(GRASP['grasp_solimp'])
+        assert list(sim._model.eq_solref[eq]) == pytest.approx(stiff['grasp_solref'])
+        assert list(sim._model.eq_solimp[eq]) == pytest.approx(stiff['grasp_solimp'])
     finally:
         sim.close()
     default = Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48})
@@ -63,6 +64,27 @@ def test_grasp_softness_knob_is_validated_and_sets_the_grasp_constraint(tmp_path
         assert list(default._model.eq_solimp[default._constraints[1][0]]) == pytest.approx([.9, .95, .001, .5, 2])
     finally:
         default.close()
+
+
+def test_grip_slips_only_when_stretched_past_grasp_slip_m(tmp_path):
+    (tmp_path / 'scene.xml').write_text(PAIR)
+    for bad in (0, -.01, 2, True, '0.004', float('inf')):
+        with pytest.raises(ValueError, match='grasp_slip_m'):
+            Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48, 'grasp_slip_m': bad})
+    for slip in (None, .005):
+        sim = Simulation(tmp_path / 'scene.xml', {'width': 64, 'height': 48, **({'grasp_slip_m': slip} if slip else {})})
+        try:
+            sim._grasp_controller.attach(1, sim._data.xpos[1].copy())  # a point on a's axle: no move can carry it
+            sim.action({'op': 'move', 'displacement': [.003, 0, 0], 'ticks': 20}, render=False)
+            assert sim._grasp is not None  # stretched 3 mm: holds
+            sim.action({'op': 'move', 'displacement': [.01, 0, 0], 'ticks': 20}, render=False)
+            assert (sim._grasp is None) == bool(slip) and sim.observe()['grasped'] is not bool(slip)
+            if slip:
+                assert not sim._data.eq_active[sim._constraints[1][0]]
+                with pytest.raises(ValueError, match='active grasp'):
+                    sim.action({'op': 'move', 'displacement': [.001, 0, 0], 'ticks': 1}, render=False)
+        finally:
+            sim.close()
 
 
 def test_shallow_reference_is_shallow_passes_the_gate_and_cannot_answer_removals(tmp_path):

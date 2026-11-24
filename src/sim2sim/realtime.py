@@ -102,6 +102,7 @@ class RealtimeWorld:
             apply(i)
             self.motion = None if i + 1 == ticks else (ticks, apply, i + 1)
         mujoco.mj_step(sim._model, sim._data)
+        sim.slip()
         sim.ticks += 1
         sim.total_ticks += 1
         if sim.ticks % self.frame_ticks == 0:
