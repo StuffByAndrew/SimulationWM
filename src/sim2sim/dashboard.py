@@ -229,7 +229,7 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                 if resolved.get('op') in ('observe','wait','grasp','move','release','reset','arm_target','hand_target','load_reconstruction','submit','finish') and world:
                     action=dict(action_id=event.get('action_id'),seq=pointer['seq'],world=world,operation=resolved.get('op'),
                         category='meta' if resolved.get('op') in ('reset','load_reconstruction','submit','finish') else 'world',
-                        parameters={key:resolved[key] for key in ('pixel','displacement','joint_targets','gripper_width_m','actuator_targets','entrypoint','camera') if key in resolved},
+                        parameters={key:resolved[key] for key in ('pixel','displacement','joint_targets','gripper_width_m','actuator_targets','entrypoint','camera','grasp_index') if key in resolved},
                         wall_elapsed=wall,completed_wall_elapsed=None,requested_ticks=resolved.get('ticks'),executed_ticks=None,
                         charged_ticks=None,outcome='completion unrecorded')
                     assert action_key not in action_starts, 'Overlapping actions with the same world and correlation ID'
@@ -288,13 +288,14 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
                         ticks=observation.get('ticks'),simulation_time=observation.get('time'))
                     state=event.get('state') or event.get('after_state') or {}
                     frame['grasp_overlay']=state.get('grasp_overlay')
+                    if state.get('grasp_overlays'): frame['grasp_overlays']=state['grasp_overlays']  # point_grasps = 2: both grasps
                     # The player displays RGB when available, with depth as a
                     # fallback. Keep other exact modalities in the source audit
                     # instead of duplicating unused images in the view cache.
                     displayed={'rgb':images['rgb']} if 'rgb' in images else images
                     for key,raw in displayed.items(): frame[key]=_asset(output,raw,'.png',verified_assets)
                     previous=data['frames'][world][-1] if data['frames'][world] else None
-                    if previous and all(previous.get(k)==frame.get(k) for k in ('episode','ticks','rgb','depth','grasp_overlay')):
+                    if previous and all(previous.get(k)==frame.get(k) for k in ('episode','ticks','rgb','depth','grasp_overlay','grasp_overlays')):
                         continue
                     data['frames'][world].append(frame)
         data['snapshot']=dict(verified=True,complete=bool(termination and snapshot_manifest.get('sealed')),sealed=bool(snapshot_manifest.get('sealed')),event_count=last_pointer['seq'] if last_pointer else 0,

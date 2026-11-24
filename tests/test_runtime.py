@@ -276,6 +276,35 @@ for action in [{"op":"arm_target","joint_targets":[0]*7,"gripper_width_m":0.04,"
             actions = [event["resolved_action"] for event in events if event.get("kind") == "action_begin" and event["resolved_action"]["op"] == "arm_target"]
             self.assertEqual(actions, [{"op": "arm_target", "world": "reference", "ticks": 2, "joint_targets": [0]*7, "gripper_width_m": .04}])
 
+    def test_two_point_grasps_contract_forwarding_and_default_unchanged(self):
+        script = '''
+assert task["public_tool_config"]["point_grasps"] == 2 and "point_grasps" in task["observation_contract"]
+assert all("grasp_index" in task["action_schema"][op] for op in ("grasp", "move", "release"))
+for action in [{"op":"grasp","pixel":[1,1],"grasp_index":1}, {"op":"move","displacement":[0,0,.1],"ticks":2,"grasp_index":1}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ json.loads(input())
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.run_agent(directory, script, simulation={"point_grasps": 2})["total_ticks"], 2)
+            from sim2sim.audit import read_audit
+            actions = [event["resolved_action"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "action_begin"]
+            self.assertEqual([action.get("grasp_index") for action in actions if action["op"] in ("grasp", "move")], [1, 1])
+        script = '''
+assert "point_grasps" not in task["public_tool_config"] and "point_grasps" not in task["observation_contract"]
+assert "grasp_index" not in json.dumps(task["action_schema"])
+for action in [{"op":"grasp","pixel":[1,1],"grasp_index":1}, {"op":"finish"}]:
+ print(json.dumps(action),flush=True)
+ json.loads(input())
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.run_agent(directory, script)
+            from sim2sim.audit import read_audit
+            grasps = [event["resolved_action"] for _, event in read_audit(Path(directory)/"run") if event.get("kind") == "action_begin"]
+            self.assertEqual([action for action in grasps if action["op"] == "grasp"], [{"op": "grasp", "world": "reference", "ticks": 0, "pixel": [1, 1]}])
+        for simulation in ({"point_grasps": 3}, {"point_grasps": 2, "robot": "panda"}):
+            with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(RuntimeFailure, "point_grasps"):
+                self.run_agent(directory, "", simulation=simulation)
+
     def test_shadow_hand_action_schema_contract_and_payload(self):
         script = '''
 assert task["actions"][1] == "hand_target" and not set(["grasp", "move", "release", "arm_target"]) & set(task["actions"])
