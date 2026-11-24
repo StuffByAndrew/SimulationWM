@@ -503,7 +503,7 @@ SPIKY_TASK = (" One of the balls in the bin is spiky. Find it and report its ini
               "in the hand above the bin rim.")
 TABLE_METRICS = ["objects", "chamfer", "center_of_mass", "density"]
 TOUCH = {"wall": 14400, "hold": 129600, "audit": 17179869184, "depth": False, "tactile": True, "constraints": TOUCH_CONSTRAINTS, **NEON}
-RUNS29 = {f"w27-{name}{suffix}": ("panda_shadow/" + level, f"Franka + Shadow hand, touch only, {label}; {harness}; gemini-4-neon",
+RUNS_W27 = {f"w27-{name}{suffix}": ("panda_shadow/" + level, f"Franka + Shadow hand, touch only, {label}; {harness}; gemini-4-neon",
                                   {**TOUCH, "task": TASK_CONVERGE + task, "metrics": metrics, **o})
           for name, level, label, task, metrics in (
               ("shapes", "table_shapes", "three abstract shapes (L1)", NAME_OBJECTS, TABLE_METRICS),
@@ -513,7 +513,7 @@ RUNS29 = {f"w27-{name}{suffix}": ("panda_shadow/" + level, f"Franka + Shadow han
           for suffix, harness, o in (("", "sequence tool (w21 harness)", {"tools": ("sequence",)}),
                                      ("-touch", "sequence tool + local controller copy, pausable bash (w25 harness)",
                                       {"tools": ("sequence", "local_controller"), "pausable": True}))}
-WAVES["wave27-20261124"] = ("Wave 27", "gemini-20261124", 1e6, RUNS29)
+WAVES["wave27-20261124"] = ("Wave 27", "gemini-20261124", 1e6, RUNS_W27)
 
 
 def q(value):
