@@ -166,7 +166,7 @@ def test_runtime_realtime_contract_and_no_state_leaks(tmp_path):
               "output_dir": str(tmp_path / "run"), "budget": {"wall_only": True, "wall_seconds": 120},
               "simulation": {**CONFIG, "realtime": True, "frame_rate": 25},
               "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}}
-    with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), \
+    with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.check_image_roles"), \
          patch("sim2sim.runtime.container_command", return_value=cmd), \
          patch("sim2sim.runtime.stop_container", side_effect=lambda proc, name: proc.kill()), \
          patch("sim2sim.runtime.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="test-image-id")):

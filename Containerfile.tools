@@ -1,8 +1,8 @@
-# Derived tools image: the verified base image plus a pinned CPU PyTorch runtime for the optional segmentation tool.
+# Derived tools agent image: the verified agent image plus a pinned CPU PyTorch runtime for the optional segmentation tool.
 # Tool code and weights are never baked in; the runtime mounts them only when [tools] enables them. Build with
-# SIM2SIM_CONTAINERFILE=Containerfile.tools SIM2SIM_BASE_IMAGE_RECORD=experiments/images/trusted-image.json
+# SIM2SIM_CONTAINERFILE=Containerfile.tools SIM2SIM_BASE_IMAGE_RECORD=experiments/images/trusted-image-isolated.json
 # SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-tools.json sbatch scripts/build-image.slurm
-FROM localhost/sim2sim:latest
+FROM localhost/sim2sim-agent:latest
 USER 0:0
 # torchgen's packaged README.md is removed only because the image inspection forbids README.md files.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1+cpu torchvision==0.20.1+cpu \

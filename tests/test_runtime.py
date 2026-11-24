@@ -226,7 +226,7 @@ class HostBudgetTests(unittest.TestCase):
         cmd = [sys.executable, "-u", "-c", "import json,sys,time\ntask=json.loads(input())\n" + script]
         candidate_patch = patch("sim2sim.runtime.CandidateSession", candidate_factory) if candidate_factory else nullcontext()
         with candidate_patch, patch.dict(sys.modules, {"sim2sim.simulation": types.SimpleNamespace(Simulation=FakeSimulation)}), \
-             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.container_command", return_value=cmd), \
+             patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.check_image_roles"), patch("sim2sim.runtime.container_command", return_value=cmd), \
              patch("sim2sim.runtime.stop_container", side_effect=stop), \
              patch("sim2sim.runtime.evaluate_in_container", side_effect=evaluate), \
              patch("sim2sim.plotting.update_metric_history", side_effect=plot_history), \

@@ -143,7 +143,7 @@ def test_continuation_refusals(tmp_path, case, message):
 @pytest.mark.skipif(os.environ.get('SIM2SIM_OCI_TEST') != '1', reason='requires explicit rootless OCI integration opt-in')
 def test_prior_volume_is_read_only_and_readable_by_sandbox_user(tmp_path):
     import subprocess
-    from sim2sim.runtime import (PUBLIC_PRIOR, Transport, WallClock, launch_container, podman_env, public_prior_files,
+    from sim2sim.runtime import (AGENT_IMAGE, PUBLIC_PRIOR, Transport, WallClock, launch_container, podman_env, public_prior_files,
                                  stage_public_volume, stop_container)
     root, config, parent = finished_parent(tmp_path)
     prior = Path(prepare_experiment(config('child', wall=7200), root, 'child-001')['run_dir']) / 'prior'
@@ -166,7 +166,7 @@ input()
     volume = stage_public_volume(files, supervisor)
     name = 'sim2sim-prior-' + uuid.uuid4().hex
     sandbox = {'process_limit_backend': os.environ.get('SIM2SIM_PROCESS_LIMIT_BACKEND', 'cgroup'), 'memory': '1g', 'cpus': 1, 'pids': 64}
-    proc = launch_container(os.environ.get('SIM2SIM_AGENT_IMAGE', 'localhost/sim2sim:latest'), ['python', '-c', code], sandbox, name,
+    proc = launch_container(os.environ.get('SIM2SIM_AGENT_IMAGE', AGENT_IMAGE), ['python', '-c', code], sandbox, name,
                             Path(os.devnull), supervisor, mounts=((volume, PUBLIC_PRIOR),))
     try:
         result = Transport(proc, 1 << 20).receive(time.monotonic() + 60)
