@@ -14,15 +14,19 @@ trap 'podman system reset --force >/dev/null 2>&1; rm -rf "$podman_root"' EXIT
 # SHM lock segment ("failed to open 2048 locks ... bad file descriptor", job 57583489).
 # Fail fast (2026-11-18): on some nodes this first call hung for 10-12 h, holding the job until its time limit.
 [[ "$(timeout 300 flock -w 240 /tmp/sim2sim-podman-init.lock timeout 120 podman info --format '{{.Store.GraphRoot}}')" == "$podman_root/root" ]] || { echo "Job-private Podman storage was not selected (or podman init timed out on $(hostname))." >&2; exit 2; }
-# SIM2SIM_TRUSTED_IMAGE_RECORD opts into another image record (e.g. experiments/images/trusted-image-tools.json).
+# A record is a two-image record (agent + evaluator, scripts/build-image.slurm; e.g. experiments/images/trusted-image-isolated.json,
+# whose agent image new configs name) or an older single-image record (localhost/sim2sim:latest, which older prepared configs
+# name for both images); scripts/trusted-images.py dispatches on the shape. SIM2SIM_TRUSTED_IMAGE_RECORD selects the record.
 trusted_record="${SIM2SIM_TRUSTED_IMAGE_RECORD:-$PWD/experiments/images/trusted-image.json}"
 
-load_trusted_image() {  # Fail closed unless the shared archive loads as the recorded trusted image ID.
-    local id archive sha loaded
-    read -r id archive sha < <(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(r["image_id"], r["archive"], r["archive_sha256"])' "$trusted_record")
-    [[ "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]] || { echo 'Trusted image archive digest mismatch.' >&2; exit 2; }
-    timeout 900 podman load -q -i "$archive" >/dev/null || { echo "podman load failed or timed out on $(hostname)." >&2; exit 2; }
-    loaded="$(podman image inspect localhost/sim2sim:latest --format '{{.Id}}')"
-    [[ "$loaded" == "$id" ]] || { echo "Loaded image $loaded is not trusted image $id." >&2; exit 2; }
-    echo "trusted_image_id=$id"
+load_trusted_image() {  # Fail closed unless every archive of the record loads as its recorded image ID.
+    local entries name tag id archive sha
+    entries="$(python3 "$(dirname "${BASH_SOURCE[0]}")/trusted-images.py" "$trusted_record")" \
+        || { echo "$trusted_record is not a trusted image record." >&2; exit 2; }
+    while read -r name tag id archive sha; do
+        [[ "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]] || { echo "Trusted $name archive digest mismatch." >&2; exit 2; }
+        timeout 900 podman load -q -i "$archive" >/dev/null || { echo "podman load ($name) failed or timed out on $(hostname)." >&2; exit 2; }
+        [[ "$(podman image inspect "$tag" --format '{{.Id}}')" == "$id" ]] || { echo "Loaded $tag is not trusted $name $id." >&2; exit 2; }
+        echo "trusted_${name}_id=$id"
+    done <<< "$entries"
 }

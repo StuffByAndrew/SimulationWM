@@ -169,6 +169,11 @@ PUBLIC_PRIOR = "/opt/public/prior"
 PUBLIC_TOOLS = "/opt/public/tools/"
 TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
 TOOL_IMAGE_LABEL = "sim2sim.tool-runtime"
+# Two images from one Containerfile (one two-image record, experiments/images/trusted-image-isolated.json): the agent image
+# holds only the agent-side modules (agent container, stream-mode predictors); the evaluator image (candidate worker,
+# evaluator, call-mode predictors) holds the evaluation and metric code. Strict runs refuse any other pairing of two images
+# by role label; configs prepared before the split name localhost/sim2sim:latest for both and run as declared.
+AGENT_IMAGE, EVALUATOR_IMAGE, IMAGE_ROLE_LABEL = "localhost/sim2sim-agent:latest", "localhost/sim2sim:latest", "sim2sim.image-role"
 # Optional ablatable agent tools ([tools] name = true): fixed neutral task text and pinned file sha256s. A disabled
 # tool is absent from the container; an enabled one is mounted read-only at PUBLIC_TOOLS + name. A service tool (pins
 # None) mounts nothing: it is a controller action the host relays to a researcher-run service (see sam3d.py).
@@ -545,6 +550,20 @@ def image_id(image, supervisor):
         raise SandboxFailure("Trusted image is unavailable: " + image) from exc
 
 
+def check_image_roles(sandbox, tools, supervisor):
+    """Refuse two different images unless sandbox.image is the agent image and sandbox.evaluator_image the evaluator image
+    (pinned IDs). A config naming one image for both (the configs prepared before the split, 2026-11-24) runs as it declares."""
+    split = sandbox["image"] != sandbox["evaluator_image"]
+    labels = {key: json.loads(subprocess.run(["podman", "image", "inspect", "--format", "{{json .Config.Labels}}", sandbox[key]], capture_output=True,
+                                             text=True, timeout=min(20, supervisor.remaining()), check=True, env=podman_env()).stdout) or {}
+              for key in ("image", "evaluator_image")[:1 + split]}
+    if split and (labels["image"].get(IMAGE_ROLE_LABEL), labels["evaluator_image"].get(IMAGE_ROLE_LABEL)) != ("agent", "evaluator"):
+        raise SandboxFailure(f"sandbox.image must be the agent image ({AGENT_IMAGE}) and sandbox.evaluator_image the evaluator image "
+                             f"({EVALUATOR_IMAGE}) of one two-image record (experiments/images/trusted-image-isolated.json)")
+    if "segmentation" in tools and labels["image"].get(TOOL_IMAGE_LABEL) != "torch-cpu":
+        raise SandboxFailure("tools.segmentation needs the tools image (SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-tools.json)")
+
+
 def check_limits(sandbox, supervisor=None):
     """Probe the researcher-trusted evaluator image with the agent bounds before any agent can execute."""
     code = """import json,os,resource
@@ -559,7 +578,7 @@ print(json.dumps(result),flush=True)
 input()
 """
     name = "sim2sim-probe-" + uuid.uuid4().hex
-    image = sandbox.get("evaluator_image", "localhost/sim2sim:latest")
+    image = sandbox.get("evaluator_image", EVALUATOR_IMAGE)
     image_env = json.loads(subprocess.run(["podman", "image", "inspect", "--format", "{{json .Config.Env}}", image], capture_output=True,
                                           text=True, timeout=20, check=True, env=podman_env()).stdout)
     allowed_env = {item.split("=", 1)[0] for item in image_env} | set(CONTAINER_ENV) | {"container", "HOSTNAME", "TERM"}
@@ -1249,7 +1268,7 @@ def evaluate_in_container(submission, evaluation, sandbox, output, source_bundle
     payload = {"submission_b64": base64.b64encode(submission).decode(),
                "source_b64": base64.b64encode(source).decode(), "config": cfg}
     name = "sim2sim-eval-" + uuid.uuid4().hex
-    proc = launch_container(sandbox.get("evaluator_image", "localhost/sim2sim:latest"), ["python", "-m", "sim2sim.worker"], worker_limits(sandbox), name,
+    proc = launch_container(sandbox.get("evaluator_image", EVALUATOR_IMAGE), ["python", "-m", "sim2sim.worker"], worker_limits(sandbox), name,
                             output / "evaluator.stderr.log", supervisor)
     err = proc.stderr_log
     try:
@@ -1388,7 +1407,7 @@ class CandidateSession:
         self.action_id = None
         self.last = None
         self.closed = False
-        self.proc = launch_container(sandbox.get("evaluator_image", "localhost/sim2sim:latest"),
+        self.proc = launch_container(sandbox.get("evaluator_image", EVALUATOR_IMAGE),
                                      ["python", "-m", "sim2sim.candidate_worker"], worker_limits(sandbox), self.name, output)
         self.stderr = self.proc.stderr_log
         self.transport = Transport(self.proc, 48 * 1024 * 1024,
@@ -1489,12 +1508,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         raise RuntimeFailure("Host inference credential is missing; agent was not launched")
     if backend is None:
         # Pin tags to immutable IDs: every container of this run uses the image that passed preflight.
-        sandbox = {**sandbox, **{key: image_id(sandbox.get(key, "localhost/sim2sim:latest"), supervisor) for key in ("image", "evaluator_image")}}
-        if "segmentation" in tools:
-            labels = json.loads(subprocess.run(["podman", "image", "inspect", "--format", "{{json .Config.Labels}}", sandbox["image"]], capture_output=True,
-                                               text=True, timeout=min(20, supervisor.remaining()), check=True, env=podman_env()).stdout) or {}
-            if labels.get(TOOL_IMAGE_LABEL) != "torch-cpu":
-                raise SandboxFailure("tools.segmentation needs the tools image (SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-tools.json)")
+        sandbox = {**sandbox, **{key: image_id(sandbox.get(key, default), supervisor) for key, default in (("image", AGENT_IMAGE), ("evaluator_image", EVALUATOR_IMAGE))}}
+        check_image_roles(sandbox, tools, supervisor)
         sandbox_verification = check_limits(sandbox, supervisor)
         supervisor.check()
     limits = config.get("budget", {})

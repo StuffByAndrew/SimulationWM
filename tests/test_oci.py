@@ -11,11 +11,13 @@ import unittest
 import uuid
 from unittest.mock import patch
 
+from sim2sim.runtime import AGENT_IMAGE, EVALUATOR_IMAGE
+
 BACKEND = os.environ.get("SIM2SIM_PROCESS_LIMIT_BACKEND", "cgroup")
-IMAGE = os.environ.get("SIM2SIM_AGENT_IMAGE", "localhost/sim2sim:latest")
+IMAGE = os.environ.get("SIM2SIM_AGENT_IMAGE", AGENT_IMAGE)
 # The in-container agent proves the boundary from inside, then drives the public protocol.
 AGENT = r'''
-import base64, errno, io, os, resource, socket, sys, time
+import base64, errno, importlib.util, io, os, resource, socket, sys, time
 from pathlib import Path
 import numpy as np
 from PIL import Image
@@ -23,6 +25,9 @@ from sim2sim.client import Client
 client = Client()
 observation = client.observe()
 assert os.getuid() == 65532 and "SIM2SIM_TEST_SECRET" not in os.environ and not Path("/opt/sim2sim/environments").exists()
+split = sys.argv[2] == "split"  # a split pairing runs the agent image; a pre-split config names one image for both
+present = [m for m in ("evaluation", "runtime", "fixture", "die", "primitive_metrics") if importlib.util.find_spec("sim2sim." + m)]
+assert (not present) == split, present
 assert resource.getrlimit(resource.RLIMIT_NPROC) == (64, 64)
 assert "CapEff:\t0000000000000000" in Path("/proc/self/status").read_text()
 for attempt in (lambda: resource.setrlimit(resource.RLIMIT_NPROC, (65, 65)), lambda: os.setuid(0),
@@ -84,8 +89,8 @@ class OCIIntegrationTests(unittest.TestCase):
         config = {
             "source": {"scene": str(root / "environments/blocks/scene.xml")},
             "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE,
-                        "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
-                        "command": ["python", "-c", AGENT, BACKEND], "memory": "1g", "cpus": 1, "pids": 64},
+                        "evaluator_image": EVALUATOR_IMAGE,
+                        "command": ["python", "-c", AGENT, BACKEND, "split" if IMAGE != EVALUATOR_IMAGE else "one"], "memory": "1g", "cpus": 1, "pids": 64},
             "output_dir": str(output), "record_video": True, "video_fps": 30,
             "budget": {"active_seconds": 180, "physics_ticks": 300, "submissions": 2},
             "simulation": {"camera": "fixed", "width": 320, "height": 240,
@@ -208,7 +213,7 @@ def block():
         data = io.BytesIO()
         with zipfile.ZipFile(data, "w") as archive:
             archive.writestr("predictor.py", program)
-        sandbox = {"process_limit_backend": BACKEND, "evaluator_image": IMAGE, "memory": "1g", "cpus": 1, "pids": 64}
+        sandbox = {"process_limit_backend": BACKEND, "evaluator_image": EVALUATOR_IMAGE, "memory": "1g", "cpus": 1, "pids": 64}
         output = Path(__file__).resolve().parents[1] / "experiments/validation/sandbox-backend" / ("predictor-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         supervisor = WallClock(600)
         try:
@@ -266,7 +271,7 @@ client.finish()
 '''
         config = {
             "source": {"scene": str(source / "fixture_rigid/scene.xml")},
-            "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+            "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
                         "command": ["python", "-c", agent], "memory": "2g", "cpus": 1, "pids": 64},
             "output_dir": str(output), "record_video": False,
             "budget": {"active_seconds": 300, "physics_ticks": 2000, "submissions": 1, "wall_seconds": 1200},
@@ -377,7 +382,7 @@ class AgentToolsOCITests(unittest.TestCase):
         output = root / "experiments/validation/agent-tools" / "-".join([os.environ.get("SLURM_JOB_ID", "local"), *(tools or ["none"]), uuid.uuid4().hex[:8]])
         config = {
             "source": {"scene": str(root / "environments/panda/blocks/scene.xml")}, "tools": {name: True for name in tools},
-            "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": IMAGE, "command": ["python", "-c", TOOLS_AGENT, json.dumps(tools)],
+            "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE, "command": ["python", "-c", TOOLS_AGENT, json.dumps(tools)],
                         "memory": "8g", "cpus": 4, "pids": 256, "workspace": "1g"},
             "output_dir": str(output), "record_video": False,
             "budget": {"active_seconds": 1200, "physics_ticks": 20000, "submissions": 1},
@@ -449,7 +454,7 @@ class Sam3dRelayOCITests(unittest.TestCase):
         service.start()
         time.sleep(.5)
         config = {"source": {"scene": str(root / "environments/blocks/scene.xml")}, "tools": {"sam3d": True},
-                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": IMAGE,
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
                               "command": ["python", "-c", SAM3D_AGENT], "memory": "1g", "cpus": 1, "pids": 64},
                   "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 180, "physics_ticks": 300, "submissions": 1},
                   "simulation": {"camera": "fixed", "width": 320, "height": 240, "rgb": True, "depth": False, "calibration": True},
@@ -500,7 +505,7 @@ class MovableCameraOCITests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         output = root / "experiments/validation/movable-camera" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         config = {"source": {"scene": str(root / "environments/blocks/scene.xml")},
-                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
                               "command": ["python", "-c", CAMERA_AGENT], "memory": "1g", "cpus": 1, "pids": 64},
                   "output_dir": str(output), "budget": {"active_seconds": 180, "physics_ticks": 100, "submissions": 1},
                   "simulation": {"camera": "fixed", "width": 160, "height": 120, "rgb": True, "calibration": True, "movable_camera": True},
@@ -571,7 +576,7 @@ class TouchHarnessOCITests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         output = root / "experiments/validation/touch-harness" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         config = {"source": {"scene": str(root / "environments/shadow_hand/hand_prism/scene.xml")}, "tools": {"local_controller": True},
-                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
                               "command": ["python", "-c", TOUCH_AGENT], "memory": "4g", "cpus": 2, "pids": 128, "workspace": "1g"},
                   "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 600, "physics_ticks": 5000, "submissions": 1},
                   "simulation": {"robot": "shadow_hand", "camera": "fixed", "width": 320, "height": 240, "rgb": False, "depth": False,
@@ -595,7 +600,7 @@ class TouchHarnessOCITests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         output = root / "experiments/validation/touch-harness" / ("oci-arm-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         config = {"source": {"scene": str(root / "environments/panda_shadow/bin_spiky/scene.xml")}, "tools": {"local_controller": True},
-                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
                               "command": ["python", "-c", ARM_SHADOW_AGENT], "memory": "3g", "cpus": 2, "pids": 128, "workspace": "1g",
                               "worker": {"memory": "2g", "cpus": 1}},  # agent + reconstruction worker + evaluator fit the 4-CPU 8G job
                   "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 600, "physics_ticks": 5000, "submissions": 1},
@@ -658,7 +663,17 @@ thrown = client.request("throw", protocol="spin")["observation"]
 time.sleep(.3)
 frames = client.request("frames", since=thrown["frame"] - 1, limit=10)["frames"]
 assert all(abs(f["time"] - .04 * i) < 1e-9 for i, f in enumerate(frames)) and len(frames) >= 4, [f["time"] for f in frames]
-PREDICT = """import json, os, socket, sys
+import subprocess, sys, types  # the channel tool in the agent image: the harness relays a program's request
+sys.path.insert(0, "/opt/agent")
+import sandbox_agent
+shim = types.SimpleNamespace(task=task, client=client, channel_requests=0)
+channel = sandbox_agent.ControllerChannel(shim)
+channel.serve(True)
+relayed = subprocess.run([sys.executable, "-c", "from sim2sim.client import Channel; print(len(Channel().request('frames', since=0, limit=2)['frames']))"],
+                         capture_output=True, text=True, timeout=60)
+channel.close()
+assert relayed.stdout.strip() == "2" and shim.channel_requests == 1, relayed
+PREDICT ="""import json, os, socket, sys
 from pathlib import Path
 hits = [str(p) for root in ("/opt", "/workspace", "/tmp", "/home", "/usr/local", "/etc", "/srv", "/mnt", "/var") if Path(root).is_dir()
         for p in Path(root).rglob("*") if p.name in ("manifest.toml", "scene.xml", "trials.json") or "die_slug" in p.name]
@@ -695,8 +710,8 @@ class DieRealtimeOCITests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         output = root / "experiments/validation/die-oci" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
         scene = root / "environments/die_biased/scene.xml"
-        config = {"source": {"scene": str(scene)},
-                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": IMAGE, "command": ["python", "-c", DIE_AGENT],
+        config = {"source": {"scene": str(scene)}, "tools": {"channel": True},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE, "command": ["python", "-c", DIE_AGENT],
                               "memory": "1g", "cpus": 1, "pids": 64},
                   "output_dir": str(output), "record_video": False, "budget": {"wall_only": True, "wall_seconds": 900},
                   "simulation": {"camera": "fixed", "width": 160, "height": 120, "rgb": True, "depth": True, "calibration": True,

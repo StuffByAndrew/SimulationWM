@@ -1,0 +1,113 @@
+{
+  "images": {
+    "agent": {
+      "tag": "localhost/sim2sim-agent:latest",
+      "image_id": "a82e2587b4ab0739b1d54431ddea659d5c1fadbbc29330a969ec0be3068d2e5a",
+      "archive": "/n/home00/aejxie/sim2sim/experiments/images/sim2sim-agent-a82e2587b4ab.tar",
+      "archive_sha256": "70a0651bd118018f9ab832103c86cb9f3d0a42a53781d5cd03cf6a0eeb71a078",
+      "archive_bytes": 945699328,
+      "labels": {
+        "io.buildah.version": "1.33.14",
+        "sim2sim.image-role": "agent"
+      },
+      "inspection": {
+        "forbidden_hits": [],
+        "env_names": [
+          "GPG_KEY",
+          "HOME",
+          "HOSTNAME",
+          "LANG",
+          "MUJOCO_GL",
+          "PATH",
+          "PYTHONDONTWRITEBYTECODE",
+          "PYTHON_SHA256",
+          "PYTHON_VERSION",
+          "container"
+        ],
+        "root_read_only": true,
+        "uid": 65532,
+        "agent_files": [
+          "sandbox_agent.py"
+        ],
+        "agent_modules": [
+          "__init__",
+          "candidate_worker",
+          "client",
+          "predictor",
+          "robots",
+          "simulation",
+          "submission"
+        ],
+        "excluded_modules": [
+          "audit",
+          "baselines",
+          "candidate_history",
+          "cli",
+          "cloth",
+          "dashboard",
+          "dashboard_view",
+          "dev_rpc",
+          "dev_transport",
+          "dev_worker",
+          "devrunner",
+          "die",
+          "evaluation",
+          "experiments",
+          "fixture",
+          "fixture_view",
+          "force_profile",
+          "inspector",
+          "inspector_worker",
+          "launcher",
+          "perturbation",
+          "plotting",
+          "primitive_metrics",
+          "realtime",
+          "replay",
+          "runtime",
+          "sam3d",
+          "tabletop",
+          "worker"
+        ],
+        "excluded_hits": [],
+        "scanned_files": 18753,
+        "unreadable_files": 12
+      }
+    },
+    "evaluator": {
+      "tag": "localhost/sim2sim:latest",
+      "image_id": "0d41008fda1c38881258a92b450741aebed0dff5c6d2329a41df3b152af26dcf",
+      "archive": "/n/home00/aejxie/sim2sim/experiments/images/sim2sim-evaluator-0d41008fda1c.tar",
+      "archive_sha256": "2592458ec296b60f40e5b2a3c61997ca835aa035fbe97f483422d34656f99b39",
+      "archive_bytes": 950123520,
+      "labels": {
+        "io.buildah.version": "1.33.14",
+        "sim2sim.image-role": "evaluator"
+      },
+      "inspection": {
+        "forbidden_hits": [],
+        "env_names": [
+          "GPG_KEY",
+          "HOME",
+          "HOSTNAME",
+          "LANG",
+          "MUJOCO_GL",
+          "PATH",
+          "PYTHONDONTWRITEBYTECODE",
+          "PYTHON_SHA256",
+          "PYTHON_VERSION",
+          "container"
+        ],
+        "root_read_only": true,
+        "uid": 65532
+      }
+    }
+  },
+  "built_job": "63460331",
+  "node": "holy8a24101.rc.fas.harvard.edu",
+  "built_at_utc": "2026-11-24T18:51:24.028134+00:00",
+  "containerfile": "Containerfile",
+  "containerfile_sha256": "06799cbb2dd35fce59bab39fed5fd1b4a7da00b8504f946be1dc4e8a01f49a5c",
+  "git_head": "a3fa4f67cc42bbed1454b4f3c12c56b74061abb7",
+  "note": "Working tree may be uncommitted; the image IDs are the trust anchors."
+}

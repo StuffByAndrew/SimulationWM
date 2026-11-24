@@ -42,7 +42,6 @@ import uuid
 
 ROOT = Path("/workspace/predictor")
 MAX_LINE = 16 * 1024 * 1024     # one protocol line (call mode) or program output line (stream mode)
-MAX_SUBMISSION = 8 * 1024 * 1024
 MAX_VALUE_BYTES = 1024 * 1024
 MAX_LOG = 16 << 20              # researcher log of the program's output lines per evaluation (stream mode)
 CALL_SECONDS = 60
@@ -69,8 +68,7 @@ def _reply(stream, message):
 
 def main(mode, root=ROOT):
     """Worker entrypoint; runs only inside the predictor container."""
-    from .evaluation import extract_submission
-    from .runtime import decode_submission
+    from .submission import decode_submission, extract_submission
     assert mode in ("call", "stream"), mode
     protocol = os.fdopen(os.dup(1), "wb")
     if mode == "call":
@@ -90,7 +88,7 @@ def main(mode, root=ROOT):
             try:
                 if message["op"] == "load":
                     assert module is None, "one load per worker"
-                    entry = extract_submission(decode_submission(message["project_b64"], MAX_SUBMISSION), root, message["entrypoint"])
+                    entry = extract_submission(decode_submission(message["project_b64"]), root, message["entrypoint"])
                     if mode == "stream":
                         signal.alarm(0)
                         _reply(protocol, {"ok": True})

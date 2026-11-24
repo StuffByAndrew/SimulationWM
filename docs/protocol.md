@@ -100,7 +100,7 @@ sensor/focal intrinsics are rejected. Default image dimensions are 640 by 480.
 
 ## Client example
 
-The image recipe installs the client package. Agent files can use:
+The agent image installs the client package. Agent files can use:
 
 ```python
 from pathlib import Path
@@ -141,7 +141,7 @@ from `tools/<name>/` as a fresh, hashed (`public_fixture` audit event),
 read-only volume at `/opt/public/tools/<name>`, and one fixed sentence naming
 its path and `--help` is appended to the task. A disabled tool is neither mounted
 nor named, and no image contains its code or weights. `segmentation` (MobileSAM,
-pinned weights sha256 `6dbb9052…6c2f`) needs the tools image, whose label the
+pinned weights sha256 `6dbb9052…6c2f`) needs the tools image (the agent image plus CPU PyTorch), whose label the
 runtime checks before launch; `planning` (IK, interpolation, collision-checked
 straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `local_controller` (a hand robot: `robot = "shadow_hand"` or `"panda_shadow"`)
 mounts `tools/local_controller/localsim.py` plus a runtime-written `public_tool_config.json`, the exact public settings the
@@ -485,9 +485,17 @@ Neither model calls nor agent launch occur after a failed resource/credential
 preflight. A configured provider requires a host credential before agent launch;
 only its presence is checked, and values/authorization headers are never logged.
 
-The reviewed image recipe and `.containerignore` copy only generic package code,
-metadata and the sandbox agent. The scripted protocol demonstration is not in
-the image; the OCI integration test passes it as an inline `python -c` command. Original environments, manifests, run stores,
+One reviewed recipe (`Containerfile`, targets `agent` and `evaluator`) builds two images, recorded together in one
+trusted record (`experiments/images/trusted-image-isolated.json`). The **agent image** (`localhost/sim2sim-agent:latest`,
+`sandbox.image`: the agent container and stream-mode predictors) holds the sandbox agent and only the agent-side modules
+`sim2sim.client` (client and the `channel` tool), `simulation`, `robots` and `candidate_worker` (the `local_controller`
+tool's local world), `predictor` and `submission` (the stream-mode predictor worker). The **evaluator image**
+(`localhost/sim2sim:latest`, `sandbox.evaluator_image`: candidate worker, evaluator worker, call-mode predictors, the
+limit probe) holds the whole package, including every evaluation and metric module. Images carry the label
+`sim2sim.image-role` (`agent` or `evaluator`); a strict run refuses any other pairing of two images before launch (configs prepared before the split name
+`localhost/sim2sim:latest` for both and run as declared), and the build
+inspection greps the agent image for every absent module's path, dotted name and docstring. The scripted protocol
+demonstration is not in either image; the OCI integration test passes it as an inline `python -c` command. Original environments, manifests, run stores,
 repository history, credentials and researcher README are excluded. The agent
 checks representative forbidden directories and credential environment names
 before use; these checks supplement the rootless/no-network/no-host-directory-

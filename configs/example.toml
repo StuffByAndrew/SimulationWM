@@ -8,7 +8,7 @@ video_fps = 30
 scene = "environments/blocks/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["python", "/opt/agent/sandbox_agent.py"]
 memory = "1g"

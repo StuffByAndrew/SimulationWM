@@ -20,7 +20,7 @@ factor = "sam3d tool, task requires calling it (vs w10-boat-base, w12)"
 scene = "environments/primitive_boat/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"

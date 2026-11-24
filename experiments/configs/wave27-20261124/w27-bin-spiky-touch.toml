@@ -20,7 +20,7 @@ factor = "Franka + Shadow hand, touch only, spiky ball in a bin (L3); sequence t
 scene = "environments/panda_shadow/bin_spiky/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py", "--bash-mode", "pausable"]
 process_limit_backend = "slurm_step"

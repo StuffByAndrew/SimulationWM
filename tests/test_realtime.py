@@ -167,7 +167,7 @@ def run_realtime_agent(tmp_path, agent, simulation, **extra):
               "output_dir": str(tmp_path / "run"), "budget": {"wall_only": True, "wall_seconds": 120},
               "simulation": {"realtime": True, **simulation},
               "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}, **extra}
-    with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), \
+    with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.check_image_roles"), \
          patch("sim2sim.runtime.container_command", return_value=cmd), \
          patch("sim2sim.runtime.stop_container", side_effect=lambda proc, name: proc.kill()), \
          patch("sim2sim.runtime.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="test-image-id")):

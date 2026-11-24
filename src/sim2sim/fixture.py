@@ -34,10 +34,6 @@ def _numeric(model, name):
     return model.numeric_data[start:start + model.numeric_size[index]].copy()
 
 
-def is_fixture(model):
-    return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_NUMERIC, "fixture_compression") >= 0
-
-
 class Mechanism:
     def __init__(self, sim, seed=None):
         model = sim._model
