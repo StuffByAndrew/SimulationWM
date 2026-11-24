@@ -14,7 +14,7 @@
 # for private finalization. Override with sbatch --time for longer run limits.
 set -euo pipefail
 # SIM2SIM_EXPERIMENTS_ROOT (exported, optional) selects another experiments root, e.g. lab storage for large audits.
-[[ "${SLURM_JOB_PARTITION:-}" =~ ^(test|sapphire)$ ]] || { echo "Strict experiments require a Slurm test or sapphire allocation." >&2; exit 2; }
+[[ "${SLURM_JOB_PARTITION:-}" =~ ^(test|sapphire|kempner_cpu)$ ]] || { echo "Strict experiments require a Slurm test, sapphire or kempner_cpu allocation." >&2; exit 2; }
 (( $# >= 1 && $# <= 3 )) || { echo 'usage: sbatch scripts/experiment-strict.slurm RUN_ID [RUN_ID [RUN_ID]]' >&2; exit 2; }
 (( $# < 3 || SLURM_CPUS_PER_TASK >= 30 )) || { echo 'three runs need --cpus-per-task=30 --mem=72G' >&2; exit 2; }
 cd "${SIM2SIM_ROOT:-${SLURM_SUBMIT_DIR:?}}"
