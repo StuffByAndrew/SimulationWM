@@ -10,6 +10,7 @@ import argparse
 import base64
 import hashlib
 import json
+import traceback
 import re
 import math
 import os
@@ -1057,6 +1058,9 @@ def _handler(app, directory, live=None):
                     body = live.catalog_script()
                 except AuditFailure as exc:  # e.g. a run directory present in two roots: say so, keep the last list
                     body = ('window.__dashboardCatalogError=' + json.dumps(str(exc)) + ';').encode()
+                except Exception as exc:  # e.g. a config edit the prompt reader cannot evaluate: report it rather than drop the connection
+                    traceback.print_exc()
+                    body = ('window.__dashboardCatalogError=' + json.dumps(f'{type(exc).__name__}: {exc}') + ';').encode()
                 return self._send(200, body, 'text/javascript; charset=utf-8')
             match = re.fullmatch(r'/runs/([0-9a-f]{16})\.js', route)
             if live is not None and match:
