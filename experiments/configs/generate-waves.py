@@ -665,3 +665,29 @@ for directory, allowance in (("gemini-carbon-20261123", 14400), ("gemini-carbon-
                                                                                "hold": 129600, "provider_hold": allowance}
         (out / f"{run_id}-carbon.toml").write_text(config(wave, "gemini-carbon-20261123", 1e6, env, factor, overrides))
     print(out.name, sorted(p.name for p in out.glob("*.toml")))
+
+# Wave 28 (user-approved design docs/level-designs/gear-train-depth-20261124.md; planned): explanation depth on the gear train
+# (experiments/validation/gear-scenes.py, environments/gear_train). A neutral base task (not TASK_CONVERGE); the only factor is
+# one appended sentence stating the model's downstream use. Point grasp with wrench, RGB-D, movable camera, sequence tool,
+# lock-step, reference interaction, no hints or perturbation; gemini-4-neon, n = 1, 4 h wall, no checkpoint hold. Metric
+# gear_train (src/sim2sim/gear_train.py): structure/depth class, sim_cost, probe accuracy, G-cheap and G-deep scores.
+TASK_GEAR = ("Build a MuJoCo model of this mechanism. Name the crank body `crank` and the dial hand body `hand`. Submit it as a "
+             "self-contained scene.xml project, using the permitted observations and interactions; resubmit whenever your model "
+             "improves, and call finish when you are done.")
+GEAR_USES = {"recon": "",
+             "cheap": (" Your model will be used by a planner that runs many thousands of simulations of how the hand moves when the "
+                       "crank turns; it is scored on prediction accuracy and simulation speed."),
+             "deep": (" Your model will be used to predict how the crank and hand move after individual gears are taken out of the "
+                      "train; we remove gears from your model by their axle position, and it is scored on those predictions.")}
+ENVS["gear_train"] = (["gear_train"], "")
+GEAR = {**NEON, "wall": 14400, "hold": 129600, "audit": 17179869184, "vision": True, "depth": True, "movecam": True, "tools": ("sequence",),
+        "metrics": ["gear_train"], "eval_timeout": 600, "pool": "gemini-20261124"}
+RUNS30 = {f"w28-gear-{name}": ("gear_train", f"gear train, stated use: {name}; point grasp with wrench, RGBD, movable camera, sequence tool; "
+                                             "gemini-4-neon", {**GEAR, "task": TASK_GEAR + use})
+          for name, use in GEAR_USES.items()}
+WAVES["wave28-20261124"] = ("Wave 28", "gemini-20261124", 1e6, RUNS30)
+out = Path(__file__).parent / "wave28-20261124"
+out.mkdir(exist_ok=True)
+for run_id, (env, factor, overrides) in RUNS30.items():
+    (out / f"{run_id}.toml").write_text(config("Wave 28", "gemini-20261124", 1e6, env, factor, overrides))
+print(out.name, sorted(p.name for p in out.glob("*.toml")))
