@@ -575,7 +575,7 @@ wrench = {str(wrench).lower()}
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}default_ticks = 20
-
+{f"grasp_solref = {list(o['grasp'][0])}{chr(10)}grasp_solimp = {list(o['grasp'][1])}{chr(10)}" if o.get("grasp") else ""}
 [evaluation]
 manifest = "{entry}manifest.toml"
 source_dir = "{source_dir}"
@@ -698,14 +698,16 @@ GEAR_USES = {"recon": "",
              "deep": (" Your model will be used to predict how the crank and hand move after individual gears are taken out of the "
                       "train; we remove gears from your model by their axle position, and it is scored on those predictions.")}
 ENVS["gear_train"] = (["gear_train"], "")
-GEAR = {**NEON, "wall": 14400, "hold": 129600, "audit": 17179869184, "vision": True, "depth": True, "movecam": True, "tools": ("sequence",),
-        "metrics": ["gear_train"], "eval_timeout": 600, "pool": "gemini-20261124"}
-RUNS30 = {f"w28-gear-{name}": ("gear_train", f"gear train, stated use: {name}; point grasp with wrench, RGBD, movable camera, sequence tool; "
-                                             "gemini-4-neon", {**GEAR, "task": TASK_GEAR + use})
+# The level's stiffer public point grasp (gear-scenes.py GRASP_SOLREF, GRASP_SOLIMP; gear-check.py asserts they agree): with the
+# default grasp, MuJoCo's inertia-scaled constraint softness would tell the gear train from its lumped equivalent.
+GEAR_W28 = {**NEON, "wall": 14400, "hold": 129600, "audit": 17179869184, "vision": True, "depth": True, "movecam": True, "tools": ("sequence",),
+            "metrics": ["gear_train"], "eval_timeout": 600, "pool": "gemini-20261124", "grasp": ([0.002, 1], [0.99, 0.999, 0.001, 0.5, 2])}
+RUNS_W28 = {f"w28-gear-{name}": ("gear_train", f"gear train, stated use: {name}; point grasp with wrench, RGBD, movable camera, sequence tool; "
+                                               "gemini-4-neon", {**GEAR_W28, "task": TASK_GEAR + use})
           for name, use in GEAR_USES.items()}
-WAVES["wave28-20261124"] = ("Wave 28", "gemini-20261124", 1e6, RUNS30)
+WAVES["wave28-20261124"] = ("Wave 28", "gemini-20261124", 1e6, RUNS_W28)
 out = Path(__file__).parent / "wave28-20261124"
 out.mkdir(exist_ok=True)
-for run_id, (env, factor, overrides) in RUNS30.items():
+for run_id, (env, factor, overrides) in RUNS_W28.items():
     (out / f"{run_id}.toml").write_text(config("Wave 28", "gemini-20261124", 1e6, env, factor, overrides))
 print(out.name, sorted(p.name for p in out.glob("*.toml")))
