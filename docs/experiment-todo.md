@@ -24,6 +24,13 @@ Keep this list current: strike items when a log entry covers them.
   it prepares, queues, reviews holds and logs batches once a builder hands over merged configs and an image record.
   Touch-tabletop (wave 27, WIP branch `worktree-agent-a873b0bc2546edb50`) and gear-train (wave 28) were handed over.
 
+## Queue priority (user, 2026-11-24)
+1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
+2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
+   (`scontrol top`).
+3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
+4. Carbon evaluation last: its reruns carry `Nice=200000`.
+
 ## 2026-11-23 batch (launched; see the log)
 - [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
   the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
