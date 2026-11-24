@@ -18,6 +18,7 @@ PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "d
 PROPRIOCEPTION = {"panda": {"joint_positions_rad", "joint_velocities_rad_s", "finger_positions_m", "finger_velocities_m_s",
                             "gripper_width_m", "gripper_opening"},
                   "shadow_hand": {"joint_positions_rad", "joint_velocities_rad_s"}}
+PROPRIOCEPTION["panda_shadow"] = PROPRIOCEPTION["shadow_hand"]
 
 
 def snapshot_simulation(sim):
@@ -92,7 +93,7 @@ def _emit(message):
 
 def allowed_actions(config):
     """Physical actions a reconstruction world accepts (also used by the agent's local_controller tool)."""
-    return ((("observe", "reset", ROBOTS[config["robot"]][2]) if config.get("robot") else ("observe", "grasp", "move", "release", "reset"))
+    return ((("observe", "reset") + ROBOTS[config["robot"]][2] if config.get("robot") else ("observe", "grasp", "move", "release", "reset"))
             + (("camera",) if config.get("movable_camera") else ()))
 
 

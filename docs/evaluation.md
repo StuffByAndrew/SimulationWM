@@ -233,6 +233,32 @@ absolute-error lift-force maps) and `drop_NNN/side_by_side.mp4` (source left, ca
 interaction with any flex is described in `docs/environments.md` (Cloth levels). Mask-based metrics (`appearance`,
 `dynamics`, `expert` silhouettes/centroids) count geoms only and ignore flexes; use `image_mse` and `cloth` for cloth levels.
 
+## Touch tabletop objects (`objects`, `identification`)
+
+Selectors for the touch-only `panda_shadow` levels (`src/sim2sim/tabletop.py`; private manifest `[tabletop]`), on fresh
+reset states of both worlds.
+
+- `objects`: each source object (a top-level `object_bodies` body with its descendants) is assigned at most one candidate
+  object (a top-level non-robot candidate body) by geometry only: a one-to-one assignment minimising the symmetric
+  Chamfer distance between exposed primitive-union surfaces, never names, color, density or mass. Per source object: the
+  assigned candidate body, its Chamfer, the surface-centroid error, `found` (centroid error within the source object's
+  bounding radius), `label_correct` (the candidate body name contains a private `[tabletop.labels]` synonym; only where a
+  list exists, L2) and the prior-defeating dimensions (`[[tabletop.prior_dimensions]]`: exact extent of both objects
+  along a world axis). Totals: `found_fraction`, `mean_assigned_chamfer_m`, `label_accuracy`. An unassigned object has no
+  Chamfer, centroid, label or dimension: a gap with a reason, never zero. The existing `chamfer`, `center_of_mass` and
+  `density` selectors still score the scene as a whole.
+- `identification` (L3): the submitted project's root `parameters.json` `{"spiky_ball_xyz": [x, y, z]}` (world m, initial
+  centre) against the initial ball positions: `correct` when the nearest ball is `[tabletop] spiky`, plus the distance to
+  it. A missing or malformed file leaves identification `unavailable` with the reason; the rest is scored as usual.
+- `prior` baseline (L2): `sim2sim.baselines` also evaluates a level's private `prior.xml` (canonical mug, banana and hammer
+  at typical sizes at the true poses) where one exists, so the prior-defeating dimensions compare with a prior-only answer.
+
+Post-run, researcher-only: `python -m sim2sim.tabletop RUN_DIR` (Slurm `test`) reads the verified audit and source
+snapshot and writes `RUN/tabletop.json` and `RUN/touch-view.html`: L3 grab success on the reference world's last recorded
+state (spiky ball COM ≥ rim + 2 cm, touching the robot, every smooth ball in the bin) and the contact coverage map (every
+taxel contact in world coordinates over the true scene, with each object's covered surface fraction within 1 cm). The
+dashboard links the view from the run page.
+
 ## Die prediction (`die`)
 
 The real-time die levels (`docs/environments.md`) score a **predictor program**, not a scene. `src/sim2sim/die.py`

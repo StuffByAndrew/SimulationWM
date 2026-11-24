@@ -11,8 +11,8 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
     echo 'Submit this script through sbatch on the test partition; do not run it on a login node.' >&2
     exit 2
 fi
-if [[ ! "${SLURM_JOB_PARTITION:-}" =~ ^(test|sapphire)$ ]]; then
-    echo 'This project requires the Slurm test (or sapphire) partition for heavy computation.' >&2
+if [[ ! "${SLURM_JOB_PARTITION:-}" =~ ^(test|sapphire|kempner_cpu)$ ]]; then
+    echo 'This project requires the Slurm test (or sapphire, kempner_cpu) partition for heavy computation.' >&2
     exit 2
 fi
 if [[ -n "${SIM2SIM_ROOT:-}" ]]; then

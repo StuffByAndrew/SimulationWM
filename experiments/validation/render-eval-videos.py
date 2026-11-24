@@ -125,7 +125,7 @@ def film_probe(sim, probe, path=None, every=10):
     old, sim._callback = sim._callback, grab
     try:
         for step in probe["steps"]:
-            sim.action({**step, "op": ROBOTS[sim.robot][2]}, render=False)
+            sim.action({**step, "op": ROBOTS[sim.robot][2][0]}, render=False)
     finally:
         sim._callback = old
         r.close()

@@ -143,7 +143,7 @@ its path and `--help` is appended to the task. A disabled tool is neither mounte
 nor named, and no image contains its code or weights. `segmentation` (MobileSAM,
 pinned weights sha256 `6dbb9052…6c2f`) needs the tools image, whose label the
 runtime checks before launch; `planning` (IK, interpolation, collision-checked
-straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `local_controller` (`robot = "shadow_hand"`)
+straight-line/RRT-connect on the agent's own scene) needs `robot = "panda"`. `local_controller` (a hand robot: `robot = "shadow_hand"` or `"panda_shadow"`)
 mounts `tools/local_controller/localsim.py` plus a runtime-written `public_tool_config.json`, the exact public settings the
 reconstruction world receives: `LocalController` runs the agent's own project with `Simulation`, the worker's
 `allowed_actions` and `public_observation`, so a fresh load and the same actions give identical observations (tested
@@ -175,7 +175,7 @@ rgb = true
 depth = false
 calibration = true
 wrench = false         # optional 6-axis grasp-point reading
-tactile = false        # optional robot taxel normal forces (robot = "panda" or "shadow_hand" only)
+tactile = false        # optional robot taxel normal forces (robot = "panda", "shadow_hand" or "panda_shadow" only)
 default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # timestep = 0.002      # optional override; otherwise scene timestep
 # graspable_bodies = ["block_red", "block_blue"] # otherwise source manifest/auto discovery
@@ -628,6 +628,21 @@ taxels it counts any contact on the body, and contact positions and identities a
 images, calibration, wrench or point-grasp state. Candidate projects copy `robot/` unchanged, include
 `robot/shadow_hand.xml` once and set `<compiler angle="radian" autolimits="true" meshdir="robot/assets"/>`; object meshes
 are written inline (`<mesh vertex="..."/>`, collided as the convex hull of the vertices).
+
+## Opt-in Franka arm with Shadow hand protocol
+
+With `[simulation] robot = "panda_shadow"` the scene includes the public fixture `robot/panda_shadow.xml`: the compact
+Franka arm (mounted as in `robot/panda.xml`, arm gains 4 times upstream, gripper removed) with the unchanged Menagerie
+Shadow hand forearm attached to its flange where the Panda hand was (see `robot/IMPORT.md`). The task offers both
+`arm_target` and `hand_target` (in that order after `observe`) in place of `grasp`, `move` and `release`. `arm_target`
+takes the seven Panda joint targets and `ticks` only (no `gripper_width_m`; sending one is rejected); `hand_target` is the
+Shadow hand action above. Each interpolates from the current targets of its own actuators, so arm and hand commands
+compose. `reset` restores the arm home pose (palm down, `robots.ARM_HOME["panda_shadow"]`) with the hand home pose.
+`observation.proprioception` holds `joint_positions_rad[31]` and `joint_velocities_rad_s[31]` (`joint1` … `joint7`, then
+the hand qpos order) and `actuator_effort_nm[27]` (the arm actuators, then the hand action order); `tactile` is the
+Shadow hand's. `Client.arm_target(joint_targets, ticks=..., world=...)` omits the gripper. The `local_controller` tool
+reads the robot from the mounted fixture: `taxels(joint_positions)` then takes all 31 proprioception joint positions.
+Candidate projects copy `robot/` unchanged and include `robot/panda_shadow.xml` once.
 
 ## Optional Panda wrist camera
 

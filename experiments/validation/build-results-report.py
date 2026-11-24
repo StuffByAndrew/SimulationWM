@@ -227,8 +227,10 @@ def data(spec_path, work, out):
     assert not out.exists(), out
     # a SUMMARIES entry is a file (every completed run in it is reported) or (file, runs): only those runs, e.g. baselines from an earlier report
     entries = [(f, None) if isinstance(f, (str, Path)) else f for f in S.SUMMARIES]
+    truncated = getattr(S, "TRUNCATED", {})  # optional: runs that ended early on infrastructure, reported up to their last submission and labelled as such
     rows = {r["run"]: r for f, only in entries for r in json.loads((VAL / f).read_text())
-            if r["status"] == "completed" and r["run"] not in S.INVALID and (only is None or r["run"] in only)}
+            if (r["status"] == "completed" or r["run"] in truncated) and r["run"] not in S.INVALID and (only is None or r["run"] in only)}
+    assert all(rows[r]["status"] != "completed" for r in truncated), [r for r in truncated if rows[r]["status"] == "completed"]
     assert set(rows) == set(S.NAMES), set(rows) ^ set(S.NAMES)
     excluded = json.loads((VAL / "excluded-runs.json").read_text())["runs"]
     for run in S.NAMES:  # results use only strict (sandboxed, API) runs; development-mode runs are excluded by user decision

@@ -6,6 +6,53 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 19:00 UTC — Infrastructure deaths, a real-time bug, an agent-image leak; reruns; kempner_cpu; wave 27 merged
+- **Netscratch quota, about 10:30 UTC:** "Disk quota exceeded" killed six runs started at 10:04 UTC. Their `status.json`
+  may still say `running`. All are infrastructure failures.
+  - w25-hand-prism (+control) -002, job `63264367`.
+  - w23-fixture-rigid, -rubber -002, `63264372`.
+  - w23-fixture-bimodal -002, `63264373`.
+  - w24-die-grasp-neon -002, `63264374`.
+  - Lab and netscratch were both writable again by 18:30 UTC.
+- **Podman inspect/volume timeouts at start (18:07 UTC):** four jobs died within 4 min; their nodes are now excluded.
+  - w25 smooth-mesh and spiky pairs, `63264370` and `63264371`.
+  - w29 tetra-spring-block pair and w29 cube-spring-block-lowrank-prompt + w11, `63320577` and `63320578`.
+  - Excluded nodes: holy8a26208, 26210, 28204, 28203.
+- **Real-time bug:** w24 die fps100 grasp and franka -002 (`63264375`, `63264377`) failed with "event exceeds pre-action
+  audit reservation" after about 3 run-minutes.
+  - The real-time world kept stepping and recording through provider-held failed attempts: 166,907 frames against
+    175 s of run clock and 1,966 s held.
+  - Root cause (builder, corrected): a real-time `frames` reply of up to 100 frames was reserved as a single
+    observation (about 3.5 MB), yet one reply was 4.8 to 5.6 MB. It fails at any frame rate once a call asks for
+    about 70 frames or more.
+  - The fix is merged into main (a3b8623, regression test jobs 63455271/63456054/63457376) and applies to jobs launched
+    after it.
+  - A separate semantic issue: the live world kept running during failed provider attempts, which are only credited
+    back afterwards. Runner's decision: **B**, snapshot at each call and restore plus clock shift on a failure, so failed
+    attempts are frozen as docs/protocol.md says. It will go into the isolated image.
+- **Agent-image leak (designer and builder; user approved the fix):**
+  - The trusted agent image installs all of `src/sim2sim`, so evaluator modules are readable in the agent container:
+    `fixture.py` describes the hidden pad perturbation; `tabletop.py` names labels and prior-defeating dimensions.
+  - No values or scores leak.
+  - Fix: a split image, with the agent image holding only the harness, the client and what the public tools import
+    (record `trusted-image-isolated.json`, pending).
+  - **Waves 23, 24, 27 and 28 are held until it is verified.**
+  - A source-read audit of all past runs is running (job `63454413`, `experiments/validation/source-read-audit.sh`).
+- **Reruns on the current image** (levels without code-described hidden mechanisms):
+  - w25 hand-prism, smooth-mesh and spiky pairs as `-003`: jobs `63454970`, `63454996`, `63455010`.
+  - w29 tetra-spring-block pair as `-002`: `63455013`.
+  - w29 cube-spring-block-lowrank-prompt `-002`: `63455018`.
+  - w29 w11 tetra-spring-k-lowrank-prompt `-002` on **kempner_cpu**: `63455042`.
+  - All sources byte-identical to their -001 runs (`prepare-20261124c.sh`).
+- **kempner_cpu** (new): CPU-only jobs on Kempner H100 nodes; account `kempner_qianqian_lab`; QoS 8 CPUs / 32 GB per
+  user, so one strict run at a time; 7-day limit. Allowed in `experiment-strict.slurm` and `test.slurm` (08b0703). OCI
+  passed there (job `63452421`, 8 passed, 1 skipped).
+- **Wave 27** (touch-tabletop, builder session) merged into main (1beccb4); it waits for the isolated image.
+- **Running at 19:00 UTC** (started 18:07 UTC on image 42f70708fdcc):
+  - w25-hand-prism-offset-com pair -002 and w24-die-franka-neon -002. The die run is exposed to the real-time bug, and
+    the leak makes it suspect.
+  - wave 26 reruns ×4, w29 tetra-spring and cube-spring pairs, and Carbon marble, hand, latch and w11.
+
 ## 2026-11-24 — Wave 29 queued: low-rank prompt on the spring-as-a-scale levels (8 runs)
 - **Question (user):** does asking the agent to find the scene's important low-rank structure make it converge faster on the
   properties that matter (target mass, spring stiffness)? To be compared with the earlier runs for the report.

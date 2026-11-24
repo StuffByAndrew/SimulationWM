@@ -246,6 +246,8 @@ def tool_schemas(task, local=LOCAL):
         if op in ("inference", "progress"):
             continue
         properties, required = ACTIONS[op]
+        if op == "arm_target" and "gripper_width_m" not in task["action_schema"][op]:  # an arm without the Panda gripper
+            properties, required = {k: v for k, v in properties.items() if k != "gripper_width_m"}, [k for k in required if k != "gripper_width_m"]
         if "realtime" in task:  # a real-time task has only the reference world
             properties, required = {k: v for k, v in properties.items() if k != "world"}, [k for k in required if k != "world"]
         contract = task["action_schema"][op]

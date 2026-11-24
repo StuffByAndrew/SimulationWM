@@ -522,7 +522,8 @@ def _panda_probe(sim, probe, target_bodies, with_rgb):
     sim._callback=record
     try:
         for step in probe['steps']:
-            sim.action({**step,'op':ROBOTS[sim.robot][2]},render=False)
+            (op,)=ROBOTS[sim.robot][2]  # probes of a single-action robot
+            sim.action({**step,'op':op},render=False)
             if not np.isfinite(sim._data.qpos).all() or not np.isfinite(sim._data.qvel).all():
                 raise ValueError('nonfinite robot probe state')
             observations.append(sim.observe() if with_rgb else sim.observe())
@@ -613,9 +614,15 @@ def _panda_dynamics(source,candidate,config,artifacts):
     return results
 
 
-def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path):
+def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path,project):
     """Researcher-only object and arm metrics for a shared public robot."""
     scores = _reset_visual_scores(source, candidate, selection, artifacts)
+    if selection & {'objects','identification'}:
+        from . import tabletop
+        if 'objects' in selection:
+            scores['objects']=tabletop.objects(source,candidate,config)
+        if 'identification' in selection:
+            scores['identification']=tabletop.identification(source,project,config)
     if 'dynamics' in selection:
         scores['arm_probes']=_panda_dynamics(source,candidate,config,artifacts)
     if 'expert' in selection:
@@ -660,7 +667,8 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
-                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die', 'lowrank', 'gear_train'})  # die: host-side, src/sim2sim/die.py
+                               'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die', 'lowrank',
+                               'objects', 'identification', 'gear_train'})  # die: host-side, src/sim2sim/die.py; objects, identification: tabletop.py
 
 
 def selected_metrics(config):
@@ -692,7 +700,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
                         'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture',
-                        'lowrank', 'gear_train'):
+                        'lowrank', 'tabletop', 'gear_train'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -745,7 +753,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             return evaluate(source_path, candidate_path, simconfig, candidate_config, config['force_profile'])
         if simconfig.get('robot'):
             _verify_panda_fixture(config['source_dir'],target/'project',simconfig['robot'])
-            scores=_evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path)
+            scores=_evaluate_panda(source,candidate,config,selection,artifacts,source_path,candidate_path,target/'project')
             if 'force_profile' in selection:
                 scores['force_profile']=force_profile()
             json.dumps(scores,allow_nan=False)

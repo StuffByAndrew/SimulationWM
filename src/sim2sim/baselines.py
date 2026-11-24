@@ -1,7 +1,8 @@
 """Researcher-only trivial-baseline candidates and metric normalization, so error metrics compare across environments.
 
 `empty` keeps the source's world fixtures and removes every object body; `bounding_box` replaces the objects with one
-free box filling their reset-pose world bounding box, with MuJoCo's built-in density and friction. Each run's baselines
+free box filling their reset-pose world bounding box, with MuJoCo's built-in density and friction; `prior` (only where the
+source level has a private prior.xml beside its scene, e.g. the touch tabletop objects) is that prior scene as written. Each run's baselines
 are evaluated by the same trusted configuration and hash-verified source snapshot as its own checkpoints
 (`python -m sim2sim.baselines RUN_DIR ...` on a Slurm test node), into RUN_DIR/baseline-scores.json. `normalize` then
 divides an error metric by the baseline's: 1 means no better than the trivial scene, 0 exact. A metric the baseline cannot
@@ -20,6 +21,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from .audit import read_audit
+from .robots import ROBOTS
 from .candidate_history import _save, evaluate_archive, recover_changes, require_compute_allocation, trusted_evaluation
 from .dashboard import _scalars
 from .runtime import extract_bundle
@@ -47,25 +49,27 @@ def _object_box(scene, simconfig):
 
 
 def baseline_archive(source_dir, entrypoint, simconfig, kind):
-    """ZIP bytes of one trivial candidate project built from the trusted source scene."""
-    assert kind in BASELINES, kind
+    """ZIP bytes of one trivial candidate project built from the trusted source scene (or its private prior scene)."""
+    assert kind in BASELINES + ('prior',), kind
     scene = Path(source_dir) / entrypoint
-    root = ET.parse(scene).getroot()
+    root = ET.parse(scene.parent / 'prior.xml' if kind == 'prior' else scene).getroot()
     world = root.find('worldbody')
-    for body in world.findall('body'):
-        world.remove(body)
-    for tag in ('equality', 'contact', 'tendon', 'sensor', 'actuator', 'keyframe'):
-        for node in root.findall(tag):
-            root.remove(node)
+    if kind != 'prior':  # the trivial baselines keep only the world fixtures
+        for body in world.findall('body'):
+            world.remove(body)
+        for tag in ('equality', 'contact', 'tendon', 'sensor', 'actuator', 'keyframe'):
+            for node in root.findall(tag):
+                root.remove(node)
     assert not [n for n in root.iter() if n.tag in ('mesh', 'texture', 'hfield', 'skin') and n.get('file')], 'baselines support file-free source assets only'
     files, includes, robot = {}, root.findall('include'), Path(source_dir) / 'robot'
-    if simconfig.get('robot') == 'panda':
-        assert len(includes) == 1 and (scene.parent / includes[0].get('file')).resolve() == (robot / 'panda.xml').resolve(), 'Panda source must include the public robot once'
-        includes[0].set('file', 'robot/panda.xml')
+    if simconfig.get('robot'):
+        fixture = ROBOTS[simconfig['robot']][0]
+        assert len(includes) == 1 and (scene.parent / includes[0].get('file')).resolve() == (robot / fixture).resolve(), 'robot source must include the public robot once'
+        includes[0].set('file', 'robot/' + fixture)
         root.find('compiler').set('meshdir', 'robot/assets')
         files = {'robot/' + p.relative_to(robot).as_posix(): p.read_bytes() for p in sorted(robot.rglob('*')) if p.is_file()}
     else:
-        assert not includes, 'baselines support only the public Panda include'
+        assert not includes, 'baselines support only the public robot include'
     if kind == 'bounding_box':
         center, half = _object_box(scene, simconfig)
         body = ET.SubElement(world, 'body', name='baseline_box', pos=' '.join(map(repr, center.tolist())))
@@ -96,7 +100,7 @@ def evaluate_baselines(run_dir, *, timeout=600):
     result = {'schema_version': 1, 'baselines': {}}
     with tempfile.TemporaryDirectory() as temp:
         extract_bundle(source, temp)
-        for kind in BASELINES:
+        for kind in BASELINES + (('prior',) if (Path(temp) / evaluation['source_entrypoint']).with_name('prior.xml').is_file() else ()):
             archive = baseline_archive(temp, evaluation['source_entrypoint'], evaluation['source_config'], kind)
             # An empty candidate has no object to fling: policy transfer is a gap for it, not a failed evaluation.
             trial = {**evaluation, 'metrics': [m for m in evaluation['metrics'] if m != 'policy_transfer']} \

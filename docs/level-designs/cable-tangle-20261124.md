@@ -90,3 +90,13 @@ stretch are excluded: a point grasp cannot apply torque, and the cable is inexte
 ## Queueing notes
 
 Image rebuild required (two grasps, cable metric, tasks). Record the batch in `docs/experiment-log.md`.
+
+## Revisions (user, 2026-11-24; supersede the text above where they conflict)
+
+The first scene build (jobs `63327823`–`63328679`) found that a released tangle (EI 1e-4–1e-3 N·m², μ 0.6–1.0) sprawls
+flat (17–30 cm × ~2 cm), creeps, and leaves C2's loop ~96% visible. Decision: **no container and no elastic memory**
+(the rest shape stays straight). Instead lower the bending stiffness (e.g. toward 1e-6 N·m²) and raise the surface
+friction (e.g. toward ~2) until the tangle stays compact (≲ 15 cm) and at rest; elliptic friction cones or noslip are
+allowed against creep. C2's loop counts as hidden when its visible fraction is ≤ ~30% **and** no sampled camera view
+shows its whole closed path. The tuned values become the truth the agent must report; flag values outside plausible
+cable ranges. Wave 30 (`experiments/configs/wave30-20261124/`, pool `gemini-20261124-cable`).

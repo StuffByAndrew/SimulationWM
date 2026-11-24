@@ -136,3 +136,21 @@ def test_local_controller_tool_is_hand_only_and_mounts_its_files():
         enabled_tools({"tools": {"local_controller": True}, "simulation": {"robot": "panda"}})
     assert AGENT_TOOLS["local_controller"][1] == {} and set(public_tool_files("local_controller")) == {"localsim.py"}
     assert "/opt/public/tools/local_controller/localsim.py" in AGENT_TOOLS["local_controller"][0]
+
+
+def test_arm_hand_fixture_taxels_follow_the_arm_and_help_names_its_joint_count(capsys):
+    robot = ROOT / "environments/panda_shadow/robot"
+    sim = Simulation(ROOT / "environments/panda_shadow/bin_spiky/scene.xml",
+                     {"robot": "panda_shadow", "rgb": False, "depth": False, "calibration": False, "tactile": True})
+    try:
+        joints = sim.observe()["proprioception"]["joint_positions_rad"]
+        assert len(joints) == 31
+        for cells in (localsim.taxels(robot_dir=robot), localsim.taxels(joints, robot_dir=robot)):
+            for name, body, *_ in TACTILE["panda_shadow"][2]:
+                np.testing.assert_allclose(cells[name]["body_position_m"], sim._data.xpos[sim._model.body(body).id], atol=1e-9)
+    finally:
+        sim.close()
+    for directory, count in ((robot, 31), (FAMILY / "robot", 24)):
+        with patch.object(localsim, "FIXTURE", directory), pytest.raises(SystemExit):
+            localsim.main(["--help"])
+        assert f"the {count} proprioception joint positions" in capsys.readouterr().out

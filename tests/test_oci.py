@@ -589,6 +589,64 @@ class TouchHarnessOCITests(unittest.TestCase):
         self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
         print("touch harness: " + report[-1]["text"])
 
+    def test_panda_shadow_touch_level_end_to_end(self):
+        """The arm-mounted hand fixture on the L3 bin level: both actions, the local copy, a scene + parameters.json submission."""
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/touch-harness" / ("oci-arm-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(root / "environments/panda_shadow/bin_spiky/scene.xml")}, "tools": {"local_controller": True},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": os.environ.get("SIM2SIM_EVALUATOR_IMAGE", IMAGE),
+                              "command": ["python", "-c", ARM_SHADOW_AGENT], "memory": "3g", "cpus": 2, "pids": 128, "workspace": "1g",
+                              "worker": {"memory": "2g", "cpus": 1}},  # agent + reconstruction worker + evaluator fit the 4-CPU 8G job
+                  "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 600, "physics_ticks": 5000, "submissions": 1},
+                  "simulation": {"robot": "panda_shadow", "camera": "fixed", "width": 320, "height": 240, "rgb": False, "depth": False,
+                                 "calibration": False, "tactile": True},
+                  "evaluation": {"source_dir": str(root / "environments/panda_shadow"), "source_entrypoint": "bin_spiky/scene.xml",
+                                 "manifest": "bin_spiky/manifest.toml", "metrics": ["objects", "identification"], "camera": "fixed",
+                                 "width": 80, "height": 60, "timeout_seconds": 180}}
+        try:
+            run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual(json.loads((output / "termination.json").read_text())["status"], "finished")
+        report = [json.loads(line) for line in (output / "progress.jsonl").read_text().splitlines() if '"origin": "agent"' in line]
+        self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
+        print("panda_shadow touch level: " + report[-1]["text"])
+
+
+ARM_SHADOW_AGENT = r'''
+import json, shutil, sys
+from pathlib import Path
+sys.path[:0] = ["/opt/public/tools/local_controller"]
+import localsim
+from sim2sim.client import Client
+from sim2sim.robots import ARM_HOME, HAND_ACTUATORS, joints
+client = Client()
+assert {"arm_target", "hand_target"} <= set(client.task["actions"]) and "grasp" not in client.task["actions"], client.task["actions"]
+project = Path("/workspace/project")
+shutil.copytree("/opt/public/robot", project / "robot", copy_function=shutil.copyfile)
+(project / "scene.xml").write_text("""<mujoco model="guess"><compiler angle="radian" autolimits="true" meshdir="robot/assets"/>
+<worldbody><camera name="fixed" pos="0 -1.2 1.0" xyaxes="1 0 0 0 0.6 0.8"/><geom name="table" type="box" pos="0 -0.08 0.39" size=".38 .34 .01"/>
+<body name="ball" pos="0 -0.12 0.44"><freejoint/><geom type="sphere" size=".024" density="1000"/></body>
+</worldbody><include file="robot/panda_shadow.xml"/></mujoco>""")
+(project / "parameters.json").write_text(json.dumps({"spiky_ball_xyz": [0, -0.12, 0.44]}))
+client.load_reconstruction(project)
+arm = list(ARM_HOME["panda_shadow"])
+arm[0] += .1
+steps = [{"op": "observe", "ticks": 10}, {"op": "arm_target", "joint_targets": arm, "ticks": 100},
+         {"op": "hand_target", "actuator_targets": [0.] * len(HAND_ACTUATORS), "ticks": 50}, {"op": "reset"}, {"op": "observe"}]
+remote = [client.request(s["op"], world="reconstruction", **{k: v for k, v in s.items() if k != "op"})["observation"] for s in steps]
+local = localsim.LocalController(project)
+assert [local.act(s) for s in steps] == remote, "local copy differs from the reconstruction world"
+reference = client.request("arm_target", joint_targets=arm, ticks=100)["observation"]
+assert "rgb" not in reference and "depth" not in reference and "tactile" in reference and len(reference["proprioception"]["joint_positions_rad"]) == len(joints("panda_shadow"))
+assert client.submit(project)["status"] == "ok"
+client.progress(json.dumps({"exact_steps": len(steps), "joints": len(reference["proprioception"]["joint_positions_rad"])}), origin="agent")
+client.finish()
+'''
+
 
 DIE_AGENT = r'''
 import base64, io, json, time, zipfile

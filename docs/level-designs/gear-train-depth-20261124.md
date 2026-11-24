@@ -87,3 +87,15 @@ Never say "simple", "lumped", "detailed" or "every gear" in any condition.
 ## Queueing notes
 
 Image rebuild required (new metrics, neutral task). Record the batch in `docs/experiment-log.md`.
+
+## Revisions (user, 2026-11-24; supersede the text above where they conflict)
+
+The first check (job `63324225`; explorations `63324863`–`63325726`) found the premise false at a 2 ms timestep: MuJoCo's
+soft equality couplings let a chain of light gears wind up (up to 1.5 rad) and spring back, which a shallow model cannot
+reproduce, and the point grasp is softened differently by the deep and lumped crank inertias. Decision:
+- This level uses a **0.5 ms timestep** and a **stiffer point grasp** through a new public config knob (default
+  unchanged for every other level; documented in `docs/protocol.md`).
+- `sim_cost` is **wall time per simulated second** (not per step). Each reference runs at its own accurate timestep:
+  deep at 0.5 ms, shallow at the largest timestep that still passes the accuracy gate. The ≥ 10× premise applies to this
+  ratio; keep ~20 gears if it holds. Probes, hard crank pulls and release included, must agree within the gate.
+- Agent-built models choose their own timestep.

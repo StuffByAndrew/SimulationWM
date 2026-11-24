@@ -1,0 +1,49 @@
+<mujoco model="panda_shadow_table_objects">
+  <!-- Researcher-only. Touch-only tabletop level table_objects: mug (339 g), banana (301 g), hammer (527 g) on the table. -->
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets"/>
+  <option timestep="0.002" integrator="implicitfast"><flag multiccd="enable"/></option>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <asset></asset>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76"/>
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.620000 -0.780000 0.980000" xyaxes="0.728848 0.684675 -0.000000 -0.345849 0.368162 0.863044" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <geom name="table" type="box" pos="0.000000 -0.080000 0.350000" size="0.380000 0.340000 0.050000" friction="0.8 0.005 0.0001" condim="4" rgba=".65 .52 .37 1"/>
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1"/>
+    <body name="mug" pos="-0.200000 -0.200000 0.400000" quat="0.500000 0.000000 0.000000 0.866025">
+      <freejoint name="mug"/>
+      <geom name="mug_base" type="cylinder" size="0.033500 0.003000" pos="-0.014750 0.000000 0.003000" quat="1.000000 0.000000 0.000000 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall0" type="box" size="0.002000 0.010048 0.060000" pos="0.020750 0.000000 0.060000" quat="1.000000 0.000000 0.000000 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall1" type="box" size="0.002000 0.010048 0.060000" pos="0.015994 0.017750 0.060000" quat="0.965926 0.000000 0.000000 0.258819" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall2" type="box" size="0.002000 0.010048 0.060000" pos="0.003000 0.030744 0.060000" quat="0.866025 0.000000 0.000000 0.500000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall3" type="box" size="0.002000 0.010048 0.060000" pos="-0.014750 0.035500 0.060000" quat="0.707107 0.000000 0.000000 0.707107" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall4" type="box" size="0.002000 0.010048 0.060000" pos="-0.032500 0.030744 0.060000" quat="0.500000 0.000000 0.000000 0.866025" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall5" type="box" size="0.002000 0.010048 0.060000" pos="-0.045494 0.017750 0.060000" quat="0.258819 0.000000 0.000000 0.965926" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall6" type="box" size="0.002000 0.010048 0.060000" pos="-0.050250 0.000000 0.060000" quat="0.000000 0.000000 0.000000 1.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall7" type="box" size="0.002000 0.010048 0.060000" pos="-0.045494 -0.017750 0.060000" quat="-0.258819 0.000000 0.000000 0.965926" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall8" type="box" size="0.002000 0.010048 0.060000" pos="-0.032500 -0.030744 0.060000" quat="-0.500000 0.000000 0.000000 0.866025" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall9" type="box" size="0.002000 0.010048 0.060000" pos="-0.014750 -0.035500 0.060000" quat="-0.707107 0.000000 0.000000 0.707107" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall10" type="box" size="0.002000 0.010048 0.060000" pos="0.003000 -0.030744 0.060000" quat="0.866025 0.000000 0.000000 -0.500000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_wall11" type="box" size="0.002000 0.010048 0.060000" pos="0.015994 -0.017750 0.060000" quat="0.965926 0.000000 0.000000 -0.258819" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_handle_upper" type="capsule" size="0.005000 0.013750" pos="0.033500 0.000000 0.094800" quat="0.707107 0.000000 0.707107 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_handle_side" type="capsule" size="0.005000 0.030000" pos="0.047250 0.000000 0.064800" quat="0.000000 0.000000 1.000000 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="mug_handle_lower" type="capsule" size="0.005000 0.013750" pos="0.033500 0.000000 0.034800" quat="-0.707107 0.000000 0.707107 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+    <body name="banana" pos="0.000000 0.030000 0.400000" quat="0.991445 0.000000 0.000000 0.130526">
+      <freejoint name="banana"/>
+      <geom name="banana_0" type="capsule" size="0.017500 0.015752" pos="-0.068275 0.010690 0.017500" quat="0.639812 0.301066 0.639812 -0.301066" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="banana_1" type="capsule" size="0.017500 0.015752" pos="-0.044626 -0.009380 0.017500" quat="0.682629 0.184439 0.682629 -0.184439" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="banana_2" type="capsule" size="0.017500 0.015752" pos="-0.015509 -0.020070 0.017500" quat="0.704373 0.062119 0.704373 -0.062119" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="banana_3" type="capsule" size="0.017500 0.015752" pos="0.015509 -0.020070 0.017500" quat="0.704373 -0.062119 0.704373 0.062119" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="banana_4" type="capsule" size="0.017500 0.015752" pos="0.044626 -0.009380 0.017500" quat="0.682629 -0.184439 0.682629 0.184439" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="banana_5" type="capsule" size="0.017500 0.015752" pos="0.068275 0.010690 0.017500" quat="0.639812 -0.301066 0.639812 0.301066" density="950" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+    <body name="hammer" pos="0.190000 -0.220000 0.400000" quat="0.793353 0.000000 0.000000 0.608761">
+      <freejoint name="hammer"/>
+      <geom name="hammer_head" type="box" size="0.012500 0.050000 0.012500" pos="-0.080000 0.000000 0.012500" quat="1.000000 0.000000 0.000000 0.000000" density="7800" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="hammer_handle" type="cylinder" size="0.011000 0.086250" pos="0.006250 0.000000 0.011000" quat="0.707107 0.000000 0.707107 0.000000" density="600" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+  </worldbody>
+  <include file="../robot/panda_shadow.xml"/>
+</mujoco>

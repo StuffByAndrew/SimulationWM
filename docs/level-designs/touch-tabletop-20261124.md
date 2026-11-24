@@ -106,3 +106,15 @@ no checkpoint hold, `provider_hold_seconds` as in recent Gemini waves, accountin
 
 Image rebuild required (new fixture, metrics, task texts). Record the batch in `docs/experiment-log.md`. Wave 25 (touch
 harness on the w21 hand levels) is running; the user chose to queue these without waiting for it.
+
+## Revisions (user, 2026-11-24; supersede the text above where they conflict)
+
+- **L3 ball size**: the spiky ball (6 octahedral cones, 20 mm proud, 29 mm bases, 22 mm core; check job `63323774`) rests
+  on three tips and is wider than tall, so no sphere matches both. Smooth balls match its **resting height** (Ø 48.5 mm);
+  the 14–20 mm width difference is accepted as the spiky shape itself (it needs sideways probing to notice). Mass and
+  inertia stay equal.
+- **L3 taxel check**: passes if a scripted procedure with up to 3 palm presses per ball identifies the spiky ball in
+  ≥ 95% of trials (single presses: smooth 1 taxel in 9/9, spiky 2–3 in 6/9).
+- **L3 grab**: kept hard (scripted: spiky 1/72 open-loop tries, smooth 6/15; jobs `63324572`, `63324769`); this is a
+  dexterity finding, and identification is scored separately. Walls 40 mm to cut escapes over the rim. All balls keep
+  equal friction.

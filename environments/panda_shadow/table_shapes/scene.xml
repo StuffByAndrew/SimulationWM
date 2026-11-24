@@ -1,0 +1,50 @@
+<mujoco model="panda_shadow_table_shapes">
+  <!-- Researcher-only. Touch-only tabletop level table_shapes: tower (339 g), zigzag (301 g), cross (540 g) on the table. -->
+  <compiler angle="radian" autolimits="true" meshdir="../robot/assets"/>
+  <option timestep="0.002" integrator="implicitfast"><flag multiccd="enable"/></option>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <asset></asset>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76"/>
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.620000 -0.780000 0.980000" xyaxes="0.728848 0.684675 -0.000000 -0.345849 0.368162 0.863044" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <geom name="table" type="box" pos="0.000000 -0.080000 0.350000" size="0.380000 0.340000 0.050000" friction="0.8 0.005 0.0001" condim="4" rgba=".65 .52 .37 1"/>
+    <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1"/>
+    <body name="tower" pos="-0.200000 -0.200000 0.400000" quat="0.500000 0.000000 0.000000 0.866025">
+      <freejoint name="tower"/>
+      <geom name="tower_base" type="cylinder" size="0.027601 0.003000" pos="-0.019362 0.000000 0.003000" quat="1.000000 0.000000 0.000000 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_cap" type="cylinder" size="0.027601 0.003000" pos="0.011838 0.000000 0.117000" quat="1.000000 0.000000 0.000000 0.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall00" type="box" size="0.002137 0.023159 0.020000" pos="0.004696 0.017480 0.020000" quat="0.951057 0.000000 0.000000 0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall01" type="box" size="0.002137 0.023159 0.020000" pos="-0.028552 0.028283 0.020000" quat="0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall02" type="box" size="0.002137 0.023159 0.020000" pos="-0.049100 0.000000 0.020000" quat="0.000000 0.000000 0.000000 1.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall03" type="box" size="0.002137 0.023159 0.020000" pos="-0.028552 -0.028283 0.020000" quat="-0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall04" type="box" size="0.002137 0.023159 0.020000" pos="0.004696 -0.017480 0.020000" quat="0.951057 0.000000 0.000000 -0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall10" type="box" size="0.002137 0.023159 0.020000" pos="0.020296 0.017480 0.060000" quat="0.951057 0.000000 0.000000 0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall11" type="box" size="0.002137 0.023159 0.020000" pos="-0.012952 0.028283 0.060000" quat="0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall12" type="box" size="0.002137 0.023159 0.020000" pos="-0.033500 0.000000 0.060000" quat="0.000000 0.000000 0.000000 1.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall13" type="box" size="0.002137 0.023159 0.020000" pos="-0.012952 -0.028283 0.060000" quat="-0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall14" type="box" size="0.002137 0.023159 0.020000" pos="0.020296 -0.017480 0.060000" quat="0.951057 0.000000 0.000000 -0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall20" type="box" size="0.002137 0.023159 0.020000" pos="0.035896 0.017480 0.100000" quat="0.951057 0.000000 0.000000 0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall21" type="box" size="0.002137 0.023159 0.020000" pos="0.002648 0.028283 0.100000" quat="0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall22" type="box" size="0.002137 0.023159 0.020000" pos="-0.017900 0.000000 0.100000" quat="0.000000 0.000000 0.000000 1.000000" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall23" type="box" size="0.002137 0.023159 0.020000" pos="0.002648 -0.028283 0.100000" quat="-0.587785 0.000000 0.000000 0.809017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="tower_wall24" type="box" size="0.002137 0.023159 0.020000" pos="0.035896 -0.017480 0.100000" quat="0.951057 0.000000 0.000000 -0.309017" density="2300" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+    <body name="zigzag" pos="0.000000 0.030000 0.400000" quat="0.991445 0.000000 0.000000 0.130526">
+      <freejoint name="zigzag"/>
+      <geom name="zigzag_0" type="capsule" size="0.017500 0.018000" pos="-0.063818 -0.022850 0.017500" quat="0.707107 0.000000 0.707107 0.000000" density="1053.61" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="zigzag_1" type="capsule" size="0.017500 0.018000" pos="-0.031909 -0.011425 0.017500" quat="0.665720 -0.238362 0.665720 0.238362" density="1053.61" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="zigzag_2" type="capsule" size="0.017500 0.018000" pos="0.000000 0.000000 0.017500" quat="0.707107 0.000000 0.707107 0.000000" density="1053.61" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="zigzag_3" type="capsule" size="0.017500 0.018000" pos="0.031909 0.011425 0.017500" quat="0.665720 -0.238362 0.665720 0.238362" density="1053.61" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="zigzag_4" type="capsule" size="0.017500 0.018000" pos="0.063818 0.022850 0.017500" quat="0.707107 0.000000 0.707107 0.000000" density="1053.61" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+    <body name="cross" pos="0.190000 -0.220000 0.400000" quat="0.793353 0.000000 0.000000 0.608761">
+      <freejoint name="cross"/>
+      <geom name="cross_dense" type="box" size="0.012500 0.050000 0.012500" pos="-0.006250 0.000000 0.012500" quat="0.965926 0.000000 0.000000 -0.258819" density="7800" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="cross_bar" type="box" size="0.082500 0.011000 0.011000" pos="-0.006250 0.000000 0.011000" quat="1.000000 0.000000 0.000000 0.000000" density="600" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+      <geom name="cross_ball" type="sphere" size="0.012500" pos="0.076250 0.000000 0.012500" quat="1.000000 0.000000 0.000000 0.000000" density="600" friction="0.8 0.005 0.0001" condim="4" rgba=".78 .56 .28 1"/>
+    </body>
+  </worldbody>
+  <include file="../robot/panda_shadow.xml"/>
+</mujoco>
