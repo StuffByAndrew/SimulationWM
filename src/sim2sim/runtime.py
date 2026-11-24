@@ -1791,7 +1791,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         token = context["incoming"] if direction == "request" else context["token"]
         audit.record(event, reservation=token)
 
-    def reserve_for(request, world, ticks):
+    def reserve_for(request, world, ticks, batch):
+        """Reserve every outcome of an action: its state checkpoints and frames, plus batch extra frames (a frames reply)."""
         state = cache.get(world, {}) or {}
         state_bytes = len(json.dumps(state.get("state", {})))
         pixels = public_config["width"] * public_config["height"]
@@ -1807,8 +1808,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
             size = 4 * 1024 * 1024 + state_bytes * 3
         else:
             factor = 16 if world == "reconstruction" else 8
-            frames = int(ticks * public_config["timestep"] * fps + 1) + 4
-            size = (ticks + 4) * (state_bytes * 6 + 8192) + frames * (pixels * factor + 65536)
+            frames = int(ticks * public_config["timestep"] * fps + 1) + 4 + batch
+            size =(ticks + 4) * (state_bytes * 6 + 8192) + frames * (pixels * factor + 65536)
         size += len(json.dumps(request)) * 2 + 65536
         return audit.reserve(size)
 
@@ -2081,7 +2082,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
-                token = reserve_for(request, world, ticks + (sim.fixture.settle_ticks if op == "reset_carriage" else 0))
+                if op == "frames":
+                    resolved.update(since=request.get("since", -1), limit=request.get("limit", 25))
+                    if type(resolved["since"]) is not int or type(resolved["limit"]) is not int or not 1 <= resolved["limit"] <= 100:
+                        raise RuntimeFailure("frames needs an integer since and a limit from 1 to 100")
+                token = reserve_for(request, world, ticks + (sim.fixture.settle_ticks if op == "reset_carriage" else 0), resolved.get("limit", 0))
                 context["token"] = token
                 private = cache.get(world) or {}
                 audit.record({"kind": "action_begin", "action_id": context["action_id"], "world": world,
@@ -2093,10 +2098,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     supervisor.check()
                     raise RuntimeFailure("Active wall-time budget exhausted")
                 if live and op == "frames":
-                    since, count = request.get("since", -1), request.get("limit", 25)
-                    if type(since) is not int or type(count) is not int or not 1 <= count <= 100:
-                        raise RuntimeFailure("frames needs an integer since and a limit from 1 to 100")
-                    entries = live.frames(since, count, min(time.monotonic() + 1, deadline, supervisor.deadline))
+                    entries = live.frames(resolved["since"], resolved["limit"], min(time.monotonic() + 1, deadline, supervisor.deadline))
                     response = {"ok": True, "world": world, "frames": [public_observation(live.render(entry), sim_config) for entry in entries]}
                 elif live and op in ("observe", "grasp", "move", "release", "reset", "arm_target", "hand_target", "camera", "throw"):
                     action = {k: v for k, v in resolved.items() if k not in ("world", "ticks")} | ({"ticks": ticks} if ticks else {})

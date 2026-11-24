@@ -159,23 +159,49 @@ ask(op="finish")
 '''
 
 
-def test_runtime_realtime_contract_and_no_state_leaks(tmp_path):
+def run_realtime_agent(tmp_path, agent, simulation):
+    """Run the die level in real time with a local agent script; return the parsed text of its last progress note."""
     from sim2sim.runtime import run
-    cmd = [sys.executable, "-u", "-c", AGENT]
+    cmd = [sys.executable, "-u", "-c", agent]
     config = {"source": {"scene": str(DIE)}, "sandbox": {"image": "test", "command": ["agent"]}, "record_video": False,
               "output_dir": str(tmp_path / "run"), "budget": {"wall_only": True, "wall_seconds": 120},
-              "simulation": {**CONFIG, "realtime": True, "frame_rate": 25},
+              "simulation": {"realtime": True, **simulation},
               "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}}
     with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.check_image_roles"), \
          patch("sim2sim.runtime.container_command", return_value=cmd), \
          patch("sim2sim.runtime.stop_container", side_effect=lambda proc, name: proc.kill()), \
          patch("sim2sim.runtime.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="test-image-id")):
         result = run(config)
-    assert result["status"] == "finished"
+    assert result["status"] == "finished", (tmp_path / "run/termination.json").read_text()
     progress = [json.loads(line) for line in (tmp_path / "run/progress.jsonl").read_text().splitlines()]
-    report = json.loads(progress[-1]["text"])
+    return json.loads(progress[-1]["text"])
+
+
+def test_runtime_realtime_contract_and_no_state_leaks(tmp_path):
+    report = run_realtime_agent(tmp_path, AGENT, {**CONFIG, "frame_rate": 25})
     assert 24 <= report["advanced"] <= 40 and report["times"] == pytest.approx([0, .04, .08]) and len(set(report["episodes"])) == 1
     assert set(report["keys"]) <= {"width", "height", "time", "ticks", "total_ticks", "frame", "episode", "grasped", "rgb", "rgb_format",
                                    "depth", "depth_format", "calibration"}, report
     termination = json.loads((tmp_path / "run/termination.json").read_text())
     assert termination["realtime_world"]["error"] is None and termination["realtime_world"]["launches"] == 2
+
+
+FRAME_BATCH = r'''
+import json, time
+input()
+def ask(**request):
+    print(json.dumps(request), flush=True)
+    return json.loads(input())
+thrown = ask(op="throw", protocol="drop")["observation"]
+time.sleep(1.2)
+frames = ask(op="frames", since=thrown["frame"] - 1, limit=100)["frames"]
+print(json.dumps({"op": "progress", "text": json.dumps([f["frame"] for f in frames])}), flush=True)
+input()
+ask(op="finish")
+'''
+
+
+def test_runtime_records_a_full_frame_batch(tmp_path):
+    """Regression (w24 fps100 runs): a 100-frame batch at 320x240 overflowed an audit reservation sized for 5 frames."""
+    report = run_realtime_agent(tmp_path, FRAME_BATCH, {"width": 320, "height": 240, "depth": True, "camera": "fixed", "frame_rate": 100})
+    assert report == list(range(report[0], report[0] + 100)), report
