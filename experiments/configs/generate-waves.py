@@ -441,6 +441,22 @@ WAVES["wave24-20261123"] = ("Wave 24", "gemini-20261123", 1e6, RUNS26)
 # levels on Neon): the four w21 touch-only hand levels with the local reconstruction-world copy (tools.local_controller) and
 # pausable bash (no command time limit; code is paused while the model thinks), against the exact w21 config on Neon.
 NEON = {"model": "gemini-4-neon", "provider_hold": PROVIDER_HOLD, "cost": 1e6, "pool_usd": 1e6}
+# Wave 29 (user, 2026-11-24): the spring-as-a-scale levels (w20 point-grasp tetra/cube + spring [+ block], w11 Panda tetra +
+# spring) with one appended sentence asking for the scene's important low-rank structure; the only factor vs the originals.
+# Neon baselines (original prompt) where none existed: w20 tetra-spring, cube-spring, tetra-spring-block (cube-spring-block's
+# is w26-cube-spring-block-mjcf; w11's is gemini-20261120 w11-tetra-spring-k-neon, whose recipe the w11 run copies: no 4 h checkpoint).
+LOWRANK_PROMPT = (" First identify the important low-rank structure of this scene: the few physical properties that govern most of "
+                  "its behavior. Estimate those first, and make sure your model gets them right.")
+SCALES = (("tetra", ""), ("cube", ""), ("tetra", "-block"), ("cube", "-block"))
+RUNS29 = {**{f"w29-{t}-spring{b}-lowrank-prompt": (RUNS22[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; low-rank prompt; neon",
+                                                   {**RUNS22[f"w20-{t}-spring{b}"][2], **NEON, "task": RUNS22[f"w20-{t}-spring{b}"][2]["task"] + LOWRANK_PROMPT})
+             for t, b in SCALES},
+          **{f"w29-{t}-spring{b}-neon": (RUNS22[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; original prompt; neon",
+                                         {**RUNS22[f"w20-{t}-spring{b}"][2], **NEON}) for t, b in SCALES[:3]}}
+_env, _factor, _o = WAVES["wave11-20261106"][3]["w11-tetra-spring-k"]
+RUNS29["w29-w11-tetra-spring-k-lowrank-prompt"] = (_env, "Panda tetra + spring, w11 harness; low-rank prompt; neon",
+    {**{k: v for k, v in _o.items() if k != "checkpoint"}, **NEON, "hold": 129600, "task": _o.get("task", TASK) + LOWRANK_PROMPT})
+WAVES["wave29-20261124"] = ("Wave 29", "gemini-20261124", 1e6, RUNS29)
 # Second Gemini key (user, 2026-11-24): GEMINI_API_KEY_BYCOST is billed by cost, with a LIFETIME cap of $15000. Every run on it
 # uses the one pool "gemini-bycost" (never renamed or reset), so the pool is the lifetime cap; the per-run cap is a safety net.
 # Use it for extra capacity when the first key's rate limits would be hit. Never resume a hold above the pool's $15000.
