@@ -120,7 +120,9 @@ harness on the w21 hand levels) is running; the user chose to queue these withou
   equal friction.
 - **L3 identification is an explicitly hard task with no pass bar** (supersedes the 3-press ≥ 95% criterion). The
   4×3 palm grid rarely spans two spike tips: scripted palm-taxel identification reached 25% with curled fingers (job
-  `63455399`) and 47.5% with straight fingers (job `63458855`); the contact-height majority rule reached ~91% (job
-  `63456710`). These scripted rates are stored with the level as reference floors for interpreting agent results; the
+  `63455399`) and 47.5% with straight fingers (job `63458855`); the contact-height majority rule was *estimated* at ~91%
+  from per-press rates (job `63456710`), not measured. The check now measures all three procedures directly (40 seeded
+  trials, 3 presses per ball) and stores the measured rates with the level (`check.json`,
+  `environments/panda_shadow/bin_spiky/reference_floors.json`) as reference floors for interpreting agent results; the
   taxel grid stays as built for L1–L3. At 40 mm walls a scripted grab exists (1/108: yaw 270°, grip 12 mm above centre,
   wrap closure) and is pinned in the check.
