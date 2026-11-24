@@ -6,6 +6,31 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 20:10 UTC — Netscratch quota killed all 8 running jobs (19:12 UTC); everything moved to the lab root
+- Jobs `63264369`, `63264376`, `63264378`, `63264379`, `63281858`, `63281862`, `63320565` and `63320572` died between
+  19:12 and 19:18 UTC on "Disk quota exceeded" writing `status.json.tmp`, so those files still say `running`.
+  - Their 12 runs were at 10–32 run-minutes, with no submissions.
+  - Runs: the w25 offset-com pair -002, w24-die-franka-neon-002, the four Carbon `-20261124-001` runs, the w26 lowrank and
+    mjcf `-20261124-001`, and the w29 tetra-spring and cube-spring pairs `-001`.
+  - All are infrastructure failures.
+- The 6 still-queued netscratch-prepared jobs were cancelled before starting: `63454970`, `63454996`, `63455010`,
+  `63455013`, `63455018`, `63455042`.
+- **All remaining n=1 conditions were re-prepared on the lab root** with the isolated configs (`prepare-lab-20261124.sh`;
+  every source byte-identical to the original):
+  - wave 25, all 4 pairs, as `-20261124-001`;
+  - wave 26 lowrank and mjcf as `-20261124-003`;
+  - wave 29, all 8 runs, as `-20261124-003`;
+  - Carbon marble, hand, latch and w11 as `-20261124-002`.
+- **Jobs** (`trusted-image-isolated-gear.json`, sapphire, 3 days):
+  - w25: `63479839`, `63479845`, `63479847`, `63479848`.
+  - w26: `63479883`.
+  - w29: `63479971`, `63479977`, `63479980`, `63479983`.
+  - Carbon: `63479984`, `63479995`, with `--nice=200000`.
+- **Queue order:** gear-train, then fixture and die, then wave 27, then waves 25, 26 and 29, then Carbon.
+- Fixture bimodal `-003` started on kempner_cpu (job `63471018`) once the source-read audit moved to sapphire (now job
+  `63480090`).
+- The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
+
 ## 2026-11-24 20:30 UTC — Wave 28 gear-train (explanation depth) queued at top priority
 - Merged builder commit 83ba220 (01304fa). Premise check `63463232`: deep vs shallow probe error 3% of the gate; the deep
   model costs 51× per simulated second.
