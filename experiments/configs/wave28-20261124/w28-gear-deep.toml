@@ -20,7 +20,7 @@ factor = "gear train, stated use: deep; point grasp with wrench, RGBD, movable c
 scene = "environments/gear_train/scene.xml"
 
 [sandbox]
-image = "localhost/sim2sim:latest"
+image = "localhost/sim2sim-agent:latest"
 evaluator_image = "localhost/sim2sim:latest"
 command = ["/usr/local/bin/python", "/opt/agent/sandbox_agent.py"]
 process_limit_backend = "slurm_step"
