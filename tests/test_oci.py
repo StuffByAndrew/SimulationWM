@@ -25,7 +25,9 @@ from sim2sim.client import Client
 client = Client()
 observation = client.observe()
 assert os.getuid() == 65532 and "SIM2SIM_TEST_SECRET" not in os.environ and not Path("/opt/sim2sim/environments").exists()
-assert not [m for m in ("evaluation", "runtime", "fixture", "die", "primitive_metrics") if importlib.util.find_spec("sim2sim." + m)]  # agent image
+split = sys.argv[2] == "split"  # a split pairing runs the agent image; a pre-split config names one image for both
+present = [m for m in ("evaluation", "runtime", "fixture", "die", "primitive_metrics") if importlib.util.find_spec("sim2sim." + m)]
+assert (not present) == split, present
 assert resource.getrlimit(resource.RLIMIT_NPROC) == (64, 64)
 assert "CapEff:\t0000000000000000" in Path("/proc/self/status").read_text()
 for attempt in (lambda: resource.setrlimit(resource.RLIMIT_NPROC, (65, 65)), lambda: os.setuid(0),
@@ -88,7 +90,7 @@ class OCIIntegrationTests(unittest.TestCase):
             "source": {"scene": str(root / "environments/blocks/scene.xml")},
             "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE,
                         "evaluator_image": EVALUATOR_IMAGE,
-                        "command": ["python", "-c", AGENT, BACKEND], "memory": "1g", "cpus": 1, "pids": 64},
+                        "command": ["python", "-c", AGENT, BACKEND, "split" if IMAGE != EVALUATOR_IMAGE else "one"], "memory": "1g", "cpus": 1, "pids": 64},
             "output_dir": str(output), "record_video": True, "video_fps": 30,
             "budget": {"active_seconds": 180, "physics_ticks": 300, "submissions": 2},
             "simulation": {"camera": "fixed", "width": 320, "height": 240,

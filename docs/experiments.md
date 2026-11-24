@@ -175,15 +175,24 @@ experiments. The dashboard and all parameter descriptions remain private.
 ## Pilot prerequisites
 
 For `strict_oci`, the host must have the configured credential variable, checked
-by presence only, and the prebuilt researcher-trusted agent and evaluator images of
-one two-image record (default `experiments/images/trusted-image-isolated.json`;
-`scripts/podman-job.sh` loads and verifies both and refuses old single-image records).
-Configs set `[sandbox] image = "localhost/sim2sim-agent:latest"` (agent container,
-stream-mode predictors; only agent-side modules, no evaluation or metric code) and
-`evaluator_image = "localhost/sim2sim:latest"` (candidate worker, evaluator, call-mode
-predictors); the runtime checks each image's `sim2sim.image-role` label before launch, so
-a run prepared with `image = "localhost/sim2sim:latest"` stops at preflight (re-prepare it from the
-regenerated config). Both images must exclude
+by presence only, and the prebuilt researcher-trusted images of the record that
+`SIM2SIM_TRUSTED_IMAGE_RECORD` names (`scripts/podman-job.sh` verifies and loads every
+image; `scripts/trusted-images.py` dispatches on the record's shape).
+
+- **Agent-image isolation (2026-11-24):** configs generated since then set `[sandbox] image =
+  "localhost/sim2sim-agent:latest"` (agent container, stream-mode predictors; only agent-side
+  modules, no evaluation or metric code) and `evaluator_image = "localhost/sim2sim:latest"`
+  (candidate worker, evaluator, call-mode predictors). Run them with the two-image record
+  `SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-isolated.json`; the runtime
+  checks both images' `sim2sim.image-role` labels before launch. With a single-image record the
+  agent tag is not loaded and the run stops at preflight ("Trusted image is unavailable").
+- **Older prepared configs** name `localhost/sim2sim:latest` for both images. They run
+  unchanged with the single-image record they were prepared for (the default
+  `experiments/images/trusted-image.json`, or e.g. `trusted-image-lowrank.json`), which loads
+  only that tag; the agent then sees the whole package, as before the split. Re-prepare
+  from the regenerated config to get the isolated agent image.
+
+Images must exclude
 source scenes, private experiment files and host credentials. Actual finite
 CPU/memory/process limits must be verified before its agent starts. Selecting
 the `rlimit` process backend cannot repair missing CPU/memory enforcement; on
@@ -527,7 +536,7 @@ unchanged. Staged file hashes are recorded as a `public_fixture` audit event.
   [protocol](protocol.md). Pair it with the harness flag `--bash-mode pausable` for the touch harness (wave 25).
 
 Both conditions of a pair must use the same image, so start both with the tools
-record. `SIM2SIM_TRUSTED_IMAGE_RECORD` defaults to `trusted-image-isolated.json` (the agent image
+record. `SIM2SIM_TRUSTED_IMAGE_RECORD` names the record (`trusted-image-isolated.json` for the agent image
 without tools):
 
 ```sh

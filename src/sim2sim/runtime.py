@@ -171,7 +171,8 @@ TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
 TOOL_IMAGE_LABEL = "sim2sim.tool-runtime"
 # Two images from one Containerfile (one two-image record, experiments/images/trusted-image-isolated.json): the agent image
 # holds only the agent-side modules (agent container, stream-mode predictors); the evaluator image (candidate worker,
-# evaluator, call-mode predictors) holds the evaluation and metric code. Strict runs refuse any other pairing by role label.
+# evaluator, call-mode predictors) holds the evaluation and metric code. Strict runs refuse any other pairing of two images
+# by role label; configs prepared before the split name localhost/sim2sim:latest for both and run as declared.
 AGENT_IMAGE, EVALUATOR_IMAGE, IMAGE_ROLE_LABEL = "localhost/sim2sim-agent:latest", "localhost/sim2sim:latest", "sim2sim.image-role"
 # Optional ablatable agent tools ([tools] name = true): fixed neutral task text and pinned file sha256s. A disabled
 # tool is absent from the container; an enabled one is mounted read-only at PUBLIC_TOOLS + name. A service tool (pins
@@ -550,11 +551,13 @@ def image_id(image, supervisor):
 
 
 def check_image_roles(sandbox, tools, supervisor):
-    """Refuse any pairing but the agent image as sandbox.image and the evaluator image as sandbox.evaluator_image."""
+    """Refuse two different images unless sandbox.image is the agent image and sandbox.evaluator_image the evaluator image
+    (pinned IDs). A config naming one image for both (the configs prepared before the split, 2026-11-24) runs as it declares."""
+    split = sandbox["image"] != sandbox["evaluator_image"]
     labels = {key: json.loads(subprocess.run(["podman", "image", "inspect", "--format", "{{json .Config.Labels}}", sandbox[key]], capture_output=True,
                                              text=True, timeout=min(20, supervisor.remaining()), check=True, env=podman_env()).stdout) or {}
-              for key in ("image", "evaluator_image")}
-    if (labels["image"].get(IMAGE_ROLE_LABEL), labels["evaluator_image"].get(IMAGE_ROLE_LABEL)) != ("agent", "evaluator"):
+              for key in ("image", "evaluator_image")[:1 + split]}
+    if split and (labels["image"].get(IMAGE_ROLE_LABEL), labels["evaluator_image"].get(IMAGE_ROLE_LABEL)) != ("agent", "evaluator"):
         raise SandboxFailure(f"sandbox.image must be the agent image ({AGENT_IMAGE}) and sandbox.evaluator_image the evaluator image "
                              f"({EVALUATOR_IMAGE}) of one two-image record (experiments/images/trusted-image-isolated.json)")
     if "segmentation" in tools and labels["image"].get(TOOL_IMAGE_LABEL) != "torch-cpu":

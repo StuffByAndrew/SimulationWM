@@ -492,7 +492,8 @@ trusted record (`experiments/images/trusted-image-isolated.json`). The **agent i
 tool's local world), `predictor` and `submission` (the stream-mode predictor worker). The **evaluator image**
 (`localhost/sim2sim:latest`, `sandbox.evaluator_image`: candidate worker, evaluator worker, call-mode predictors, the
 limit probe) holds the whole package, including every evaluation and metric module. Images carry the label
-`sim2sim.image-role` (`agent` or `evaluator`); a strict run refuses any other pairing before launch, and the build
+`sim2sim.image-role` (`agent` or `evaluator`); a strict run refuses any other pairing of two images before launch (configs prepared before the split name
+`localhost/sim2sim:latest` for both and run as declared), and the build
 inspection greps the agent image for every absent module's path, dotted name and docstring. The scripted protocol
 demonstration is not in either image; the OCI integration test passes it as an inline `python -c` command. Original environments, manifests, run stores,
 repository history, credentials and researcher README are excluded. The agent

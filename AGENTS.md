@@ -88,12 +88,13 @@ Do not launch local simulations to investigate a failed compute job.
   reviewed image recipe, protocol and environment/evaluation contracts.
 - Agent-image isolation (user, 2026-11-24): `Containerfile` builds two images (targets `agent`, `evaluator`) recorded
   together in one two-image record (`experiments/images/trusted-image-isolated.json`; `podman-job.sh` loads and verifies
-  both, refusing old single-image records). The agent image (`localhost/sim2sim-agent:latest`, `sandbox.image`: agent
+  both; it still loads older single-image records, whose prepared configs name `localhost/sim2sim:latest` for both images and
+  run as declared, by explicit dispatch in `scripts/trusted-images.py`). The agent image (`localhost/sim2sim-agent:latest`, `sandbox.image`: agent
   container, stream-mode predictors) ships only `sandbox_agent.py` and `sim2sim` `client`, `simulation`, `robots`,
   `candidate_worker`, `predictor`, `submission`. Evaluation and metric modules live only in the evaluator image
   (`localhost/sim2sim:latest`, `sandbox.evaluator_image`: candidate worker, evaluator, call-mode predictors). Agent-side
   modules import only each other (other modules lazily, on evaluator-side paths only); adding a module to the
-  agent image needs the Containerfile list and a reason. The runtime refuses runs whose images lack the matching
+  agent image needs the Containerfile list and a reason. The runtime refuses two different images that lack the matching
   `sim2sim.image-role` label; the build greps the agent image for every absent module's path, name and docstring.
 
 Read the relevant docs before changing these interfaces. Coordinate action
@@ -155,7 +156,7 @@ the actual pass/failure result; a submitted job is not a successful test.
 
 OCI integration is skipped by default. Build and record the trusted images with
 `SIM2SIM_TRUSTED_IMAGE_RECORD=$PWD/experiments/images/trusted-image-isolated.json sbatch scripts/build-image.slurm`
-(both archives and IDs in that record, the `podman-job.sh` default), then submit
+(both archives and IDs in that record), then submit with the same `SIM2SIM_TRUSTED_IMAGE_RECORD`
 `SIM2SIM_OCI_TEST=1 SIM2SIM_PROCESS_LIMIT_BACKEND=slurm_step sbatch -c 4 --mem=8G --export=ALL scripts/test.slurm tests/test_oci.py`.
 This test must remain on `test` compute nodes and must not be treated as passed
 when skipped. Strict runs: `sbatch scripts/experiment-strict.slurm ID [ID]`.

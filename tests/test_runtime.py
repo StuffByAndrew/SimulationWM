@@ -758,3 +758,34 @@ def test_prepared_output_accepts_continuation_prior_directory(tmp_path):
     except RuntimeFailure:
         return
     raise AssertionError("symlink inside prior/ must be refused")
+
+
+def test_image_roles_allow_the_split_pair_or_one_declared_image_only():
+    from types import SimpleNamespace
+    from sim2sim.runtime import SandboxFailure, check_image_roles
+    labels = {"agent": {"sim2sim.image-role": "agent"}, "eval": {"sim2sim.image-role": "evaluator"}, "old": None}
+    inspect = lambda args, **options: subprocess.CompletedProcess(args, 0, stdout=json.dumps(labels[args[-1]]))
+    clock = SimpleNamespace(remaining=lambda: 60)
+    with patch("sim2sim.runtime.subprocess.run", side_effect=inspect):
+        check_image_roles({"image": "agent", "evaluator_image": "eval"}, {}, clock)
+        check_image_roles({"image": "old", "evaluator_image": "old"}, {}, clock)  # pre-split configs name one image for both
+        for image, evaluator in (("eval", "agent"), ("old", "eval"), ("agent", "old")):
+            try:
+                check_image_roles({"image": image, "evaluator_image": evaluator}, {}, clock)
+                raise AssertionError((image, evaluator))
+            except SandboxFailure:
+                pass
+
+
+def test_trusted_image_records_dispatch_on_their_shape(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    lines = lambda record: subprocess.run([sys.executable, str(root / "scripts/trusted-images.py"), str(record)], capture_output=True, text=True)
+    single = json.loads((root / "experiments/images/trusted-image.json").read_text())
+    assert lines(root / "experiments/images/trusted-image.json").stdout.split() == \
+        ["image", "localhost/sim2sim:latest", single["image_id"], single["archive"], single["archive_sha256"]]
+    two = json.loads((root / "experiments/images/trusted-image-isolated.json").read_text())["images"]
+    assert [line.split()[:3] for line in lines(root / "experiments/images/trusted-image-isolated.json").stdout.splitlines()] == \
+        [["agent_image", "localhost/sim2sim-agent:latest", two["agent"]["image_id"]], ["evaluator_image", "localhost/sim2sim:latest", two["evaluator"]["image_id"]]]
+    for bad in ({"images": two, "image_id": single["image_id"]}, {"images": {"agent": two["agent"]}}, {"image_id": single["image_id"]}):
+        (tmp_path / "bad.json").write_text(json.dumps(bad))
+        assert lines(tmp_path / "bad.json").returncode != 0, bad
