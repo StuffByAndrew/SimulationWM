@@ -585,7 +585,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
                                'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die', 'lowrank',
-                               'objects', 'identification'})  # die: host-side, src/sim2sim/die.py; objects, identification: tabletop.py
+                               'objects', 'identification', 'gear_train'})  # die: host-side, src/sim2sim/die.py; objects, identification: tabletop.py
 
 
 def selected_metrics(config):
@@ -617,7 +617,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
                         'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture',
-                        'lowrank', 'tabletop'):
+                        'lowrank', 'tabletop', 'gear_train'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -632,7 +632,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
                 staging.rename(target)
         report['project_path'] = f'versions/{version}/project'
         simconfig = dict(config.get('source_config', {}))
-        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'default_ticks', 'graspable_bodies'):
+        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'grasp_slip_m', 'default_ticks', 'graspable_bodies'):
             if key in config:
                 simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)
@@ -736,6 +736,10 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             from .cloth import evaluate as cloth
             assert config.get('cloth'), 'cloth metric requires a private [cloth] probe table'
             scores['cloth'] = cloth(source_path, candidate_path, simconfig, candidate_config, config['cloth'], artifacts / 'cloth')
+        if 'gear_train' in selection:
+            from .gear_train import evaluate as gear_train
+            assert config.get('gear_train'), 'gear_train metric requires a private [gear_train] table'
+            scores['gear_train'] = gear_train(source, source_path, candidate_path, simconfig, candidate_config, config, artifacts / 'gear_train')
         hook = config.get('metrics_hook')
         if hook:
             import importlib

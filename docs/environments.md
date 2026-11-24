@@ -490,3 +490,62 @@ hit 0 of 40 releases while predicting 100 %; the empirical choice hit 9 of 40 (p
 predictable (CRPS 0, all hits). Earlier tuning (jobs `62987997`–`62994769`, `experiments/validation/fixture-explore-*.log`)
 found that column-loaded flaps jam, a 2 mm blade lets a dropped shoe tunnel through, the original short housing showed a
 folded flap, and a loaded dial creeps under MuJoCo's soft dry friction; the design above fixes each.
+
+## Explanation-depth gear train (`gear_train`)
+
+Design: [level-designs/gear-train-depth-20261124.md](level-designs/gear-train-depth-20261124.md). Hypothesis: when two
+explanations predict everything the agent can probe equally well, the stated use of the model decides whether the agent
+builds the deep one (every gear) or the shallow one (crank and hand with lumped inertia and damping). Conditions (wave 28)
+differ only in one appended sentence: none (G-recon), a planner that values speed (G-cheap), gear-removal predictions
+(G-deep). Metric `gear_train` ([evaluation](evaluation.md#gear-train-gear_train)).
+
+`experiments/validation/gear-scenes.py` writes `environments/gear_train/{scene.xml, shallow.xml, manifest.toml}` (all values
+in the generator):
+
+- A vertical panel with a crank (left; handle knob at 40 mm radius), a dial hand (right; pointer 70 mm) and 20 gears between
+  them: idlers and two compound pairs on two layers, overall ratio hand:crank = −7.5, zigzag train 0.69 m long. Gears are
+  aluminium cylinders (2700 kg/m³, 6 mm thick) with massless non-colliding tooth visuals; crank and hand carry
+  counterweights, so no body has a gravity torque. Couplings are joint equalities (solref 0.001, solimp 0.9999); every axle
+  has damping 1.0e-4 N m s/rad (crank coast time constant about 0.12 s). No moving geom collides; only crank and hand are
+  graspable (gears refuse the grasp).
+- Timestep 0.5 ms and Newton tolerance 1e-12 (the default 1e-8 stops a stiff 21-constraint train early); RGB-D, movable
+  camera, point grasp with wrench, `sequence` tool.
+- Public grip slip `simulation.grasp_slip_m = 0.002` ([protocol](protocol.md)): the grip lets go when stretched more than
+  2 mm. Without it an over-pull (dragging the handle past its reach) stretches the soft grasp until MuJoCo's
+  inertia-scaled constraint softness winds up the deep train and makes it spring back after release, which the lumped model
+  cannot do (up to 3.39 rad hand RMS difference). The grasp softness stays at the default.
+- `shallow.xml` (private): crank and hand, one coupling with the overall ratio, crank armature Σ I_i r_i² = 5.20e-3 kg m²
+  and damping b (1 + Σ r_i²) = 0.0460 N m s/rad, at 5 ms, the largest step whose probe error stays within the gate.
+- Probes (private): crank turns of 120° in 3.0 s and 1.8 s and −60° in 0.9 s; hand pushes of 30° and −40° in 0.8 s; each
+  follows the handle's or tip's circle in 5° chords, then release and 0.8 s of coasting. `[gear_train]`: removals
+  `gear_03`, `gear_10`, `gear_14`; axle tolerance 15 mm; G-cheap gate `cheap_gate_rad = 0.02838` (the worst probe error of
+  `shallow.xml` with armature and damping each ×0.9 or ×1.1); timing 5 runs × 1 s with a 0.02 N m crank torque.
+
+Evals card: primary, the depth class of every submission and the final one; secondary, probe accuracy (expected equal across
+depths), cost per simulated second against both references, G-cheap and G-deep scores, at matched wall minutes and tokens.
+Qualitative: reasoning about which depth the use needs, citing the stated use, timing own models, building both depths
+before choosing, how lumped inertia and damping were identified. Run check: dashboard video, candidate diff, physics
+inspector on submitted versions (which gears exist). Report: cost vs probe error per submission with both references,
+side-by-side final models, depth choice by condition. Not built: the H4 trace classifier and a dashboard per-version
+structure summary (read `scores.gear_train.structure` and `sim_cost` from the private reports).
+
+Validation (2026-11-24, Slurm `test`): `experiments/validation/gear-check.py` job `63463232` passed, outputs in
+`experiments/validation/gear-check/`. The generator output matched the files. Bodies rest (0 rad/s), and the lumped crank
+inertia equals the deep train's (7.6454e-3 kg m²). All 20 gears render (104–320 px, 8–19 mm in front of the panel in
+depth) and refuse the grasp. Source probes are deterministic.
+
+| Check | Result |
+| --- | --- |
+| Shallow at 0.5 ms vs deep, every probe | mean 0.00017 rad, worst probe/body 0.00087 rad (3 % of the gate) |
+| `shallow.xml` at 5 ms | 0.0059 rad, passes the gate |
+| Cost per simulated second | deep 40.7 ms (22 bodies, 21 equalities) vs shallow 0.80 ms: 51× |
+| In-reach sweeps, 0.5–1.5× probe speed, deep and both shallow | never slip; peak stretch 1.0 mm at probe speed, 1.6 mm at 1.5× |
+| Over-pulls (crank 5 cm slow and fast, hand 8 cm) | all slip in both models; afterwards agree within 0.006 rad (21 % of the gate); without the slip up to 3.39 rad |
+| Evaluator on copies | source copy and a renamed copy with flipped crank/hand axes: 0 rad, class deep 20/20, removals answer with 0 rad |
+| Evaluator on `shallow.xml` | class shallow, G-cheap ok, all 3 removals `cannot_answer`; the unmodified shallow model misses each removed-gear source by 2.97–2.98 rad |
+
+Tests: same job, 49 passed (`test_gear_train`, `test_simulation`, `test_metric_selection`, `test_evaluation`,
+`test_realtime`, `test_candidate`). Tuning history: jobs `63323565`–`63325726` (2 ms: deep and shallow diverged under crank
+grasps), `63454396`–`63455903` (0.5 ms with stiffer grasps: still diverged under over-pulls), `63460340`–`63461841` (slip
+threshold, probe speeds, solver tolerance; `gear-explore.py`, `gear-diag.py`). Smoke: `--prepare-only` of `w28-gear-cheap`
+(public `grasp_slip_m = 0.002`, neutral task plus the G-cheap sentence) and the dashboard lists the level.

@@ -181,7 +181,23 @@ default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # graspable_bodies = ["block_red", "block_blue"] # otherwise source manifest/auto discovery
 # grasp_solref = [0.01, 1.0]
 # grasp_solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
+# grasp_slip_m = 0.004  # optional: the grip slips (releases) when stretched farther; absent = it never slips
 ```
+
+`grasp_solref` (2 numbers) and `grasp_solimp` (5 numbers) set the point grasp's connect-constraint softness (MuJoCo
+`solref`/`solimp`); the defaults above apply when they are absent, so existing configs and prepared runs are unchanged.
+`grasp_slip_m` (meters, in (0, 1]; absent by default, when the grip never slips) makes the grip slip: after every physics
+step, if the pinned body point lies farther than `grasp_slip_m` from the grasp target (the pinned point the agent's moves
+translate), the grasp is released exactly as by `release`. The rest of a `move` that slipped still runs its ticks without
+a grip. The agent sees what a release shows: `grasped` is false in the next observation, a wrench reading is zero, and a
+later `move` is rejected until a new `grasp` (a `sequence` stops at that rejected step). Stretch is measured on the state the step started from, so it
+lags by one step. All three knobs are public: `public_tool_config` reports the values in force, and the reference world
+(lock-step and real-time), the agent's reconstruction world (candidate worker) and the evaluator's source and candidate
+worlds all use them, so the grasp behaves the same everywhere. `Simulation` rejects malformed values (lists of finite
+numbers of those lengths; a slip that is not a number in range), so they fail the run on the host at start. MuJoCo clamps
+a `solref` time constant below two timesteps. The gear-train level (`environments/gear_train`) sets `grasp_slip_m`: a
+hard over-pull of the crank would otherwise stretch the soft grasp far enough that MuJoCo's inertia-scaled constraint
+softness tells its equality-coupled gear train from the lumped equivalent; within the handle's reach the grip holds.
 
 ## Internal Python interface
 
