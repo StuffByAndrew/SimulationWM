@@ -62,6 +62,26 @@ Keep this list current: strike items when a log entry covers them.
 - [ ] Build and queue per [level-designs/touch-tabletop-20261124.md](level-designs/touch-tabletop-20261124.md): Franka +
   Shadow hand, touch only; L1 abstract shapes, L2 mug/banana/hammer (categories unstated vs stated), L3 spiky ball in a
   bin; × {w21, w25} harness = 8 runs, Neon, n=1, 4 h. Settings are user-approved; do not re-ask.
+- [x] Built (builder session, 2026-11-24). **Ready to launch: L1 and L2 (6 runs). L3 (2 runs): hold until the designer
+  answers the two L3 questions below.**
+  - Configs `experiments/configs/wave27-20261124/`: `w27-shapes`, `w27-objects-unstated`, `w27-objects-stated` and
+    `w27-bin-spiky`, each also as `-touch` (w25 harness: + local controller copy, pausable bash). gemini-4-neon, touch only
+    (tactile, no images, no wrench), 14400 s wall, no checkpoint hold, provider hold 129600, pool `gemini-20261124`.
+  - Image `b56436aa9137…`: record `experiments/images/trusted-image-touch.json` (job `63327059`, built from the merged
+    branch `d59a5b2`). Point strict jobs at it with `SIM2SIM_TRUSTED_IMAGE_RECORD`. No existing baseline needs a rerun:
+    the harness change is additive (a new robot family).
+  - Validation:
+    - check job `63325077` (all premises; see the `docs/environments.md` section);
+    - tests `63325338` and `63325491` (tabletop, local controller, runtime, simulation);
+    - OCI `63327523` (8 passed, 1 skipped) and `63328095` (new panda_shadow end-to-end test passed);
+    - smoke `--prepare-only` of `w27-objects-stated` and `w27-bin-spiky-touch` (job `63328177`).
+  - Watch in the first runs: whether agents find the flexed-wrist pose. With the wrist straight the forearm hangs ~4 cm
+    under the palm and hits low objects, the table and the bin rim. Also watch L3 balls knocked over the 30 mm wall.
+    After each run: `python -m sim2sim.tabletop RUN_DIR` (Slurm `test`) for grab success and the contact coverage view.
+  - L3 open questions (sent to the designer):
+    - Width: equal height leaves the spiky ball 62–68 mm wide vs 48.5 mm smooth. That is geometric with six cones.
+    - Discriminability: palm taxels are 2–3 (spiky) vs 1 (smooth) in only 6/9 presses.
+    - Grab: possible but hard (1 of 72 open-loop tries).
 
 ## Wave 24 biased die (user, 2026-11-23): launched on Neon only (4 runs)
 - [ ] Configs `experiments/configs/wave24-20261123/` (8 runs): {point grasp without wrench, Franka with joint efforts} ×
