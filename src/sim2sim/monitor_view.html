@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sim2sim monitor</title>
+<style>
+:root{color-scheme:dark;font:13px system-ui;background:#111820;color:#e8edf2}
+body{margin:16px}h1{font-size:17px;margin:0 0 4px}h2{font-size:14px;margin:18px 0 6px;color:#bcd}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:3px 7px;border-bottom:1px solid #22303c;vertical-align:top}th{color:#9fb3c4;font-weight:500}
+.muted{color:#8597a6}.bad{color:#ed8b9a}.ok{color:#85ce98}.warn{color:#edc37e}
+.bar{display:inline-block;width:90px;height:7px;background:#253340;border-radius:4px;vertical-align:middle;margin-right:5px}
+.bar i{display:block;height:100%;background:#7dc8ff;border-radius:4px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+code{font-size:12px;color:#c9d6e2}#error{white-space:pre-wrap}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+</style></head><body>
+<h1>sim2sim monitor</h1><div id="meta" class="muted"></div><div id="error" class="bad"></div>
+<h2 id="running-title">Running</h2><table id="running"></table>
+<h2 id="pending-title">Queued</h2><div id="pending" class="muted"></div>
+<h2 id="failures-title">Failures and non-completed runs (7 days)</h2><table id="failures"></table>
+<div class="grid"><div><h2>API spend per key</h2><table id="lifetime"></table><table id="daily" style="margin-top:8px"></table></div>
+<div><h2>Storage</h2><table id="storage"></table><h2>Request size advice</h2><div id="advice"></div></div></div>
+<h2>CPU and memory use per strict job</h2>
+<div class="muted">Cores used = total CPU time ÷ elapsed. Peak memory is an upper bound: per-step peaks summed while the steps overlap. Roles are the job's Slurm steps (controller = batch script).</div>
+<table id="history"></table>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const gb=b=>b==null?'—':(b/2**30).toFixed(b<2**30?2:1)+' GB';
+const pct=x=>x==null?'—':(100*x).toFixed(x<.1?1:0)+'%';
+const usd=x=>'$'+(x??0).toFixed(2);
+function dur(s){if(s==null)return '—';s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+'h'+String(m).padStart(2,'0'):m+'m';}
+function bar(f){f=Math.max(0,Math.min(1,f||0));return `<span class="bar"><i style="width:${100*f}%"></i></span>`;}
+function table(el,head,rows){el.innerHTML='<tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr>'+(rows.length?rows.join(''):`<tr><td class="muted" colspan="${head.length}">none</td></tr>`);}
+function runLine(r){const cls=r.status==='completed'?'ok':r.status==='running'?'':'bad';
+ const prog=r.wall_limit_s?bar((r.wall_elapsed_s||0)/r.wall_limit_s)+dur(r.wall_elapsed_s)+' / '+dur(r.wall_limit_s):'';
+ return `<div><code>${esc(r.id)}</code> <span class="${cls}">${esc(r.status)}</span>${r.root?` <span class="muted">${esc(r.root)}</span>`:''} ${prog}`+
+  (r.reason||r.error?`<div class="muted">${esc([r.stage,r.reason].filter(Boolean).join(' · '))} ${esc(r.error)}</div>`:'')+'</div>';}
+function draw(s){
+ $('meta').textContent=`updated ${s.updated_at||'—'} · refreshes every minute · history backfilled through ${s.backfilled_through||'—'}`;
+ $('error').textContent=s.error?'Refresh failed: '+s.error:'';if(!s.running)return;
+ $('running-title').textContent=`Running (${s.running.length})`;
+ table($('running'),['Job','Where','Job time','Runs','Cores used','Peak mem'],s.running.map(j=>{const u=j.usage;
+  return `<tr><td><code>${j.job}</code></td><td>${esc(j.partition)}<div class="muted">${esc(j.node)}</div></td><td>${esc(j.elapsed)}<div class="muted">limit ${esc(j.timelimit)}</div></td>`+
+  `<td>${j.runs.map(runLine).join('')}</td><td>${u.cores_used==null?'—':u.cores_used.toFixed(2)} / ${u.alloc_cpus}</td><td>${gb(u.peak_mem_bound)} / ${gb(u.req_mem)}</td></tr>`;}));
+ $('pending-title').textContent=`Queued (${s.pending.length})`;
+ $('pending').innerHTML=s.pending.map(p=>`<code>${esc(p.job)}</code> ${esc(p.partition)} <span class="warn">${esc(p.reason)}</span>`).join(' · ')||'none';
+ $('failures-title').textContent=`Failures and non-completed runs (7 days): ${s.failures.length}`;
+ table($('failures'),['Job','Ended','Slurm','Runs and reasons','Last log error'],s.failures.map(f=>
+  `<tr><td><code>${f.job}</code></td><td>${esc((f.end||'').replace('T',' '))}</td><td class="${f.state==='COMPLETED'?'':'bad'}">${esc(f.state)}<div class="muted">exit ${esc(f.exit)}</div></td>`+
+  `<td>${f.runs.map(runLine).join('')||'<span class="muted">no run IDs on the submit line</span>'}</td><td class="muted"><code>${esc(f.log)}</code></td></tr>`));
+ const sp=s.spend,keys=Object.keys(sp.lifetime).sort();
+ table($('lifetime'),['Key','Lifetime','Cap'],keys.map(k=>{const cap=sp.caps[k];
+  return `<tr><td><code>${esc(k)}</code></td><td>${usd(sp.lifetime[k])}</td><td>${cap?bar(sp.lifetime[k]/cap)+usd(cap):'<span class="muted">none</span>'}</td></tr>`;}));
+ table($('daily'),['Day',...keys.map(k=>`<code>${esc(k.replace('_API_KEY',''))}</code>`),'Source'],sp.daily.slice().reverse().map(d=>
+  `<tr><td>${d.day}</td>${keys.map(k=>`<td>${d.keys[k]?usd(d.keys[k]):'<span class="muted">—</span>'}</td>`).join('')}<td class="muted">${d.source}</td></tr>`));
+ table($('storage'),['Store','Free / state','Runs'],s.storage.map(r=>`<tr><td>${r.name}<div class="muted"><code>${esc(r.path)}</code></div></td><td>`+
+  (r.free_gb!=null?`${bar(1-r.free_gb/r.total_gb)}${r.free_gb.toFixed(0)} of ${r.total_gb.toFixed(0)} GB free`:`<span class="${r.writable==='ok'?'ok':'bad'}">${r.writable==='ok'?'writable':esc(r.writable)}</span> <span class="muted">(group quota not visible)</span>`)+
+  `</td><td>${r.runs??''}</td></tr>`));
+ const a=s.advice;$('advice').innerHTML=a?`Over ${a.jobs} finished strict jobs (≥ 30 min): median CPU efficiency <b>${pct(a.median_cpu_efficiency)}</b>; `+
+  `p95 cores used per run <b>${a.p95_cores_per_run.toFixed(2)}</b> (median request ${a.median_alloc_cpus} CPUs per job); p95 peak memory per run <b>${gb(a.p95_peak_mem_per_run)}</b> (median request ${gb(a.median_req_mem)} per job). `+
+  `The sandbox steps reserve their own CPUs (srun --exact): at most <b>${a.max_step_cpus_per_run.toFixed(0)}</b> CPUs per run were reserved at once, which is the floor for a request. `+
+  `Suggested per run: <b>${Math.max(a.max_step_cpus_per_run,Math.ceil(1.5*a.p95_cores_per_run))} CPUs and ${gb(Math.max(1.5*a.p95_peak_mem_per_run,2**30))}</b> `+
+  `(1.5× the p95 use; memory must also cover the steps' configured sandbox memory limits, which sacct does not show).`:'<span class="muted">no finished jobs yet</span>';
+ table($('history'),['Job','Started','Runs','State','CPUs','Cores used','CPU eff.','Peak mem / request','Roles (max RSS · cores)'],s.history.map(h=>{const u=h.usage;
+  const roles=Object.entries(u.roles).map(([r,v])=>`${r}×${v.steps} ${gb(v.max_rss)} · ${(v.busy_s?v.cpu_s/v.busy_s:0).toFixed(2)}`).join('<br>');
+  return `<tr><td><code>${h.job}</code><div class="muted">${esc(h.partition)}</div></td><td>${esc((h.start||'').replace('T',' '))}</td><td>${h.runs.map(r=>`<code>${esc(r)}</code>`).join('<br>')}</td>`+
+  `<td class="${h.state==='COMPLETED'?'':'bad'}">${esc(h.state)}</td><td>${u.alloc_cpus}</td><td>${u.cores_used==null?'—':u.cores_used.toFixed(2)}</td><td>${pct(u.cpu_efficiency)}</td>`+
+  `<td>${gb(u.peak_mem_bound)} / ${gb(u.req_mem)} <span class="muted">${pct(u.mem_efficiency)}</span></td><td class="muted">${roles}</td></tr>`;}));}
+async function refresh(){try{const r=await fetch('api/state',{cache:'no-store'});draw(await r.json());}catch(e){$('error').textContent='Monitor unreachable: '+e;}}
+refresh();setInterval(refresh,30000);
+</script></body></html>

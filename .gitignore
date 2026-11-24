@@ -20,6 +20,7 @@ sim2sim-experiment-*.out
 !/.claude/agents/
 /experiments/reports/
 /experiments/cost-ledger/
+/experiments/monitor/
 /oom
 /*.log
 /experiments/images/*.tar
