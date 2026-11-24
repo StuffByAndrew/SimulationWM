@@ -1678,7 +1678,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         audit.record({"kind": "inference_hold_decision", **holds[-1]}, reservation=context["token"])
         return decision["action"] == "resume"
 
-    def provider_pause(reason, lost, failures):
+    def provider_pause(reason, lost, failures, rewound):
         """Credit a provider-failed attempt's time and wait out a backoff outside the run; the agent never sees the outage."""
         nonlocal deadline, provider_held
         supervisor.credit(lost)
@@ -1696,7 +1696,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 timing["pause_start"] = None
         provider_held += lost + duration
         audit.record({"kind": "provider_hold", "reason": reason, "failed_attempt_seconds": lost, "backoff_seconds": duration,
-                      "consecutive_failures": failures + 1, "provider_held_total_seconds": provider_held}, reservation=context["token"])
+                      "consecutive_failures": failures + 1, "provider_held_total_seconds": provider_held, **rewound}, reservation=context["token"])
 
     def progress_note(text, source, origin, model=None):
         nonlocal progress_used
@@ -2243,12 +2243,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     failures = 0
                     while not stopped:
                         attempt = time.monotonic()
+                        mark = live.mark() if live and provider_hold is not None else None
                         try:
                             inference = broker.call(request, min(deadline, supervisor.deadline) - time.monotonic())
                         except ProviderUnavailable as exc:
                             if provider_hold is None or provider_held >= float(provider_hold):
                                 raise
-                            provider_pause(str(exc), time.monotonic() - attempt, failures)
+                            # A held attempt is outside the run: the real-time world is rewound as if frozen for it.
+                            provider_pause(str(exc), time.monotonic() - attempt, failures, live.rewind(mark) if mark else {})
                             failures += 1
                             continue
                         except BudgetStop as exc:

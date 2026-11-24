@@ -159,14 +159,14 @@ ask(op="finish")
 '''
 
 
-def run_realtime_agent(tmp_path, agent, simulation):
+def run_realtime_agent(tmp_path, agent, simulation, **extra):
     """Run the die level in real time with a local agent script; return the parsed text of its last progress note."""
     from sim2sim.runtime import run
     cmd = [sys.executable, "-u", "-c", agent]
     config = {"source": {"scene": str(DIE)}, "sandbox": {"image": "test", "command": ["agent"]}, "record_video": False,
               "output_dir": str(tmp_path / "run"), "budget": {"wall_only": True, "wall_seconds": 120},
               "simulation": {"realtime": True, **simulation},
-              "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}}
+              "evaluation": {"source_dir": str(DIE.parent), "metrics": ["die"], "entrypoint": "predict.py"}, **extra}
     with patch("sim2sim.runtime.check_rootless"), patch("sim2sim.runtime.check_limits", return_value={}), patch("sim2sim.runtime.check_image_roles"), \
          patch("sim2sim.runtime.container_command", return_value=cmd), \
          patch("sim2sim.runtime.stop_container", side_effect=lambda proc, name: proc.kill()), \
@@ -205,3 +205,62 @@ def test_runtime_records_a_full_frame_batch(tmp_path):
     """Regression (w24 fps100 runs): a 100-frame batch at 320x240 overflowed an audit reservation sized for 5 frames."""
     report = run_realtime_agent(tmp_path, FRAME_BATCH, {"width": 320, "height": 240, "depth": True, "camera": "fixed", "frame_rate": 100})
     assert report == list(range(report[0], report[0] + 100)), report
+
+
+def test_rewind_continues_exactly_as_if_frozen():
+    """A provider-failed attempt mid-throw: after rewind, the world recomputes the very frames (states at the same world times)
+    that the run without the failure produced, on the same frame grid, and resumes from the time of the mark."""
+    world = RealtimeWorld(Simulation(DIE, CONFIG), Simulation(DIE, CONFIG), 25, Launcher(MANIFEST["launcher"]))
+    try:
+        _, thrown = world.command({"op": "throw", "protocol": "toss"}, time.monotonic() + 5)
+        time.sleep(.1)
+        mark = world.mark()
+        time.sleep(.6)  # the failed attempt: these frames are exactly what the unfailed run produces
+        with world.lock:
+            unfailed = {f["frame"]: f["state"] for f in world.kept if f["frame"] >= mark["next_frame"]}
+        rewound = world.rewind(mark)
+        assert world.next_frame == mark["next_frame"] and world.sim.total_ticks == mark["total_ticks"]
+        assert rewound["discarded_frames"] >= len(unfailed) >= 12 and rewound["discarded_ticks"] >= 500, rewound
+        time.sleep(.8)
+        frames = world.frames(thrown["frame"] - 1, 100, time.monotonic() + 1)
+        assert [f["frame"] for f in frames] == list(range(thrown["frame"], thrown["frame"] + len(frames)))
+        assert np.allclose([f["state"]["time"] for f in frames], .04 * np.arange(len(frames)))
+        assert set(unfailed) <= {f["frame"] for f in frames} and all(f["state"] == unfailed[f["frame"]] for f in frames if f["frame"] in unfailed)
+    finally:
+        assert world.close()["error"] is None
+
+
+HELD_INFERENCE = r'''
+import json
+input()
+def ask(**request):
+    print(json.dumps(request), flush=True)
+    return json.loads(input())
+first = ask(op="observe")["observation"]
+assert ask(op="inference", messages=[{"role": "user", "content": "hi"}])["inference"]["content"] == "ok"
+later = ask(op="observe")["observation"]
+print(json.dumps({"op": "progress", "text": json.dumps(later["frame"] - first["frame"])}), flush=True)
+input()
+ask(op="finish")
+'''
+
+
+def test_runtime_freezes_the_world_for_a_failed_provider_attempt_only(tmp_path):
+    """A 1.5 s provider-failed attempt is rewound (frozen like its backoff); the 0.5 s successful call still advances the world."""
+    from sim2sim.audit import read_audit
+    from sim2sim.runtime import ProviderUnavailable
+    value = {"content": "ok", "tool_calls": [], "finish_reason": "stop", "model": "m", "summaries": [], "cost_usd": 1.0, "usage": None,
+             "calls": 2, "remaining_calls": 8, "cumulative_tokens": 4, "remaining_tokens": None, "cumulative_cost_usd": 1.0, "remaining_cost_usd": None}
+    attempts = []
+
+    def call(*args):
+        attempts.append(1)
+        time.sleep(1.5 if len(attempts) == 1 else .5)
+        if len(attempts) == 1:
+            raise ProviderUnavailable("Inference wall-time budget exhausted")
+        return value
+    with patch("sim2sim.runtime.PROVIDER_BACKOFF", .3), patch("sim2sim.runtime.InferenceBroker.call", side_effect=call):
+        advanced = run_realtime_agent(tmp_path, HELD_INFERENCE, {**CONFIG, "frame_rate": 25}, inference={"provider_hold_seconds": 60})
+    assert 12 <= advanced <= 25, advanced  # 0.5 s of real time at 25 fps; without the rewind about 50
+    holds = [e for _, e in read_audit(tmp_path / "run") if e.get("kind") == "provider_hold"]
+    assert len(holds) == 1 and holds[0]["discarded_ticks"] >= 1400 and holds[0]["discarded_frames"] >= 35, holds

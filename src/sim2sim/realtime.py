@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 from collections import deque
 from contextlib import contextmanager
+import copy
 import math
 import threading
 import time
@@ -85,8 +86,8 @@ class RealtimeWorld:
                     self._start_pending()
                     due = self._due()
                     self.max_lag = max(self.max_lag, due - self.sim.total_ticks)
-                if self.sim.total_ticks < due:
-                    self._tick()
+                    if self.sim.total_ticks < due:
+                        self._tick()  # under the lock, so mark and rewind never see a half-stepped world
         except BaseException as exc:
             with self.lock:
                 self.error = exc
@@ -105,8 +106,7 @@ class RealtimeWorld:
         sim.ticks += 1
         sim.total_ticks += 1
         if sim.ticks % self.frame_ticks == 0:
-            with self.lock:
-                self._capture()
+            self._capture()
 
     def _capture(self):
         model = self.sim._model
@@ -206,6 +206,30 @@ class RealtimeWorld:
                 self.origin += time.monotonic() - self.paused_at
                 self.paused_at = None
                 self.lock.notify_all()
+
+    def mark(self):
+        """Everything a passive stretch changes (no command queued: the world only steps, maybe through a running timed
+        action), for rewind."""
+        with self.lock:
+            self._check()
+            assert not self.pending and self.paused_at is None
+            return {"data": copy.copy(self.sim._data), "ticks": self.sim.ticks, "total_ticks": self.sim.total_ticks, "motion": self.motion,
+                    "kept": list(self.kept), "next_frame": self.next_frame, "episode": self.episode, "origin": self.origin, "at": time.monotonic()}
+
+    def rewind(self, mark):
+        """Undo the passive stretch since mark as if the world had been frozen for it (a provider-failed inference attempt):
+        physics, the running timed action and the frame grid continue from the mark. Returns the discarded ticks and frames."""
+        with self.lock:
+            self._check()
+            assert not self.pending and self.paused_at is None and (self.origin, self.episode) == (mark["origin"], mark["episode"]), "rewind needs an unbroken passive stretch"
+            discarded = {"discarded_ticks": self.sim.total_ticks - mark["total_ticks"], "discarded_frames": self.next_frame - mark["next_frame"]}
+            mujoco.mj_copyData(self.sim._data, self.sim._model, mark["data"])
+            self.sim.ticks, self.sim.total_ticks, self.motion, self.next_frame = mark["ticks"], mark["total_ticks"], mark["motion"], mark["next_frame"]
+            self.kept.clear()
+            self.kept.extend(mark["kept"])
+            self.origin += time.monotonic() - mark["at"]
+            self.lock.notify_all()
+            return discarded
 
     def close(self):
         with self.lock:

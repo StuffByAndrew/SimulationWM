@@ -73,7 +73,8 @@ Do not launch local simulations to investigate a failed compute job.
   HTML view.
 - `src/sim2sim/realtime.py`: generic real-time world (`[simulation] realtime`, `frame_rate`; any level, either
   embodiment): host thread at wall-clock rate, FIFO actions on the live world, fixed frame grid rendered from recorded
-  states, no pause/tick-advance/state access. `launcher.py`: optional private `[launcher]` (perturbed resets, `throw`
+  states, no pause/tick-advance/state access for the agent. Host holds pause it; a provider-failed inference attempt is
+  rewound (`mark`/`rewind`) as if frozen, while successful-call latency advances it. `launcher.py`: optional private `[launcher]` (perturbed resets, `throw`
   protocols, seeded streams). `die.py`: biased-die metric `die` (stream mode; host-generated fresh throws, baselines,
   predictor scoring, `RUN/die-view.html`). Keep die-specific logic out of the generic real-time, launcher and predictor
   modules.
