@@ -1,0 +1,17 @@
+{
+ "source": "experiments/validation/touch-check.py",
+ "procedures": {
+  "taxels_curled_fingers": {
+   "trials": 40,
+   "rate": 0.25
+  },
+  "taxels_straight_fingers": {
+   "trials": 40,
+   "rate": 0.475
+  },
+  "height_curled_fingers": {
+   "trials": 40,
+   "rate": 0.975
+  }
+ }
+}

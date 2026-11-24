@@ -14,4 +14,4 @@ seed = 20261124
 
 [tabletop]
 spiky = "ball2"
-bin = { center = [0, -0.12], inner_half = 0.12, floor_z = 0.41, rim_z = 0.44 }
+bin = { center = [0, -0.12], inner_half = 0.12, floor_z = 0.41, rim_z = 0.45 }

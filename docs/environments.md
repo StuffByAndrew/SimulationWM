@@ -227,7 +227,7 @@ With the palm down and the wrist straight the forearm hangs about 4 cm below the
 | --- | --- |
 | `table_shapes` (L1) | abstract tower (17 primitives, 339 g), zigzag of capsules (300.7 g) and two crossed boxes with a dense end (540 g), each matched to one L2 object: mass ratio 0.9999 / 1.0000 / 1.0256, bounding box within 4.1%, primitive count ±1 |
 | `table_objects` (L2) | mug 120 mm tall (typical ~95), banana with 90 mm curvature radius, hammer with a 160 mm handle and steel head; these three unusual dimensions are scored as prior-defeating dimensions. A private `prior.xml` holds typical-size versions at the true poses (prior-only baseline) |
-| `bin_spiky` (L3) | a static bin (24 cm inner, 30 mm walls) with four 60 g balls: one spiky (22 mm core + six octahedral cones 20 mm proud with 29 mm bases, at least one palm taxel cell; it rests on three tips with three tips up) and three 48.5 mm smooth spheres, each with explicit inertials equal to the spiky ball's compiled inertia |
+| `bin_spiky` (L3) | a static bin (24 cm inner, 40 mm walls) with four 60 g balls: one spiky (22 mm core + six octahedral cones 20 mm proud with 29 mm bases, at least one palm taxel cell; it rests on three tips with three tips up) and three 48.5 mm smooth spheres, each with explicit inertials equal to the spiky ball's compiled inertia |
 
 L3 removes the size and dynamics cues (user decision 2026-11-24): equal mass (60.000 g), isotropic inertia equal within
 0.6%, equal top height (0.4585 m). A width difference remains (spiky 62–68 mm by yaw against 48.5 mm): with few cones the
@@ -238,12 +238,25 @@ Metrics: L1/L2 `objects` (primary: per-object Chamfer; found, centroid, labels, 
 `center_of_mass`, `density`; L3 `objects` and `identification` (from the submitted `parameters.json`), plus post-run grab
 success and the contact coverage map (`python -m sim2sim.tabletop RUN_DIR`; see `docs/evaluation.md`).
 
-Check `experiments/validation/touch-check.py OUTDIR` (Slurm job `63325077`, results in `experiments/validation/touch-check/`):
+Check `experiments/validation/touch-check.py OUTDIR` (Slurm job `63460653`, results in `experiments/validation/touch-check/`):
 generated files match; all objects rest (< 0.4 mm in 2 s); palm-down IK over every table object (12/12 collision free) and
-the bin interior (75/75 solved, 56 collision free: the rest touch balls or walls at floor level); held-pose error
-≤ 9.2 mm. Palm presses (wrist flexed): smooth balls light 1 taxel in 9/9 presses, the spiky ball 2–3 taxels in 6/9.
-Scripted grab: an open-loop sweep (12 hand yaws × 2 grip heights × 3 closing poses, job `63324769`) lifts the spiky ball
-in 1 of 72 tries (14.5 cm above the rim; the check pins that grasp); smooth balls lift in 6 of 15. Metrics on reference
+the bin interior (75/75 solved, 57 collision free: the rest touch balls or walls at floor level); held-pose error
+≤ 9.2 mm.
+
+L3 is an explicitly hard identification task (user, 2026-11-24): the palm's 4 × 3 taxel grid rarely spans two of the spiky
+ball's tips, and there is no pass bar. The check measures scripted identification procedures (3 palm presses per ball at
+random ±15 mm offsets, 40 seeded trials each) as reference floors for reports, stored privately in
+`environments/panda_shadow/bin_spiky/reference_floors.json`:
+
+| Procedure | Spiky ball named |
+| --- | --- |
+| ≥ 2 palm taxels, fingers curled | 25% |
+| ≥ 2 palm taxels, fingers straight | 47.5% |
+| most presses with first contact ≥ 14 mm above the ball top (the fingers meet the side tips) | 97.5% |
+
+Scripted grab with 40 mm walls: an open-loop sweep (12 hand yaws × 3 grip heights × 3 closing poses, job `63458855`) lifts
+the spiky ball in 1 of 108 tries (5.5 cm above the rim, all smooth balls in the bin); the check pins that grasp. With
+30 mm walls it was 1 of 72 (job `63324769`); smooth balls lift in 6 of 15. Metrics on reference
 candidates: identity scores zero error and label accuracy 1; the prior-only baseline errs on all three prior-defeating
 dimensions (mug −25 mm, hammer +120 mm, banana bow −18 mm); a single-box candidate finds no object; L3 identification is
 correct for the true position, wrong for a smooth ball's, and `unavailable` for a missing, malformed or non-JSON file.

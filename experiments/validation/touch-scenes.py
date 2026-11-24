@@ -291,9 +291,10 @@ LABELS = {"mug": ["mug", "cup", "tankard", "stein"], "banana": ["banana", "plant
 # dynamics cue: equal top height (the spiky ball rests on three tips with three tips up, so its height is twice the tip-facet
 # distance), equal mass and the spiky ball's compiled inertia (octahedral symmetry makes it isotropic) as explicit inertials.
 BIN = np.array([0., -.12])
-# Walls 30 mm (above the 27.5 mm ball radius): with the palm down the Shadow forearm hangs ~4 cm below the palm face, so
-# 80 mm walls kept the palm 3-12 cm above every ball (jobs 63319921, 63320350); at <= 40 mm a pitched wrist reaches the tops.
-BIN_HALF, BIN_WALL, BIN_HEIGHT, BIN_FLOOR = .12, .01, .03, .01  # inner half width, wall thickness, wall height above floor
+# Walls 40 mm (user, 2026-11-24: fewer balls knocked out than at 30 mm): with the palm down the Shadow forearm hangs ~4 cm below
+# the palm face, so 80 mm walls kept the palm 3-12 cm above every ball (jobs 63319921, 63320350); at <= 40 mm a flexed wrist
+# reaches the tops.
+BIN_HALF, BIN_WALL, BIN_HEIGHT, BIN_FLOOR = .12, .01, .04, .01  # inner half width, wall thickness, wall height above floor
 FLOOR_Z = TOP + BIN_FLOOR
 RIM_Z = FLOOR_Z + BIN_HEIGHT
 CORE_R, BALL_MASS, SPIKE_BASE, SPIKE_HEIGHT = .022, .060, .0145, .020  # SPIKE_BASE: cone base radius on the core
