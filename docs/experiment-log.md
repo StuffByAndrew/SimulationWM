@@ -6,6 +6,17 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-24 20:30 UTC — Wave 28 gear-train (explanation depth) queued at top priority
+- Merged builder commit 83ba220 (01304fa). Premise check `63463232`: deep vs shallow probe error 3% of the gate; the deep
+  model costs 51× per simulated second.
+- Record `trusted-image-isolated-gear.json`: agent `53de04c98fef`, evaluator `8e8a8af0c286`. OCI `63471353` 9 passed,
+  1 skipped; non-OCI `63473067`.
+- Runs `w28-gear-{recon,cheap,deep}-20261124-001`: Neon, 4 h, no checkpoint, point grasp with wrench, RGB-D, movable
+  camera, sequence tool, the neutral task, and `grasp_slip_m = 0.002`. Lab root; sources identical across conditions.
+- Jobs `63475962`, `63475964`, `63476006` (sapphire, 3 days), moved to the top of my queue ahead of fixture and die.
+- Watch for: agents stalled by the grip slipping on over-pulls. The H4 trace classifier and the dashboard structure
+  summary are deferred by the builder.
+
 ## 2026-11-24 19:40 UTC — Isolated image merged; waves 23, 24 and 27 queued on it, on the lab root (netscratch full again)
 - **Agent-image isolation merged** (00001b4 = builder commit 8d4ba23).
   - Record `experiments/images/trusted-image-isolated.json`: agent `a82e2587b4ab` (`localhost/sim2sim-agent:latest`)
