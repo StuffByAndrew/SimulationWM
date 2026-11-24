@@ -342,11 +342,13 @@ IDEAL_BLOCK = (" The spring between the two plates is an ideal linear spring (Ho
                "of exactly 0.0235 kg.")
 TETRA_METRICS = ["chamfer", "center_of_mass", "density", "image_mse", "dynamics", "expert"]
 ENVS.update({f"{t}_spring{b}": (TETRA_METRICS, RECON) for t in ("tetra", "cube") for b in ("", "_block")})
-RUNS22.update({f"w20-{t}-spring{b.replace('_', '-')}": (f"{t}_spring{b}", f"{'tetrahedral cluster' if t == 'tetra' else 'cube of unknown mass'} "
+# A plain assignment (not only an update) so the dashboard's _assignments, which runs assignments only, sees these entries.
+SCALE_RUNS = {f"w20-{t}-spring{b.replace('_', '-')}": (f"{t}_spring{b}", f"{'tetrahedral cluster' if t == 'tetra' else 'cube of unknown mass'} "
                f"+ ideal spring{' + block of stated mass' if b else ', k stated'}; point grasp without force, RGBD, movable camera, sequence tool",
                {**W20, "movecam": True, "wrench": False, "metrics": TETRA_METRICS, "eval_timeout": 600,
                 "task": TASK_CONVERGE + (TETRA_INERTIA if t == "tetra" else CUBE_INERTIA) + (IDEAL_BLOCK if b else IDEAL_K)})
-               for t in ("tetra", "cube") for b in ("", "_block")})
+               for t in ("tetra", "cube") for b in ("", "_block")}
+RUNS22.update(SCALE_RUNS)
 RUNS22.update({f"{name}-lit": (RUNS22[name][0], RUNS22[name][1] + ", ground-truth lighting stated",
                                {**RUNS22[name][2], "task": RUNS22[name][2]["task"] + lighting(RUNS22[name][0])})
                for name in ("w20-tetra-spring", "w20-cube-spring")})
@@ -448,11 +450,11 @@ NEON = {"model": "gemini-4-neon", "provider_hold": PROVIDER_HOLD, "cost": 1e6, "
 LOWRANK_PROMPT = (" First identify the important low-rank structure of this scene: the few physical properties that govern most of "
                   "its behavior. Estimate those first, and make sure your model gets them right.")
 SCALES = (("tetra", ""), ("cube", ""), ("tetra", "-block"), ("cube", "-block"))
-RUNS29 = {**{f"w29-{t}-spring{b}-lowrank-prompt": (RUNS22[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; low-rank prompt; neon",
-                                                   {**RUNS22[f"w20-{t}-spring{b}"][2], **NEON, "task": RUNS22[f"w20-{t}-spring{b}"][2]["task"] + LOWRANK_PROMPT})
+RUNS29 = {**{f"w29-{t}-spring{b}-lowrank-prompt": (SCALE_RUNS[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; low-rank prompt; neon",
+                                                   {**SCALE_RUNS[f"w20-{t}-spring{b}"][2], **NEON, "task": SCALE_RUNS[f"w20-{t}-spring{b}"][2]["task"] + LOWRANK_PROMPT})
              for t, b in SCALES},
-          **{f"w29-{t}-spring{b}-neon": (RUNS22[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; original prompt; neon",
-                                         {**RUNS22[f"w20-{t}-spring{b}"][2], **NEON}) for t, b in SCALES[:3]}}
+          **{f"w29-{t}-spring{b}-neon": (SCALE_RUNS[f"w20-{t}-spring{b}"][0], f"{t} + spring{b}, w20 harness; original prompt; neon",
+                                         {**SCALE_RUNS[f"w20-{t}-spring{b}"][2], **NEON}) for t, b in SCALES[:3]}}
 _env, _factor, _o = WAVES["wave11-20261106"][3]["w11-tetra-spring-k"]
 RUNS29["w29-w11-tetra-spring-k-lowrank-prompt"] = (_env, "Panda tetra + spring, w11 harness; low-rank prompt; neon",
     {**{k: v for k, v in _o.items() if k != "checkpoint"}, **NEON, "hold": 129600, "task": _o.get("task", TASK) + LOWRANK_PROMPT})
@@ -476,7 +478,7 @@ TASK_LOWRANK = ("Identify the physical parameters of this scene that matter, usi
                 "centre of mass, in world axes, in the scene's initial state. Hidden tests compare these values with the reference "
                 "world's. Resubmit whenever your estimates improve, and call finish when you believe they cannot be improved further.")
 LOWRANK_CONSTRAINTS = ["Submit a ZIP whose parameters.json holds exactly the keys mass, stiffness, com and inertia, as numbers in SI units."]
-CUBE_MJCF = RUNS22["w20-cube-spring-block"]
+CUBE_MJCF = SCALE_RUNS["w20-cube-spring-block"]
 RUNS28 = {"w26-cube-spring-block-lowrank": (CUBE_MJCF[0], "cube + ideal spring + block of stated mass; point grasp without force; parameter answer",
                                              {**CUBE_MJCF[2], **NEON, "provider_hold": 14400, "task": TASK_LOWRANK + IDEAL_BLOCK, "metrics": ["lowrank"], "extra": "",
                                               "entrypoint": "parameters.json", "candidate_changes": False, "constraints": LOWRANK_CONSTRAINTS}),
