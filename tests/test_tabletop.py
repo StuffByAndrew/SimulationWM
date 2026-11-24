@@ -117,7 +117,7 @@ def test_identification_and_grab(tmp_path):
         assert not grab(sim, manifest)['success']
         palm = sim._model.body('rh_palm').id
         ball = sim._model.jnt_qposadr[sim._model.body(spiky).jntadr[0]]
-        sim._data.qpos[ball:ball + 3] = sim._data.xpos[palm] + sim._data.xmat[palm].reshape(3, 3) @ [0, -.0375, .05]  # 2 mm into the palm
+        sim._data.qpos[ball:ball + 3] = sim._data.xpos[palm] + sim._data.xmat[palm].reshape(3, 3) @ [0, -.032, .05]  # the 22 mm core 2 mm into the palm face (palm-local y = -0.012)
         import mujoco
         mujoco.mj_forward(sim._model, sim._data)
         result = grab(sim, manifest)

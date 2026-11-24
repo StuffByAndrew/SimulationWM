@@ -213,6 +213,45 @@ reopen) and `tilt` (full wrist flexion, which drops the object, then back to hom
 `center_of_mass`. `experiments/validation/hand-check.py OUTDIR` measures hold, taxel response, the scripted drop,
 reset and the identity/wrong-candidate scores (Slurm job `61031422`; results in `experiments/validation/hand-levels/`).
 
+## Touch-only tabletop levels (Franka + Shadow hand)
+
+Design: `docs/level-designs/touch-tabletop-20261124.md` (hypotheses H1–H5, user-approved 2026-11-24). Generator
+`experiments/validation/touch-scenes.py` writes the public fixture `environments/panda_shadow/robot/` (the Panda arm with
+Menagerie's Shadow Hand E3M5 in place of its gripper; actions `arm_target` (7) and `hand_target` (20); verified byte for
+byte) and three levels. Touch only: joint proprioception and efforts plus fingertip/palm taxels (`tactile = true`); no
+images, no point grasp, no wrench; lock-step; unlimited resets. Reset pose: palm down 25 cm above the table centre.
+With the palm down and the wrist straight the forearm hangs about 4 cm below the palm face; flexing the wrist
+(WRJ1 ≈ −0.6) lifts it, which reaching into the bin requires.
+
+| Level | Objects |
+| --- | --- |
+| `table_shapes` (L1) | abstract tower (17 primitives, 339 g), zigzag of capsules (300.7 g) and two crossed boxes with a dense end (540 g), each matched to one L2 object: mass ratio 0.9999 / 1.0000 / 1.0256, bounding box within 4.1%, primitive count ±1 |
+| `table_objects` (L2) | mug 120 mm tall (typical ~95), banana with 90 mm curvature radius, hammer with a 160 mm handle and steel head; these three unusual dimensions are scored as prior-defeating dimensions. A private `prior.xml` holds typical-size versions at the true poses (prior-only baseline) |
+| `bin_spiky` (L3) | a static bin (24 cm inner, 30 mm walls) with four 60 g balls: one spiky (22 mm core + six octahedral cones 20 mm proud with 29 mm bases, at least one palm taxel cell; it rests on three tips with three tips up) and three 48.5 mm smooth spheres, each with explicit inertials equal to the spiky ball's compiled inertia |
+
+L3 removes the size and dynamics cues (user decision 2026-11-24): equal mass (60.000 g), isotropic inertia equal within
+0.6%, equal top height (0.4585 m). A width difference remains (spiky 62–68 mm by yaw against 48.5 mm): with few cones the
+tip hull rests as a polyhedron, wider than tall, so no sphere can match both height and width. The original 14 small cones
+on a 55 mm ball with 80 mm walls failed the discriminability and reach checks (jobs `63317646`, `63319921`, `63320350`).
+
+Metrics: L1/L2 `objects` (primary: per-object Chamfer; found, centroid, labels, prior-defeating dimensions), `chamfer`,
+`center_of_mass`, `density`; L3 `objects` and `identification` (from the submitted `parameters.json`), plus post-run grab
+success and the contact coverage map (`python -m sim2sim.tabletop RUN_DIR`; see `docs/evaluation.md`).
+
+Check `experiments/validation/touch-check.py OUTDIR` (Slurm job `63325077`, results in `experiments/validation/touch-check/`):
+generated files match; all objects rest (< 0.4 mm in 2 s); palm-down IK over every table object (12/12 collision free) and
+the bin interior (75/75 solved, 56 collision free: the rest touch balls or walls at floor level); held-pose error
+≤ 9.2 mm. Palm presses (wrist flexed): smooth balls light 1 taxel in 9/9 presses, the spiky ball 2–3 taxels in 6/9.
+Scripted grab: an open-loop sweep (12 hand yaws × 2 grip heights × 3 closing poses, job `63324769`) lifts the spiky ball
+in 1 of 72 tries (14.5 cm above the rim; the check pins that grasp); smooth balls lift in 6 of 15. Metrics on reference
+candidates: identity scores zero error and label accuracy 1; the prior-only baseline errs on all three prior-defeating
+dimensions (mug −25 mm, hammer +120 mm, banana bow −18 mm); a single-box candidate finds no object; L3 identification is
+correct for the true position, wrong for a smooth ball's, and `unavailable` for a missing, malformed or non-JSON file.
+
+Evals card: as in the design document. Run checking uses the dashboard action timeline, model context and physics
+inspector (no camera); the report uses per-object 3D overlays, the contact coverage map (`RUN/touch-view.html`, linked
+from the run page), the label table and the L3 identification/grab table.
+
 ## Sealed-box Franka levels
 
 `experiments/validation/box-scenes.py` writes three `environments/panda_small/` levels
