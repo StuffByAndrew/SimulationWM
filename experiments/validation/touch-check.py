@@ -43,6 +43,7 @@ PALM = (0.001, -.012, .042)  # rh_palm-local centre of the palmar taxel face
 GRIP = (0.005, -.012, .075)  # rh_palm-local point under the finger bases: the ball sits here when the fingers close
 FF_PAD = (0., -.007, .018)   # rh_ffdistal-local centre of the fingertip pad
 CURL = {**HAND_HOME, "rh_FFJ3": 1.0, "rh_FFJ2": .45, "rh_FFJ1": .45}  # first finger bent down to press with its pad
+PITCHED = {**HAND_HOME, "rh_WRJ1": -.6}  # wrist flexed: lifts the forearm, which otherwise hangs ~4 cm below the palm face
 
 
 def manifest(level):
@@ -89,9 +90,10 @@ def settle(sim, names):
                 "speed_m_s": float(np.linalg.norm(sim._data.cvel[sim._model.body(n).id][3:]))} for n in names}
 
 
-def hold(sim, ik, q, ticks=750):
-    """Static errors holding arm pose q with the hand at home: flange (arm sag), grasp point (arm + wrist) and joint 5-7 efforts."""
+def hold(sim, ik, q, ticks=750, hand=HAND_HOME):
+    """Static errors holding arm pose q with the hand at pose `hand`: flange (arm sag), grasp point (arm + wrist) and joint 5-7 efforts."""
     sim.action({"op": "reset"}, render=False)
+    sim.action({"op": "hand_target", "actuator_targets": hand_targets(hand), "ticks": 1}, render=False)
     sim._data.qpos[sim._arm_qpos] = sim._data.ctrl[sim._arm_actuators] = q
     mujoco.mj_forward(sim._model, sim._data)
     flange = sim._data.xpos[sim._model.body("link7").id].copy()
@@ -118,11 +120,11 @@ def taxels(observation):
 def press(sim, ball, offset, mode):
     """Lower the palm centre (mode palm, hand at home) or the curled first finger's pad (mode finger) onto a ball top at a
     horizontal offset, 2 mm per step, until the pads carry 1.5 N; returns the taxel pattern and contact geometry at that step."""
-    joints, body, point = (HAND_HOME, "rh_palm", PALM) if mode == "palm" else (CURL, "rh_ffdistal", FF_PAD)
+    joints, body, point = (PITCHED, "rh_palm", PALM) if mode == "palm" else (CURL, "rh_ffdistal", FF_PAD)
     ik = IK(sim._model, joints)
     sim.action({"op": "reset"}, render=False)
     centre = sim._data.xpos[sim._model.body(ball).id].copy()
-    top = centre[2] + S.BALL_R + S.SPIKE_HEIGHT
+    top = centre[2] + S.SMOOTH_R  # every ball is 2 * SMOOTH_R tall
     x, y = centre[:2] + offset
     first = ik.solve([x, y, top + .02], body=body, point=point)
     assert first["ok"], (ball, offset, mode, first)
@@ -149,21 +151,22 @@ def press(sim, ball, offset, mode):
             "active_taxels": int(active.sum()), "max_taxel_share": round(float(cells.max() / cells.sum()), 3) if cells.sum() else None,
             "pads": sorted(p for p, g in grids.items() if g.sum() > .02 * cells.sum()),
             "hand_contact_points": len(hand_hits), "ball_moved_mm": round(1000 * float(np.linalg.norm(sim._data.xpos[sim._model.body(ball).id] - centre)), 2),
-            "pattern": {p: g.round(3).tolist() for p, g in grids.items() if g.sum()}}
+            "pattern": {p: g.round(3).tolist() for p, g in grids.items() if g.sum()},
+            "body_totals_n": {p: round(v["total_normal_force_n"], 3) for p, v in obs["tactile"].items() if isinstance(v, dict) and v["total_normal_force_n"]}}
 
 
 def scripted_grab(sim, ball):
-    """Open hand palm down over the ball, lower around it, close every finger and the thumb, lift 15 cm."""
-    ik = IK(sim._model)
+    """Open hand palm down (wrist flexed, PITCHED) over the ball, lower around it, close every finger and the thumb, lift 15 cm."""
     sim.action({"op": "reset"}, render=False)
     centre = sim._data.xpos[sim._model.body(ball).id].copy()
+    open_hand = {**PITCHED, **{f"rh_{f}J{j}": 0. for f in ("FF", "MF", "RF", "LF") for j in (3, 2, 1)}, "rh_THJ5": .6, "rh_THJ4": 1.1}
+    ik = IK(sim._model, open_hand)
     above = ik.solve([*centre[:2], centre[2] + .10], point=GRIP)
-    open_hand = {**HAND_HOME, **{f"rh_{f}J{j}": 0. for f in ("FF", "MF", "RF", "LF") for j in (3, 2, 1)}, "rh_THJ5": .6, "rh_THJ4": 1.1}
     closed = {**open_hand, **{f"rh_{f}J{j}": q for f in ("FF", "MF", "RF", "LF") for j, q in ((3, 1.2), (2, 1.0), (1, 1.0))},
               "rh_THJ5": .8, "rh_THJ4": 1.2, "rh_THJ2": .5, "rh_THJ1": .8}
     sim.action({"op": "hand_target", "actuator_targets": hand_targets(open_hand), "ticks": 200}, render=False)
     sim.action({"op": "arm_target", "joint_targets": above["q"], "ticks": 600}, render=False)
-    down = ik.solve([*centre[:2], centre[2] + S.BALL_R + .025], forward=above["forward"], point=GRIP, start=above["q"], restarts=1)
+    down = ik.solve([*centre[:2], centre[2] + S.SMOOTH_R + .025], forward=above["forward"], point=GRIP, start=above["q"], restarts=1)
     sim.action({"op": "arm_target", "joint_targets": down["q"], "ticks": 500}, render=False)
     sim.action({"op": "hand_target", "actuator_targets": hand_targets(closed), "ticks": 400}, render=False)
     lift = ik.solve([*centre[:2], centre[2] + .20], forward=above["forward"], point=GRIP, start=down["q"], restarts=1)
@@ -263,12 +266,23 @@ def main(out):
         results[level]["reach"] = {k: v for k, v in r.items() if k != "solutions"}
     grid = np.linspace(-(S.BIN_HALF - .02), S.BIN_HALF - .02, 5)
     targets = [(S.BIN[0] + gx, S.BIN[1] + gy, z) for z in (S.FLOOR_Z + .04, S.RIM_Z, S.RIM_Z + .15) for gx in grid for gy in grid]
-    r = reach(sims["bin_spiky"], IK(sims["bin_spiky"]._model), targets)
-    r["hold"] = [hold(sims["bin_spiky"], IK(sims["bin_spiky"]._model), s["q"]) for s in r["solutions"][50:]]
+    ik = IK(sims["bin_spiky"]._model, PITCHED)  # the bin needs the flexed wrist (PITCHED)
+    r = reach(sims["bin_spiky"], ik, targets)
+    r["hold"] = [hold(sims["bin_spiky"], ik, s["q"], hand=PITCHED) for s in r["solutions"][50:]]
     results["bin_spiky"]["reach"] = {k: v for k, v in r.items() if k != "solutions"}
     print(json.dumps({"reach": {level: results[level]["reach"] for level in LEVELS}}), flush=True)
-    # Touch discriminability (mandatory): presses on the spiky ball and on a smooth ball.
+    # No size or dynamics cue (user, 2026-11-24): per ball, compiled mass and principal inertia, top height and horizontal width
+    # every 15 degrees of yaw.
     m = manifest("bin_spiky")
+    sim = sims["bin_spiky"]
+    sim.action({"op": "reset"}, render=False)
+    groups = _objects(sim, _primitives(sim, geom_names=m["object_geoms"]))
+    results["bin_spiky"]["cues"] = {name: {
+        "mass_kg": float(sim._model.body_mass[sim._model.body(name).id]), "inertia_kg_m2": sim._model.body_inertia[sim._model.body(name).id].tolist(),
+        "top_z_m": max(support(p, [0, 0, 1]) for p in g),
+        "width_m": [extent(g, [np.cos(a), np.sin(a), 0]) for a in np.radians(np.arange(0, 180, 15))]} for name, g in groups.items()}
+    print(json.dumps({"cues": results["bin_spiky"]["cues"]}), flush=True)
+    # Touch discriminability (mandatory): presses on the spiky ball and on a smooth ball.
     spiky, smooth = m["tabletop"]["spiky"], next(n for n in m["object_bodies"] if n != m["tabletop"]["spiky"])
     offsets = [np.array([dx, dy]) for dx in (-.012, 0, .012) for dy in (-.012, 0, .012)]
     presses = {f"{mode}/{kind}": [press(sims["bin_spiky"], ball, o, mode) for o in offsets]

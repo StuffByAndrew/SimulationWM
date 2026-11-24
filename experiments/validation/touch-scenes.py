@@ -286,35 +286,42 @@ MATCH = {"tower": "mug", "zigzag": "banana", "cross": "hammer"}
 POSES = {"mug": (-.20, -.20, np.radians(120)), "banana": (0., .03, np.radians(15)), "hammer": (.19, -.22, np.radians(75))}
 LABELS = {"mug": ["mug", "cup", "tankard", "stein"], "banana": ["banana", "plantain"], "hammer": ["hammer", "mallet"]}
 
-# L3: a static open bin on the table and four 55 mm balls of equal mass, one with 14 cones (10 mm tall, 14 mm base) seeded.
+# L3 (user decision 2026-11-24 after the discriminability check failed with 14 small cones): one spiky ball with six octahedral
+# cones (20 mm proud, 29 mm base: at least one palm taxel cell, 86/3 mm) on a 22 mm core, and three smooth balls without a size or
+# dynamics cue: equal top height (the spiky ball rests on three tips with three tips up, so its height is twice the tip-facet
+# distance), equal mass and the spiky ball's compiled inertia (octahedral symmetry makes it isotropic) as explicit inertials.
 BIN = np.array([0., -.12])
-BIN_HALF, BIN_WALL, BIN_HEIGHT, BIN_FLOOR = .10, .01, .08, .01  # inner half width, wall thickness, wall height above floor
+# Walls 30 mm (above the 27.5 mm ball radius): with the palm down the Shadow forearm hangs ~4 cm below the palm face, so
+# 80 mm walls kept the palm 3-12 cm above every ball (jobs 63319921, 63320350); at <= 40 mm a pitched wrist reaches the tops.
+BIN_HALF, BIN_WALL, BIN_HEIGHT, BIN_FLOOR = .12, .01, .03, .01  # inner half width, wall thickness, wall height above floor
 FLOOR_Z = TOP + BIN_FLOOR
 RIM_Z = FLOOR_Z + BIN_HEIGHT
-BALL_R, BALL_MASS, SPIKES, SPIKE_BASE, SPIKE_HEIGHT = .0275, .060, 14, .007, .010
+CORE_R, BALL_MASS, SPIKE_BASE, SPIKE_HEIGHT = .022, .060, .0145, .020  # SPIKE_BASE: cone base radius on the core
+SPIKE_DIRECTIONS = np.vstack([np.eye(3), -np.eye(3)])
+SPIKES = len(SPIKE_DIRECTIONS)
+TIP_R = CORE_R + SPIKE_HEIGHT
+SMOOTH_R = TIP_R / np.sqrt(3)  # tip-facet distance of the octahedron: the spiky ball's resting centre height and half its height
+assert SMOOTH_R > CORE_R + .002 and SPIKE_BASE < CORE_R
 SEED = 20261124
 RUBBER = 'friction="0.8 0.005 0.001" condim="6"'  # rolling friction stops a nudged smooth ball within a few cm
 
 
 def spikes(rng):
-    """Cone vertex sets (24-gon base on the sphere + apex) along 14 Fibonacci directions under a seeded random rotation."""
+    """Cone vertex sets (24-gon base on the core + apex) along the octahedral directions under a seeded random rotation."""
     q = rng.normal(size=4)
     q /= np.linalg.norm(q)
     w, x, y, z = q
     rotation = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
                          [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
                          [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-    k = np.arange(SPIKES) + .5
-    polar = np.arccos(1 - 2 * k / SPIKES)
-    directions = np.column_stack([np.sin(polar) * np.cos(np.pi * (1 + 5 ** .5) * k), np.sin(polar) * np.sin(np.pi * (1 + 5 ** .5) * k),
-                                  np.cos(polar)]) @ rotation.T
+    directions = SPIKE_DIRECTIONS @ rotation.T
     cones, angle = [], 2 * np.pi * np.arange(24) / 24
     for d in directions:
         u = np.cross(d, [1, 0, 0] if abs(d[0]) < .9 else [0, 1, 0])
         u /= np.linalg.norm(u)
-        base = d * np.sqrt(BALL_R ** 2 - SPIKE_BASE ** 2)
+        base = d * np.sqrt(CORE_R ** 2 - SPIKE_BASE ** 2)
         ring = base + SPIKE_BASE * (np.cos(angle)[:, None] * u + np.sin(angle)[:, None] * np.cross(d, u))
-        cones.append(np.vstack([ring, d * (BALL_R + SPIKE_HEIGHT)]))
+        cones.append(np.vstack([ring, d * TIP_R]))
     return cones
 
 
@@ -328,9 +335,10 @@ def resting(cones):
     for simplex, equation in zip(hull.simplices, hull.equations):
         a, b, c = tips[simplex]
         acute = all(np.dot(p - q, r - q) > 0 for q, p, r in ((a, b, c), (b, c, a), (c, a, b)))
-        if acute and -equation[3] > BALL_R + .002 and (best is None or -equation[3] < best[1]):
+        if acute and -equation[3] > CORE_R + .002 and (best is None or -equation[3] < best[1]):
             best = (equation[:3], -equation[3])
     normal, height = best
+    assert abs(height - SMOOTH_R) < 1e-9, (height, SMOOTH_R)
     v, c = np.cross(normal, [0, 0, -1]), normal @ [0, 0, -1]
     k = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
     return np.eye(3) + k + k @ k / (1 + c), height
@@ -341,7 +349,7 @@ def balls():
     rng = np.random.default_rng(SEED)
     cones = spikes(rng)
     rotation, height = resting(cones)
-    reach = BALL_R + SPIKE_HEIGHT
+    reach = TIP_R
     while True:  # rejection sampling of all four centres at once
         centres = BIN + rng.uniform(-(BIN_HALF - reach - .005), BIN_HALF - reach - .005, (4, 2))
         if min(np.linalg.norm(a - b) for i, a in enumerate(centres) for b in centres[:i]) > 2 * reach + .005:
@@ -355,29 +363,41 @@ def geoms_xml(geoms, surface=SURFACE, rgba=".78 .56 .28 1"):
                    for n, k, z, p, r, d, v in geoms)
 
 
-def body_xml(name, geoms, x, y, yaw, z=TOP, rotation=None, surface=SURFACE, rgba=".78 .56 .28 1"):
+def body_xml(name, geoms, x, y, yaw, z=TOP, rotation=None, surface=SURFACE, rgba=".78 .56 .28 1", inertial=""):
     r = rot_z(yaw) if rotation is None else rotation
-    return f'\n    <body name="{name}" pos="{fmt([x, y, z])}" quat="{fmt(quat(r))}">\n      <freejoint name="{name}"/>{geoms_xml(geoms, surface, rgba)}\n    </body>'
+    return f'\n    <body name="{name}" pos="{fmt([x, y, z])}" quat="{fmt(quat(r))}">\n      <freejoint name="{name}"/>{inertial}{geoms_xml(geoms, surface, rgba)}\n    </body>'
 
 
 def table_level(objects, poses):
     return "".join(body_xml(name, geoms, *poses[name]) for name, geoms in objects.items())
 
 
+def compiled_inertia(geoms, assets):
+    """Mass, body-frame COM and principal inertia MuJoCo compiles for one free body of these geoms."""
+    import mujoco
+    m = mujoco.MjModel.from_xml_string(f'<mujoco><asset>{assets}</asset><worldbody>{body_xml("b", geoms, 0, 0, 0, 0)}</worldbody></mujoco>')
+    return float(m.body_mass[1]), m.body_ipos[1].copy(), m.body_inertia[1].copy()
+
+
 def bin_level():
     cones, rotation, height, centres, spiky = balls()
-    smooth_density = BALL_MASS / (4 / 3 * np.pi * BALL_R ** 3)
+    smooth_density = BALL_MASS / (4 / 3 * np.pi * SMOOTH_R ** 3)  # nominal; the explicit inertial sets the mass
     cone_geoms = [(f"spike{k}", "mesh", None, np.zeros(3), np.eye(3), 0., c) for k, c in enumerate(cones)]
-    sphere = ("{}_core", "sphere", [BALL_R], np.zeros(3), np.eye(3), 0., None)
-    spiky_density = BALL_MASS / (volume("sphere", [BALL_R, 0, 0]) + sum(volume("mesh", p["size"]) for p in primitives(cone_geoms)))
-    bodies, assets = "", "".join(f'\n    <mesh name="spike{k}" vertex="{fmt(c)}"/>' for k, c in enumerate(cones))
+    spiky_density = BALL_MASS / (volume("sphere", [CORE_R, 0, 0]) + sum(volume("mesh", p["size"]) for p in primitives(cone_geoms)))
+    assets = "".join(f'\n    <mesh name="spike{k}" vertex="{fmt(c)}"/>' for k, c in enumerate(cones))
+    spiky_parts = lambda name: [(name + "_core", "sphere", [CORE_R], np.zeros(3), np.eye(3), spiky_density, None)] + [  # noqa: E731
+        (n, k, z, p, r, spiky_density, v) for n, k, z, p, r, d, v in cone_geoms]
+    mass_, com, inertia = compiled_inertia(spiky_parts("b"), assets)
+    assert abs(mass_ - BALL_MASS) < 1e-4 * BALL_MASS and np.linalg.norm(com) < 1e-6 and np.ptp(inertia) < 1e-3 * inertia.mean(), (mass_, com, inertia)
+    inertial = f'\n      <inertial pos="0 0 0" mass="{mass_!r}" diaginertia="{fmt(np.full(3, inertia.mean()))}"/>'
+    bodies = ""
     for i, (x, y) in enumerate(centres):
         name = f"ball{i + 1}"
         if i == spiky:
-            parts = [(name + "_core", *sphere[1:5], spiky_density, None)] + [(n, k, z, p, r, spiky_density, v) for n, k, z, p, r, d, v in cone_geoms]
-            bodies += body_xml(name, parts, x, y, 0, FLOOR_Z + height, rotation, RUBBER, ".55 .58 .64 1")
+            bodies += body_xml(name, spiky_parts(name), x, y, 0, FLOOR_Z + height, rotation, RUBBER, ".55 .58 .64 1")
         else:
-            bodies += body_xml(name, [(name + "_core", *sphere[1:5], smooth_density, None)], x, y, 0, FLOOR_Z + BALL_R, None, RUBBER, ".55 .58 .64 1")
+            bodies += body_xml(name, [(name + "_core", "sphere", [SMOOTH_R], np.zeros(3), np.eye(3), smooth_density, None)], x, y, 0,
+                               FLOOR_Z + SMOOTH_R, None, RUBBER, ".55 .58 .64 1", inertial)
     walls = [("bin_floor", (BIN_HALF + BIN_WALL, BIN_HALF + BIN_WALL, BIN_FLOOR / 2), (0, 0, TOP + BIN_FLOOR / 2))]
     for name, (sx, sy) in (("bin_wall_xp", (1, 0)), ("bin_wall_xn", (-1, 0)), ("bin_wall_yp", (0, 1)), ("bin_wall_yn", (0, -1))):
         half = (BIN_WALL / 2, BIN_HALF + BIN_WALL, BIN_HEIGHT / 2) if sx else (BIN_HALF + BIN_WALL, BIN_WALL / 2, BIN_HEIGHT / 2)
@@ -424,8 +444,9 @@ def write_levels():
     geoms = [f"{n}_core" for n in names] + [f"spike{k}" for k in range(SPIKES)]
     (FAMILY / "bin_spiky").mkdir(exist_ok=True)
     (FAMILY / "bin_spiky" / "scene.xml").write_text(scene("bin_spiky", f"Touch-only bin level: a static open bin (inner {2000 * BIN_HALF:g} mm square, "
-                                                          f"walls {1000 * BIN_HEIGHT:g} mm) with four {2000 * BALL_R:g} mm balls of {1000 * BALL_MASS:g} g; "
-                                                          f"{names[spiky]} carries {SPIKES} cones ({1000 * SPIKE_HEIGHT:g} mm tall, {2000 * SPIKE_BASE:g} mm base).",
+                                                          f"walls {1000 * BIN_HEIGHT:g} mm) with four {1000 * BALL_MASS:g} g balls of equal height and inertia: "
+                                                          f"{names[spiky]} is a {2000 * CORE_R:g} mm core with {SPIKES} cones ({1000 * SPIKE_HEIGHT:g} mm "
+                                                          f"proud, {2000 * SPIKE_BASE:g} mm base), the others {2000 * SMOOTH_R:.1f} mm smooth spheres.",
                                                           bodies, assets, statics))
     (FAMILY / "bin_spiky" / "manifest.toml").write_text(manifest("bin_spiky", names, geoms, f'''
 [tabletop]
