@@ -1,6 +1,6 @@
 <mujoco model="gear_train">
   <compiler angle="degree"/>
-  <option timestep="0.002"/>
+  <option timestep="0.0005"/>
   <visual><map znear="0.01" zfar="12"/></visual>
   <worldbody>
     <light name="key" directional="true" pos="-1 -3 3" dir="1 3 -2" diffuse=".8 .78 .72"/>
@@ -627,26 +627,26 @@
     </body>
   </worldbody>
   <equality>
-    <joint joint1="gear_01" joint2="crank_hinge" polycoef="0 -1.73076923077 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_02" joint2="gear_01" polycoef="0 -1.18181818182 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_03" joint2="gear_02" polycoef="0 -0.733333333333 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_04" joint2="gear_03" polycoef="0 -1.25 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_05" joint2="gear_04" polycoef="0 -0.857142857143 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_06" joint2="gear_05" polycoef="0 -1.21739130435 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_07" joint2="gear_06" polycoef="0 -1.4375 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_08" joint2="gear_07" polycoef="0 -1.45454545455 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_09" joint2="gear_08" polycoef="0 -0.814814814815 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_10" joint2="gear_09" polycoef="0 -1.125 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_11" joint2="gear_10" polycoef="0 -0.8 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_12" joint2="gear_11" polycoef="0 -1.30434782609 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_13" joint2="gear_12" polycoef="0 -0.884615384615 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_14" joint2="gear_13" polycoef="0 -1.625 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_15" joint2="gear_14" polycoef="0 -1.28 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_16" joint2="gear_15" polycoef="0 -1.13636363636 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_17" joint2="gear_16" polycoef="0 -0.785714285714 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_18" joint2="gear_17" polycoef="0 -1.16666666667 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_19" joint2="gear_18" polycoef="0 -0.888888888889 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="gear_20" joint2="gear_19" polycoef="0 -1.17391304348 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
-    <joint joint1="hand_hinge" joint2="gear_20" polycoef="0 -0.958333333333 0 0 0" solref=".004 1" solimp=".99 .999 .001 .5 2"/>
+    <joint joint1="gear_01" joint2="crank_hinge" polycoef="0 -1.73076923077 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_02" joint2="gear_01" polycoef="0 -1.18181818182 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_03" joint2="gear_02" polycoef="0 -0.733333333333 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_04" joint2="gear_03" polycoef="0 -1.25 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_05" joint2="gear_04" polycoef="0 -0.857142857143 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_06" joint2="gear_05" polycoef="0 -1.21739130435 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_07" joint2="gear_06" polycoef="0 -1.4375 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_08" joint2="gear_07" polycoef="0 -1.45454545455 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_09" joint2="gear_08" polycoef="0 -0.814814814815 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_10" joint2="gear_09" polycoef="0 -1.125 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_11" joint2="gear_10" polycoef="0 -0.8 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_12" joint2="gear_11" polycoef="0 -1.30434782609 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_13" joint2="gear_12" polycoef="0 -0.884615384615 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_14" joint2="gear_13" polycoef="0 -1.625 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_15" joint2="gear_14" polycoef="0 -1.28 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_16" joint2="gear_15" polycoef="0 -1.13636363636 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_17" joint2="gear_16" polycoef="0 -0.785714285714 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_18" joint2="gear_17" polycoef="0 -1.16666666667 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_19" joint2="gear_18" polycoef="0 -0.888888888889 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="gear_20" joint2="gear_19" polycoef="0 -1.17391304348 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
+    <joint joint1="hand_hinge" joint2="gear_20" polycoef="0 -0.958333333333 0 0 0" solref=".001 1" solimp=".9999 .9999 .001 .5 2"/>
   </equality>
 </mujoco>

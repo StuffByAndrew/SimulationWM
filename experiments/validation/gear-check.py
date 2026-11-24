@@ -4,11 +4,13 @@ PYTHONPATH=src .venv/bin/python experiments/validation/gear-check.py OUTDIR
 Files equal the generator output (including the physics-computed gate); nothing has a gravity torque and the scene rests;
 no moving geom can collide; the shallow reference's lumped crank inertia equals the deep train's effective inertia; source
 probes are deterministic; every gear renders in RGB and depth from the fixed camera and refuses the grasp while crank and hand
-accept it. Through the real evaluator (evaluate_submission, metric gear_train): the deep reference (a copy of the source) and
-the shallow reference score within noise on every probe (shallow error < GATE_SHARE of the gate), the deep one costs >= 10x the
-shallow one per simulated second, the classes are deep / shallow, G-cheap passes both, removals answer for deep and are
-cannot_answer for shallow; a renamed deep copy with flipped crank and hand hinge axes scores like the source; and the
-unmodified shallow model's prediction differs from every removed-gear source. Writes OUTDIR/{check.json, *.png, eval-*}."""
+accept it; the wave 28 configs carry the generator's public grasp softness. Through the real evaluator (evaluate_submission,
+metric gear_train, the level's grasp): the deep reference (a copy of the source) and the shallow reference at the source
+timestep score within noise on every probe, hard crank pulls and springback included (each probe's crank and hand RMS error
+< GATE_SHARE of the gate); shallow.xml at its own larger timestep passes the gate, and the deep reference costs >= 10x it per
+simulated second; the classes are deep / shallow, G-cheap passes both, removals answer for deep and are cannot_answer for
+shallow; a renamed deep copy with flipped crank and hand hinge axes scores like the source; and the unmodified shallow
+model's prediction differs from every removed-gear source. Writes OUTDIR/{check.json, *.png, eval-*}."""
 import base64
 import importlib.util
 import io
@@ -41,6 +43,9 @@ for path, text in S.outputs().items():
 SCENE, SHALLOW = S.ROOT / "scene.xml", S.ROOT / "shallow.xml"
 table = __import__("tomllib").loads((S.ROOT / "manifest.toml").read_text())
 gears = [b["name"] for b in S.train()[1:-1]]
+GRASP = {"grasp_solref": S.GRASP_SOLREF, "grasp_solimp": S.GRASP_SOLIMP}
+for path in sorted(Path("experiments/configs/wave28-20261124").glob("*.toml")):
+    assert {k: v for k, v in __import__("tomllib").loads(path.read_text())["simulation"].items() if k in GRASP} == GRASP, path
 
 # Statics: balanced bodies, rest, no collisions.
 model, data = compile_plain(SCENE)
@@ -98,8 +103,8 @@ source.close(), bare.close()
 normal = panel_normal(*compile_plain(SCENE))
 probes = table["probes"]
 runs = [reference_runs(Simulation(SCENE, S.SOURCE_CONFIG), probes, normal) for _ in range(2)]
-assert all(np.array_equal(a[2], b[2]) for a, b in zip(*runs)), "source probes are not deterministic"
-result["probe_ranges_rad"] = {name: [float(np.ptp(angles[:, 0])), float(np.ptp(angles[:, 1]))] for name, _, angles in runs[0]}
+assert all(np.array_equal(a[4], b[4]) for a, b in zip(*runs)), "source probes are not deterministic"
+result["probe_ranges_rad"] = {run[0]: [float(np.ptp(run[4][:, 0])), float(np.ptp(run[4][:, 1]))] for run in runs[0]}
 
 
 def zipped(text):
@@ -113,7 +118,7 @@ def evaluate(name, text):
     output = OUT / f"eval-{name}"
     shutil.rmtree(output, ignore_errors=True)
     report = evaluate_submission(zipped(text), {"source_dir": str(S.ROOT), "output_dir": str(output), "metrics": ["gear_train"],
-                                                "camera": "fixed", "width": 320, "height": 240})
+                                                "camera": "fixed", "width": 320, "height": 240, **GRASP})
     assert report["status"] == "ok", report.get("error")
     return report["scores"]["gear_train"]
 
@@ -124,11 +129,13 @@ for line in [l for l in flipped.splitlines() if 'joint2="crank_hinge"' in l or '
     c = line.split('polycoef="0 ')[1].split()[0]
     flipped = flipped.replace(line, line.replace(f'polycoef="0 {c} ', f'polycoef="0 {-float(c):.12g} '))
 flipped = flipped.replace("gear_", "wheel")
-scores = {name: evaluate(name, text) for name, text in (("deep", SCENE.read_text()), ("shallow", SHALLOW.read_text()), ("flipped", flipped))}
+scores = {name: evaluate(name, text) for name, text in (("deep", SCENE.read_text()), ("shallow", S.scene(True)), ("shallow_own_step", SHALLOW.read_text()),
+                                                       ("flipped", flipped))}
 gate = table["gear_train"]["cheap_gate_rad"]
 for name, s in scores.items():
     result[name] = {"probe_error_rad": s["accuracy"]["probe_error_rad"], "probes": s["accuracy"]["probes"],
                     "depth_class": s["structure"]["depth_class"], "matched": s["structure"]["matched"],
+                    "timestep_s": s["accuracy"]["candidate_timestep_s"],
                     "seconds_per_simulated_second": s["sim_cost"]["candidate"]["seconds_per_simulated_second"],
                     "cost_relative_to_shallow": s["sim_cost"]["candidate"]["relative_to_shallow"], "counts": s["sim_cost"]["candidate"],
                     "cheap": s["cheap"], "removal": s["removal"]}
@@ -136,13 +143,14 @@ result["gate_rad"] = gate
 result["cost_ratio_deep_over_shallow"] = [s["sim_cost"]["deep_reference"]["relative_to_shallow"] for s in scores.values()]
 print(json.dumps(result, indent=1))
 (OUT / "check.json").write_text(json.dumps(result, indent=1))
-deep, shallow, flip = scores["deep"], scores["shallow"], scores["flipped"]
+deep, shallow, own, flip = scores["deep"], scores["shallow"], scores["shallow_own_step"], scores["flipped"]
 assert deep["accuracy"]["probe_error_rad"] < 1e-9 and flip["accuracy"]["probe_error_rad"] < 1e-6, "copies must score exactly"
 assert max(max(p["crank_rms_rad"], p["hand_rms_rad"]) for p in shallow["accuracy"]["probes"]) < GATE_SHARE * gate, "shallow not within noise"
 assert min(result["cost_ratio_deep_over_shallow"]) >= COST_RATIO, "deep is not >= 10x the shallow cost"
 assert (deep["structure"]["depth_class"], shallow["structure"]["depth_class"], flip["structure"]["depth_class"]) == ("deep", "shallow", "deep")
 assert deep["structure"]["matched"] == len(gears) == flip["structure"]["matched"]
-assert deep["cheap"]["status"] == shallow["cheap"]["status"] == "ok"
+assert deep["cheap"]["status"] == shallow["cheap"]["status"] == own["cheap"]["status"] == "ok" and own["structure"]["depth_class"] == "shallow"
+assert own["accuracy"]["candidate_timestep_s"] > S.TIMESTEP and abs(own["cost_relative_to_shallow"] - 1) < .5  # same model, timed twice
 assert deep["removal"]["answered"] == len(table["gear_train"]["removals"]) and deep["removal"]["mean_probe_error_rad"] < 1e-9
 assert flip["removal"]["answered"] == len(table["gear_train"]["removals"]) and flip["removal"]["mean_probe_error_rad"] < 1e-6
 assert shallow["removal"]["cannot_answer"] == len(table["gear_train"]["removals"])

@@ -23,7 +23,7 @@ import tempfile
 import numpy as np
 
 ROOT = Path("environments/gear_train")
-TIMESTEP = .002
+TIMESTEP = .0005                  # s: the stiff couplings and grasp need a short step (user, 2026-11-24)
 RHO = 2700.                       # kg/m^3, every gear (one material)
 RHO_CRANK = 2700.                 # kg/m^3, crank and hand parts
 Z0 = .45                          # axle height, m
@@ -33,7 +33,9 @@ LAYER_Y = (-.007, -.015)          # wheel layer centres (L0 behind L1); crank ar
 FRONT_Y = -.024
 TOOTH_PITCH, TOOTH = .008, (.0015, .0018)  # tooth spacing along the pitch circle; tooth radial and tangential half sizes, m
 B = 1.0e-4                        # viscous damping of every axle, N m s/rad: crank coast time constant about 0.12 s
-SOLREF, SOLIMP = ".004 1", ".99 .999 .001 .5 2"  # stiff ideal-gear couplings (time constant at the 2-step minimum)
+SOLREF, SOLIMP = ".001 1", ".9999 .9999 .001 .5 2"  # near-ideal gear couplings (time constant at the 2-step minimum)
+GRASP_SOLREF, GRASP_SOLIMP = [.002, 1], [.99, .999, .001, .5, 2]  # public [simulation] grasp softness of this level
+SHALLOW_TIMESTEPS = (.0005, .001, .002, .004, .005, .008, .01)  # s: shallow.xml takes the largest that passes the gate
 SOLVER = ""                       # extra <option> attributes
 PHI = np.deg2rad(50)              # mesh directions alternate +PHI, -PHI from +x: a zigzag train
 CRANK_R, HANDLE_R, KNOB = .045, .040, (.008, .012)  # crank wheel radius, handle radius; knob radius and half length (along -y)
@@ -46,12 +48,13 @@ GEARS = ([IDLER(0, r) for r in (.026, .022, .030, .024, .028, .023)] + [(0, .016
 REMOVALS = ("gear_03", "gear_10", "gear_14")  # G-deep: a crank-side idler, a mid-train idler, a compound pair
 GATE_P = .1                                   # G-cheap gate perturbation of the lumped armature and damping
 EYE, LOOK, FOVY = np.array([0., -.95, .70]), np.array([0., 0., Z0]), 45
-PROBES = [  # private: crank handle / hand tip pushed tangentially; (name, body, local point, displacement, ticks, settle ticks)
-    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 1000, 250),
-    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 160, 400),
-    ("crank_step", "crank", (0, -.051, -HANDLE_R), (-.02, 0, 0), 40, 400),
-    ("hand_push", "hand", (0, FRONT_Y - T, .06), (.03, 0, 0), 200, 400),
-    ("hand_push_fast", "hand", (0, FRONT_Y - T, .06), (-.03, 0, 0), 40, 400),
+PROBES = [  # private: crank handle / hand tip pushed tangentially (the crank pulls end 1 cm beyond the handle's reach, then
+    # release and springback); (name, body, local point, displacement m, grasped seconds, settle seconds)
+    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 2.0, .5),
+    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), .32, .8),
+    ("crank_step", "crank", (0, -.051, -HANDLE_R), (-.02, 0, 0), .08, .8),
+    ("hand_push", "hand", (0, FRONT_Y - T, .06), (.03, 0, 0), .4, .8),
+    ("hand_push_fast", "hand", (0, FRONT_Y - T, .06), (-.03, 0, 0), .08, .8),
 ]
 WORLD = 'contype="0" conaffinity="0"'
 
@@ -141,7 +144,7 @@ def hand_parts():
             + hub("hand", FRONT_Y - T))
 
 
-def scene(shallow=False, armature_scale=1., damping_scale=1.):
+def scene(shallow=False, armature_scale=1., damping_scale=1., timestep=TIMESTEP):
     bodies = train()
     armature, damping = lumped()
     out = []
@@ -174,7 +177,7 @@ def scene(shallow=False, armature_scale=1., damping_scale=1.):
                     f'euler="0 {np.rad2deg(a):.4f} 0" {WORLD} rgba=".1 .1 .1 1"/>' for i, a in enumerate(np.linspace(0, 2 * np.pi, 12, endpoint=False)))
     return f'''<mujoco model="gear_train">
   <compiler angle="degree"/>
-  <option timestep="{TIMESTEP}"{SOLVER}/>
+  <option timestep="{timestep:g}"{SOLVER}/>
   <visual><map znear="0.01" zfar="12"/></visual>
   <worldbody>
     <light name="key" directional="true" pos="-1 -3 3" dir="1 3 -2" diffuse=".8 .78 .72"/>
@@ -192,30 +195,35 @@ def scene(shallow=False, armature_scale=1., damping_scale=1.):
 '''
 
 
-def gate():
-    """Worst probe error (rad) of the shallow reference with armature and damping scaled by 1 -/+ GATE_P, against the source."""
+def calibrate():
+    """(gate, shallow timestep, {timestep: probe error}): the gate is the worst probe error (rad) of the shallow reference with
+    armature and damping scaled by 1 -/+ GATE_P at TIMESTEP; the shallow timestep is the largest of SHALLOW_TIMESTEPS up to
+    which every unperturbed shallow error stays within the gate."""
     sys.path.insert(0, "src")
     from sim2sim.gear_train import compile_plain, panel_normal, probe_errors, reference_runs
     from sim2sim.simulation import Simulation
-    probes = probe_tables()
     with tempfile.TemporaryDirectory() as temp:
         (Path(temp) / "scene.xml").write_text(scene())
-        source = Simulation(Path(temp) / "scene.xml", SOURCE_CONFIG)
         normal = panel_normal(*compile_plain(Path(temp) / "scene.xml"))
-        runs = reference_runs(source, probes, normal)
-        errors = []
-        for a, d in product((1 - GATE_P, 1 + GATE_P), repeat=2):
-            (Path(temp) / "shallow.xml").write_text(scene(True, a, d))
-            errors.append(probe_errors(runs, Simulation(Path(temp) / "shallow.xml", CANDIDATE_CONFIG), normal)["probe_error_rad"])
-    return max(errors)
+        runs = reference_runs(Simulation(Path(temp) / "scene.xml", SOURCE_CONFIG), probe_tables(), normal)
+
+        def error(*args):
+            (Path(temp) / "shallow.xml").write_text(scene(True, *args))
+            return probe_errors(runs, Simulation(Path(temp) / "shallow.xml", CANDIDATE_CONFIG), normal)["probe_error_rad"]
+        gate_rad = float(f"{max(error(a, d) for a, d in product((1 - GATE_P, 1 + GATE_P), repeat=2)):.4g}")
+        errors = {dt: error(1., 1., dt) for dt in SHALLOW_TIMESTEPS}
+    passing = [dt for dt in SHALLOW_TIMESTEPS if all(errors[t] <= gate_rad for t in SHALLOW_TIMESTEPS if t <= dt)]
+    return gate_rad, max(passing), errors
 
 
-SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"]}
-CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "timestep": TIMESTEP}  # graspable bodies inferred, as in evaluation
+SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"],
+                 "grasp_solref": GRASP_SOLREF, "grasp_solimp": GRASP_SOLIMP}
+CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "grasp_solref": GRASP_SOLREF, "grasp_solimp": GRASP_SOLIMP}  # own timestep
 
 
 def probe_tables():
-    return [{"name": n, "body": b, "local_point": list(p), "displacement": list(d), "ticks": t, "settle_ticks": s} for n, b, p, d, t, s in PROBES]
+    return [{"name": n, "body": b, "local_point": list(p), "displacement": list(d), "ticks": round(t / TIMESTEP), "settle_ticks": round(s / TIMESTEP)}
+            for n, b, p, d, t, s in PROBES]
 
 
 def axle_tolerance():
@@ -225,7 +233,7 @@ def axle_tolerance():
     return np.floor(.4 * least * 1000) / 1000
 
 
-def manifest(gate_rad):
+def manifest(gate_rad, shallow_dt, errors):
     probes = "".join(f'''
 [[probes]]
 name = "{p["name"]}"
@@ -241,7 +249,9 @@ camera = "fixed"
 graspable_bodies = ["crank", "hand"]
 {probes}
 # Private gear-train evaluation (src/sim2sim/gear_train.py; generated by experiments/validation/gear-scenes.py).
-# cheap_gate_rad: worst probe error of shallow.xml with its lumped armature and damping each scaled by {1 - GATE_P:g} or {1 + GATE_P:g}.
+# cheap_gate_rad: worst probe error of shallow.xml with its lumped armature and damping each scaled by {1 - GATE_P:g} or {1 + GATE_P:g},
+# at the source timestep {TIMESTEP:g} s. shallow.xml runs at {shallow_dt:g} s, the largest step whose probe error stays within the gate
+# (probe error by timestep: {", ".join(f"{dt:g} s {e:.3g} rad" for dt, e in errors.items())}).
 [gear_train]
 shallow_reference = "shallow.xml"
 removals = [{", ".join(f'"{r}"' for r in REMOVALS)}]
@@ -254,7 +264,9 @@ cost_torque_nm = 0.02
 
 
 def outputs():
-    return {ROOT / "scene.xml": scene(), ROOT / "shallow.xml": scene(True), ROOT / "manifest.toml": manifest(gate())}
+    gate_rad, shallow_dt, errors = calibrate()
+    return {ROOT / "scene.xml": scene(), ROOT / "shallow.xml": scene(True, timestep=shallow_dt),
+            ROOT / "manifest.toml": manifest(gate_rad, shallow_dt, errors)}
 
 
 if __name__ == "__main__":
