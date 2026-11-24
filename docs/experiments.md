@@ -175,7 +175,15 @@ experiments. The dashboard and all parameter descriptions remain private.
 ## Pilot prerequisites
 
 For `strict_oci`, the host must have the configured credential variable, checked
-by presence only, and a prebuilt researcher-trusted image. The image must exclude
+by presence only, and the prebuilt researcher-trusted agent and evaluator images of
+one two-image record (default `experiments/images/trusted-image-isolated.json`;
+`scripts/podman-job.sh` loads and verifies both and refuses old single-image records).
+Configs set `[sandbox] image = "localhost/sim2sim-agent:latest"` (agent container,
+stream-mode predictors; only agent-side modules, no evaluation or metric code) and
+`evaluator_image = "localhost/sim2sim:latest"` (candidate worker, evaluator, call-mode
+predictors); the runtime checks each image's `sim2sim.image-role` label before launch, so
+a run prepared with `image = "localhost/sim2sim:latest"` stops at preflight (re-prepare it from the
+regenerated config). Both images must exclude
 source scenes, private experiment files and host credentials. Actual finite
 CPU/memory/process limits must be verified before its agent starts. Selecting
 the `rlimit` process backend cannot repair missing CPU/memory enforcement; on
@@ -501,7 +509,7 @@ unchanged. Staged file hashes are recorded as a `public_fixture` audit event.
   `6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f`.
   It needs CPU PyTorch, so it requires the derived tools image
   ([`trusted-image-tools.json`](../experiments/images/trusted-image-tools.json):
-  `Containerfile.tools` on top of the verified base image, label
+  `Containerfile.tools` on top of the verified agent image, label
   `sim2sim.tool-runtime=torch-cpu`, checked before launch). The image contains no
   tool code or weights. Its archive lives under
   `/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-images/` to spare the home quota.
@@ -509,18 +517,18 @@ unchanged. Staged file hashes are recorded as a `public_fixture` audit event.
   3.0 s; image embedding 0.5 s; one prompted CLI call 4.4 s wall / 7 s CPU;
   `--auto` (16x16 grid) 17 s wall / 58 s CPU. Reuse a `Segmenter` in Python to
   pay the load once.
-- `planning`: `tools/planning/plan.py` (MuJoCo + NumPy, runs in either image) for
+- `planning`: `tools/planning/plan.py` (MuJoCo + NumPy, runs in the agent image) for
   `robot = "panda"`: damped-least-squares IK for the `panda_ee` fingertip site or
   hand, joint interpolation, and a collision-checked straight-line/RRT-connect
   planner on the agent's own scene, returning `arm_target` waypoints.
   One IK or plan CLI call takes about 0.3–0.4 s including model load.
-- `local_controller`: `tools/local_controller/localsim.py` for `robot = "shadow_hand"` (base image): a local copy of the
+- `local_controller`: `tools/local_controller/localsim.py` for `robot = "shadow_hand"` (agent image): a local copy of the
   reconstruction world for the agent's own project and tactile cell positions for any hand pose; see
   [protocol](protocol.md). Pair it with the harness flag `--bash-mode pausable` for the touch harness (wave 25).
 
 Both conditions of a pair must use the same image, so start both with the tools
-record. `SIM2SIM_TRUSTED_IMAGE_RECORD` defaults to `trusted-image.json`, so runs
-without the variable are unchanged:
+record. `SIM2SIM_TRUSTED_IMAGE_RECORD` defaults to `trusted-image-isolated.json` (the agent image
+without tools):
 
 ```sh
 cp experiments/configs/wave3b-20261104/w3-ps-assembly-fixed.toml experiments/configs/tools/t-ps-assembly-base.toml
@@ -532,6 +540,8 @@ SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-tools.json \
 ```
 
 To rebuild the tools image: `SIM2SIM_CONTAINERFILE=Containerfile.tools
-SIM2SIM_BASE_IMAGE_RECORD=experiments/images/trusted-image.json
+SIM2SIM_BASE_IMAGE_RECORD=experiments/images/trusted-image-isolated.json
 SIM2SIM_TRUSTED_IMAGE_RECORD=experiments/images/trusted-image-tools.json
-SIM2SIM_IMAGE_ARCHIVE_DIR=<dir> sbatch --export=ALL scripts/build-image.slurm`.
+SIM2SIM_IMAGE_ARCHIVE_DIR=<dir> sbatch --export=ALL scripts/build-image.slurm`. The tools record keeps the base
+record's evaluator image. Tools records built before the agent/evaluator split (2026-11-24) hold one image and are
+refused: rebuild the tools record before a segmentation run.

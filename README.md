@@ -45,7 +45,8 @@ Request a compute allocation before building the example image:
 ```sh
 srun --partition=test --time=00:15:00 --mem=4G --cpus-per-task=2 --pty bash
 # Inside the allocation, from the repository root:
-podman build -f Containerfile -t localhost/sim2sim:latest .
+podman build -f Containerfile --target agent -t localhost/sim2sim-agent:latest .
+podman build -f Containerfile --target evaluator -t localhost/sim2sim:latest .
 ```
 
 The image must be built before the run: runtime containers use `--pull=never`.
@@ -69,8 +70,8 @@ and checks its effective limits, UID, privilege flags and environment. On Slurm
 `srun --exact` step whose cgroup Slurm enforces, and the controller verifies each
 container's step memory, cpuset, UID, capabilities and process bound from the host
 before sending input. Build the image once with `sbatch scripts/build-image.slurm`
-(archive plus trusted ID in `experiments/images/trusted-image.json`); job scripts
-load it into job-private storage and refuse a different ID. Launch one or two
+(both archives and IDs in `experiments/images/trusted-image-isolated.json`); job scripts
+load both into job-private storage and refuse different IDs. Launch one or two
 prepared strict runs per allocation with `sbatch scripts/experiment-strict.slurm
 ID [ID]`. Evidence: `experiments/validation/sandbox-backend/`.
 
