@@ -43,6 +43,12 @@ Keep this list current: strike items when a log entry covers them.
   extract the MJCF runs' cube mass/COM/inertia and spring stiffness from their submissions for the same errors.
 - [ ] Hydrogen configs of waves 23/24 exist but were not launched (Neon is the default).
 
+## Cable tangles (user, 2026-11-24): designed, to build and queue
+- [ ] Build and queue per [level-designs/cable-tangle-20261124.md](level-designs/cable-tangle-20261124.md): C1 one knotted
+  cable vs C2 cable + hidden unlinked closed loop (both show two ends); new two-point-grasp capability; {base, 2 grasps,
+  + MJCF} × {C1, C2} = 6 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are user-approved;
+  do not re-ask.
+
 ## Explanation-depth gear train (user, 2026-11-24): designed, to build and queue
 - [ ] Build and queue per [level-designs/gear-train-depth-20261124.md](level-designs/gear-train-depth-20261124.md): visible
   ~20-gear train, deep and shallow models equal in prediction (deep ≥ 10× costlier); neutral task × {none, cheap-use,
