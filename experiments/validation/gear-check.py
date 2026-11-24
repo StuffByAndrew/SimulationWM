@@ -155,7 +155,7 @@ assert min(result["cost_ratio_deep_over_shallow"]) >= COST_RATIO, "deep is not >
 assert (deep["structure"]["depth_class"], shallow["structure"]["depth_class"], flip["structure"]["depth_class"]) == ("deep", "shallow", "deep")
 assert deep["structure"]["matched"] == len(gears) == flip["structure"]["matched"]
 assert deep["cheap"]["status"] == shallow["cheap"]["status"] == own["cheap"]["status"] == "ok" and own["structure"]["depth_class"] == "shallow"
-assert own["accuracy"]["candidate_timestep_s"] > S.TIMESTEP and abs(own["cost_relative_to_shallow"] - 1) < .5  # same model, timed twice
+assert own["accuracy"]["candidate_timestep_s"] > S.TIMESTEP and abs(own["sim_cost"]["candidate"]["relative_to_shallow"] - 1) < .5  # same model, timed twice
 assert deep["removal"]["answered"] == len(table["gear_train"]["removals"]) and deep["removal"]["mean_probe_error_rad"] < 1e-9
 assert flip["removal"]["answered"] == len(table["gear_train"]["removals"]) and flip["removal"]["mean_probe_error_rad"] < 1e-6
 assert shallow["removal"]["cannot_answer"] == len(table["gear_train"]["removals"])
