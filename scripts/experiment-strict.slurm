@@ -46,7 +46,7 @@ for pid in "${pids[@]}"; do wait "$pid" || status=1; done
 # Researcher-side, after the runs: a compact scrubbable recording of each run (two MP4s + index) encoded from the frames its
 # verified audit holds, written to <root>/recordings/<id>/ for the reports' run pages (experiments/validation/run-video.py).
 for id in "$@"; do
-    env -u INFERENCE_API_KEY -u INFERENCE_BASE_URL -u GEMINI_API_KEY "${SIM2SIM_PYTHON:-.venv/bin/python}" experiments/validation/run-video.py \
+    env -u INFERENCE_API_KEY -u INFERENCE_BASE_URL -u GEMINI_API_KEY -u GEMINI_API_KEY_BYCOST "${SIM2SIM_PYTHON:-.venv/bin/python}" experiments/validation/run-video.py \
         "${SIM2SIM_EXPERIMENTS_ROOT:-experiments}/runs/$id" >> "experiments/validation/experiment-strict-$SLURM_JOB_ID-$id.log" 2>&1 || status=1
 done
 exit "$status"

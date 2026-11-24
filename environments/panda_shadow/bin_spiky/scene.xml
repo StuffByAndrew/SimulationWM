@@ -1,5 +1,5 @@
 <mujoco model="panda_shadow_bin_spiky">
-  <!-- Researcher-only. Touch-only bin level: a static open bin (inner 240 mm square, walls 30 mm) with four 60 g balls of equal height and inertia: ball2 is a 44 mm core with 6 cones (20 mm proud, 29 mm base), the others 48.5 mm smooth spheres. -->
+  <!-- Researcher-only. Touch-only bin level: a static open bin (inner 240 mm square, walls 40 mm) with four 60 g balls of equal height and inertia: ball2 is a 44 mm core with 6 cones (20 mm proud, 29 mm base), the others 48.5 mm smooth spheres. -->
   <compiler angle="radian" autolimits="true" meshdir="../robot/assets"/>
   <option timestep="0.002" integrator="implicitfast"><flag multiccd="enable"/></option>
   <visual><map znear="0.01" zfar="12"/></visual>
@@ -18,10 +18,10 @@
     <geom name="table" type="box" pos="0.000000 -0.080000 0.350000" size="0.380000 0.340000 0.050000" friction="0.8 0.005 0.0001" condim="4" rgba=".65 .52 .37 1"/>
     <geom name="panda_pedestal" type="box" pos="0 -.65 .2" size=".13 .13 .2" rgba=".25 .28 .32 1"/>
     <geom name="bin_floor" type="box" size="0.130000 0.130000 0.005000" pos="0.000000 -0.120000 0.405000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
-    <geom name="bin_wall_xp" type="box" size="0.005000 0.130000 0.015000" pos="0.125000 -0.120000 0.425000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
-    <geom name="bin_wall_xn" type="box" size="0.005000 0.130000 0.015000" pos="-0.125000 -0.120000 0.425000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
-    <geom name="bin_wall_yp" type="box" size="0.130000 0.005000 0.015000" pos="0.000000 0.005000 0.425000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
-    <geom name="bin_wall_yn" type="box" size="0.130000 0.005000 0.015000" pos="0.000000 -0.245000 0.425000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
+    <geom name="bin_wall_xp" type="box" size="0.005000 0.130000 0.020000" pos="0.125000 -0.120000 0.430000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
+    <geom name="bin_wall_xn" type="box" size="0.005000 0.130000 0.020000" pos="-0.125000 -0.120000 0.430000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
+    <geom name="bin_wall_yp" type="box" size="0.130000 0.005000 0.020000" pos="0.000000 0.005000 0.430000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
+    <geom name="bin_wall_yn" type="box" size="0.130000 0.005000 0.020000" pos="0.000000 -0.245000 0.430000" friction="0.8 0.005 0.0001" condim="4" rgba=".30 .45 .38 1"/>
     <body name="ball1" pos="-0.045858 -0.192647 0.434249" quat="1.000000 0.000000 0.000000 0.000000">
       <freejoint name="ball1"/>
       <inertial pos="0 0 0" mass="0.06000146665713155" diaginertia="0.000017 0.000017 0.000017"/>

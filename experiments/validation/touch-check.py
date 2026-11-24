@@ -44,6 +44,9 @@ GRIP = (0.005, -.012, .075)  # rh_palm-local point under the finger bases: the b
 FF_PAD = (0., -.007, .018)   # rh_ffdistal-local centre of the fingertip pad
 CURL = {**HAND_HOME, "rh_FFJ3": 1.0, "rh_FFJ2": .45, "rh_FFJ1": .45}  # first finger bent down to press with its pad
 PITCHED = {**HAND_HOME, "rh_WRJ1": -.6}  # wrist flexed: lifts the forearm, which otherwise hangs ~4 cm below the palm face
+FLAT = {**PITCHED, **{f"rh_{f}J{j}": 0. for f in ("FF", "MF", "RF", "LF") for j in (4, 3, 2, 1)}}  # fingers straight
+WRAP = {**{f"rh_{f}J{j}": q for f in ("FF", "MF", "RF", "LF") for j, q in ((3, 1.4), (2, 1.2), (1, 1.0))},
+        "rh_THJ5": .3, "rh_THJ4": 1.2, "rh_THJ3": 0., "rh_THJ2": .3, "rh_THJ1": .5}  # closing pose of the pinned L3 grab
 
 
 def manifest(level):
@@ -120,7 +123,7 @@ def taxels(observation):
 def press(sim, ball, offset, mode):
     """Lower the palm centre (mode palm, hand at home) or the curled first finger's pad (mode finger) onto a ball top at a
     horizontal offset, 2 mm per step, until the pads carry 1.5 N; returns the taxel pattern and contact geometry at that step."""
-    joints, body, point = (PITCHED, "rh_palm", PALM) if mode == "palm" else (CURL, "rh_ffdistal", FF_PAD)
+    joints, body, point = {"palm": (PITCHED, "rh_palm", PALM), "flat": (FLAT, "rh_palm", PALM), "finger": (CURL, "rh_ffdistal", FF_PAD)}[mode]
     ik = IK(sim._model, joints)
     sim.action({"op": "reset"}, render=False)
     centre = sim._data.xpos[sim._model.body(ball).id].copy()
@@ -152,7 +155,24 @@ def press(sim, ball, offset, mode):
             "pads": sorted(p for p, g in grids.items() if g.sum() > .02 * cells.sum()),
             "hand_contact_points": len(hand_hits), "ball_moved_mm": round(1000 * float(np.linalg.norm(sim._data.xpos[sim._model.body(ball).id] - centre)), 2),
             "pattern": {p: g.round(3).tolist() for p, g in grids.items() if g.sum()},
+            "palm_active_taxels": int((grids["palm"] > .05 * grids["palm"].sum()).sum()) if grids["palm"].sum() else 0,
             "body_totals_n": {p: round(v["total_normal_force_n"], 3) for p, v in obs["tactile"].items() if isinstance(v, dict) and v["total_normal_force_n"]}}
+
+
+def identify(sim, names, rng, mode, rule, presses=3):
+    """One trial of a scripted touch identification (3 palm presses per ball at random +-15 mm offsets, wrist flexed, fingers
+    curled (mode palm) or straight (flat)). Rule `taxels`: the first ball whose press lights two or more palm taxels is named.
+    Rule `height`: the ball with the most presses whose first contact comes >= 14 mm above the ball top is named (a tie names
+    none): the spiky ball's side tips meet the fingers early."""
+    if rule == "taxels":
+        for ball in rng.permutation(names):
+            for _ in range(presses):
+                if press(sim, ball, rng.uniform(-.015, .015, 2), mode)["palm_active_taxels"] >= 2:
+                    return str(ball)
+        return None
+    early = {ball: sum(press(sim, ball, rng.uniform(-.015, .015, 2), mode)["contact_depth_mm"] >= 14 for _ in range(presses)) for ball in names}
+    best = max(early.values())
+    return next(b for b, n in early.items() if n == best) if list(early.values()).count(best) == 1 else None
 
 
 def scripted_grab(sim, ball, dz=.025, closing=None, forward=None):
@@ -291,9 +311,19 @@ def main(out):
         key: {stat: [p[stat] for p in rows] for stat in ("active_taxels", "max_taxel_share", "hand_contact_points", "contact_depth_mm", "ball_moved_mm")}
         for key, rows in presses.items()}}
     print(json.dumps({"discriminability": results["discriminability"]["summary"]}), flush=True)
-    # Existence proof: an open-loop sweep (12 hand yaws x 2 grip heights x 3 closing poses, job 63324769) lifted the spiky ball in
-    # 1 of 72 tries (this one); it is a hard grasp that needs the fingers aligned with the tips.
-    results["scripted_grab"] = scripted_grab(sims["bin_spiky"], spiky, .02, None, [np.cos(np.radians(210)), np.sin(np.radians(210)), 0.])
+    # Reference floors, not gates (user, 2026-11-24: L3 is an explicitly hard identification task): scripted procedures with 3
+    # presses per ball, 40 seeded trials each, stored with the level for reports.
+    floors = {}
+    for mode, rule in (("palm", "taxels"), ("flat", "taxels"), ("palm", "height")):
+        rng = np.random.default_rng(20261124)
+        named = [identify(sims["bin_spiky"], m["object_bodies"], rng, mode, rule) for _ in range(40)]
+        floors[f"{rule}_{'curled' if mode == 'palm' else 'straight'}_fingers"] = {
+            "trials": len(named), "rate": sum(n == spiky for n in named) / len(named), "named": named}
+    results["identification_floors"] = floors
+    print(json.dumps({"identification_floors": {k: v["rate"] for k, v in floors.items()}}), flush=True)
+    # Existence proof: with 40 mm walls an open-loop sweep (12 hand yaws x 3 grip heights x 3 closing poses, job 63458855) lifted the
+    # spiky ball in 1 of 108 tries (this one); it is a hard grasp that needs the fingers aligned with the tips.
+    results["scripted_grab"] = scripted_grab(sims["bin_spiky"], spiky, .012, WRAP, [np.cos(np.radians(270)), np.sin(np.radians(270)), 0.])
     print(json.dumps({"scripted_grab": results["scripted_grab"]}), flush=True)
     # Private metrics on reference candidates.
     table_metrics = ["objects", "chamfer", "center_of_mass", "density"]
@@ -311,6 +341,10 @@ def main(out):
         results["evaluation"][f"bin_spiky/{name}"] = evaluate("bin_spiky", candidate("bin_spiky", parameters=parameters), ["objects", "identification"])
     print(json.dumps({"evaluation": results["evaluation"]}), flush=True)
     (out / "check.json").write_text(json.dumps(results, indent=1, default=float))
+    (FAMILY / "bin_spiky" / "reference_floors.json").write_text(json.dumps(
+        {"source": "experiments/validation/touch-check.py", "procedures": {k: {"trials": v["trials"], "rate": v["rate"]} for k, v in floors.items()}},
+        indent=1) + "\n")
+    assert results["scripted_grab"]["success"], results["scripted_grab"]
 
 
 if __name__ == "__main__":
