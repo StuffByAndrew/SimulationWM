@@ -363,3 +363,42 @@ original recordings" after checking its hash against the audited report; otherwi
 Panda scene at 22–31 µs per step (about 0.2–3 s of simulated time each), plus the predictor's own calls; configs allow
 1800 s. The strict end-to-end path (agent → fixture actions → predictor container → evaluator container) is covered by
 `tests/test_oci.py::test_fixture_level_predictor_submission_end_to_end` with a reduced table.
+
+## Gear train (`gear_train`)
+
+`gear_train` (selector; needs a private manifest `[gear_train]` table and `[[probes]]` with `settle_ticks`;
+`src/sim2sim/gear_train.py`) scores a scene submission for the explanation-depth level `environments/gear_train`
+([design](level-designs/gear-train-depth-20261124.md)) against the deep source and the private shallow reference
+(`shallow_reference`, `shallow.xml`: crank and hand only, one coupling, the gears' inertia and damping lumped into the crank
+joint). The candidate must name its crank and dial-hand bodies `crank` and `hand` (the public task says so); without them the
+evaluation fails with that error. It combines with other scene metrics but the level's configs select it alone: the generic
+`dynamics` image metric scores every visible body and so can never rate a model without gears like one with them.
+
+- `accuracy`: each probe runs `evaluation._probe_actions` (grasp, four moves, release, three waits) plus `settle_ticks` of
+  waiting, from reset, in the fresh source and the candidate (a missed candidate grasp turns its moves into waits). Every tick
+  records the **world** rotation of `crank` and `hand` about the panel normal (the source crank's hinge axis) relative to
+  their reset orientation, unwrapped, so a flipped hinge axis, another zero angle or other joint names cost nothing. Per probe
+  and body the RMS difference (rad) and the source's range are kept; `probe_error_rad` is their mean over probes and both bodies.
+- `structure`: hinge bodies other than crank and hand whose axis is within 5° of the panel normal are axles. Source gears are
+  matched one-to-one to candidate axles by axle position in the panel plane within `axle_tolerance_m` (nearest first;
+  names, sizes and masses play no part). `depth_class` is `shallow` (no gear matched), `deep` (≥ 80 % matched) or `partial`;
+  also hinge/axle body counts, unmatched candidate axles and couplings (equality constraints by type, tendons).
+- `sim_cost`: candidate, shallow and deep reference, each compiled as submitted (no evaluation grasp targets) at the source
+  timestep, from rest with a constant crank torque `cost_torque_nm` about the panel normal: wall seconds per simulated second
+  of `mj_step(nstep)` over `cost_seconds`, `cost_runs` runs interleaved across the three models, median (`runs` kept), and
+  `relative_to_shallow`; plus body, joint, dof, equality, tendon, geom, peak contact and peak constraint-row counts. Times
+  come from the evaluation worker (2 CPUs) and are only comparable within one report.
+- `cheap` (G-cheap): `status = fails_accuracy_gate` with `cost_relative_to_shallow = null` when `probe_error_rad` exceeds
+  `cheap_gate_rad` (never a zero score); otherwise `cost_relative_to_shallow`. The gate is the **worst** probe error of the
+  shallow reference with its lumped armature and damping each scaled by 0.9 or 1.1 (four combinations), computed by
+  `experiments/validation/gear-scenes.py` into the manifest. `probe_error_rad` is always kept, so another gate can be applied
+  to recorded reports.
+- `removal` (G-deep, reported for every condition): for each source gear in `removals` the source loses that body and the
+  candidate its matched body, each with its subtree and every equality, tendon, actuator, sensor and contact element naming
+  anything inside it (repeated to a fixpoint; keyframes are dropped), then the probes rerun. A gear without a match is
+  `cannot_answer`, a gap that never becomes an error value; a candidate whose edited model cannot run is `failed` with its
+  error. `answered`, `cannot_answer`, `failed` and `mean_probe_error_rad` (answered gears only, else null) summarize them.
+
+Artifacts under `artifacts/<digest>/gear_train/`: `probes.json` (actions and both worlds' rotations every 5 ticks) and
+`scores.json`. Not yet built: the design's H4 trace classifier (did the agent build and time models of two depths) and a
+dashboard per-version structure summary; read `scores.gear_train.structure` and `sim_cost` from the private reports.
