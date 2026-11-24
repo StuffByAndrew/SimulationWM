@@ -38,6 +38,9 @@ BATCHES = [  # (run-id pattern, batch, question); each new run matches exactly o
      "Does a local controller with pausable bash help touch-only reconstruction? Each hand level paired with its control (the w21 config on Neon)."),
     (r"^w26-", "Wave 26: low-rank answer vs full MJCF",
      "Cube on a spring, block mass stated: is answering with a few parameters (mass, stiffness, COM, inertia) better than building a MuJoCo scene?"),
+    (r"^w27-", "Wave 27: touch-only tabletop",
+     "With a Shadow hand on a Franka and touch alone, can the agent find and rebuild several objects on a table, and tell a spiky ball from smooth "
+     "ones? Each level paired with the wave-25 touch tooling."),
     (r"^w29-", "Wave 29: low-rank prompt",
      "Does asking the agent first to find the scene's low-rank structure make it converge faster on the target mass and spring stiffness?"),
 ]
@@ -48,7 +51,7 @@ CAUSES = [  # (regex over the run's status error and its job logs, cause); every
     (r"pre-action audit reservation", "runtime error: audit event over its reservation"),
     (r"podman', '(inspect|volume)", "podman command timed out at start (node)"),
 ]
-ROOTS = [B.NETRUNS, Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs"), B.MAIN / "runs"]
+ROOTS = B.RUN_ROOTS
 
 
 def _new_runs():
@@ -209,7 +212,7 @@ def sections(ctx):
     avg = lambda vals: None if not [v for v in vals if v is not None] else float(np.mean([v for v in vals if v is not None]))
     point = lambda r, k, cut: next((u["m"].get(k) for u in reversed(R[r]["subs"]) if cut(u) and u["m"].get(k) is not None), None)
     final = lambda r, k: point(r, k, lambda u: True)
-    effort = {r: json.loads((B.NETRUNS / r / "config-private.json").read_text())["inference"].get("reasoning_effort")
+    effort = {r: json.loads((B.RUN(r) / "config-private.json").read_text())["inference"].get("reasoning_effort")
               for (lv, m), runs in RUNS.items() if m != "gpt-6-astra" for r in runs}
     assert set(effort.values()) == {"medium"}, effort
     ended = lambda r: f"truncated: {TRUNCATED[r]}" if r in TRUNCATED else "finished" if R[r]["reason"] == "agent_finish" else \

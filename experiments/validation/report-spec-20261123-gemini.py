@@ -140,7 +140,7 @@ def sections(ctx):
     at = lambda r, k, lv, a: point(r, k, lambda u: u[AXES[a][0]] <= budget[(lv, a)])
     WHEN = ("final", *AXES)
     WHEN_NAME = {"final": "final", **{a: v[3] for a, v in AXES.items()}}
-    effort = {r: json.loads((B.NETRUNS / r / "config-private.json").read_text())["inference"].get("reasoning_effort") for r in NAMES}
+    effort = {r: json.loads((B.RUN(r) / "config-private.json").read_text())["inference"].get("reasoning_effort") for r in NAMES}
     assert set(effort.values()) == {"medium"}, effort
 
     # ---- ratios to astra, per level and overall (final and at equal tokens)

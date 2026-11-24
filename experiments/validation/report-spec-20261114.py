@@ -17,6 +17,14 @@ WORK = LABREPORTS / "report-work-20261114"
 PLAIN = LABREPORTS / "report-work-plain"
 RA = MAIN / "validation" / "rerun-analysis"
 NETRUNS = Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs")
+RUN_ROOTS = (Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs"), NETRUNS, MAIN / "runs")
+
+
+def RUN(run):
+    """A run's directory in whichever experiment root holds it (finished runs move from netscratch to lab); fails while a move is half done."""
+    hits = [d / run for d in RUN_ROOTS if (d / run / "status.json").is_file()]
+    assert len(hits) == 1, (run, hits)
+    return hits[0]
 REF = {"boat": "w10-boat-base-20261105-001", "assembly": "w10-assembly-base-20261105-001"}  # baselines from the previous report
 WORK2 = MAIN / "reports" / "report-work-20261118"  # runs finished 2026-11-14..18 (waves 19-22 and replicates)
 WORK3 = MAIN / "reports" / "report-work-20261120"  # Gemini runs (2026-11-19/20) and astra replicates finished 2026-11-18
@@ -107,7 +115,7 @@ GEM_MODELS = {"neon": "Gemini 4 Neon", "hydrogen": "Gemini 4 Hydrogen"}
 GEM_LABEL = {"stiff_rel": "lift-force error over a 4×4 grid", "com_mm": "COM error (mm)", "chamfer_mm": "Chamfer (mm)",
              "traj_mm": "composite COM path error, 4 throws (mm)", "fp_rel": "force-profile error"}
 GEM = {(lv, m): [f"{lv}-{m}-{d}-001" for d in ("20261119", "20261120")] for lv in GEM_LEVELS for m in GEM_MODELS}  # set 1, set 2 (provider-outage hold)
-GEM_DONE = {k: [r for r in runs if json.loads((NETRUNS / r / "status.json").read_text())["status"] == "completed"] for k, runs in GEM.items()}
+GEM_DONE = {k: [r for r in runs if json.loads((RUN(r) / "status.json").read_text())["status"] == "completed"] for k, runs in GEM.items()}
 GEM_FAILED = [r for k, runs in GEM.items() for r in runs if r not in GEM_DONE[k]]  # died of Google-side timeouts: infrastructure failures
 MC = json.loads((MAIN / "validation" / "model-compare-20261120.json").read_text())  # model-compare-20261119.py: matched points, finish reasons
 rep_n = lambda r: int(m.group(1)) if (m := re.search(r"-r(\d)-\d{8}-\d{3}$", r)) else 1
@@ -174,7 +182,7 @@ for r in list(HINTED.values()) + [CUT_SHORT]:
 
 
 def final_version_dir(run):
-    return sorted((NETRUNS / run).glob("version-*"))[-1]
+    return sorted(RUN(run).glob("version-*"))[-1]
 
 
 for (lv, h), r in BOX.items():  # composite-CoM trajectory of the throw-forward probe: final submission, and a solid box with the same exterior
@@ -251,11 +259,11 @@ def extra_metrics(run, i, hist):
         return {}
     if run.startswith(("w16", "w17")):
         if run not in _FP:
-            _FP[run] = json.loads((NETRUNS / run / "force-profile-rescore.json").read_text())["versions"]
+            _FP[run] = json.loads((RUN(run) / "force-profile-rescore.json").read_text())["versions"]
         assert len(_FP[run]) >= i + 1, run
         return _fp_errors(_FP[run][f"version-{i + 1:03d}"])
     if run.startswith(("w20", "w21", "w22")):
-        ev = json.loads((NETRUNS / run / f"version-{i + 1:03d}" / "evaluation.json").read_text())
+        ev = json.loads((RUN(run) / f"version-{i + 1:03d}" / "evaluation.json").read_text())
         assert ev["version"] == hist["version"], (run, i)
         sc = ev["scores"]
         if "force_profile" in sc:  # tunnels from outside, 1D spring-mass: whole-probe RMS error ÷ RMS true resistance
@@ -273,7 +281,7 @@ def extra_metrics(run, i, hist):
                                                    "stiff_rel": c["stiffness_map"]["lift_force_relative_error"]}
         return {}
     if run.startswith(("w18", "w19")):
-        ev = json.loads((NETRUNS / run / f"version-{i + 1:03d}" / "evaluation.json").read_text())
+        ev = json.loads((RUN(run) / f"version-{i + 1:03d}" / "evaluation.json").read_text())
         assert ev["version"] == hist["version"], (run, i)
         probes = {p["name"]: p["object_com"] for p in ev["scores"]["arm_probes"] if p["status"] == "ok"}
         assert set(probes) == set(PROBES), (run, i, list(probes))
@@ -293,7 +301,7 @@ def engagement():
 
 def quote(run, text):
     """A verbatim model progress note (exactly one note must contain the text)."""
-    hits = [x for x in map(json.loads, (NETRUNS / run / "progress.jsonl").read_text().splitlines()) if x.get("origin") == "model" and text in x["text"]]
+    hits = [x for x in map(json.loads, (RUN(run) / "progress.jsonl").read_text().splitlines()) if x.get("origin") == "model" and text in x["text"]]
     assert len(hits) == 1, (run, text, len(hits))
     return dict(text=hits[0]["text"], run=run, name=" · ".join(NAMES[run]), minute=round(hits[0]["wall_elapsed"] / 60))
 
@@ -729,7 +737,7 @@ def sections(ctx):
                 conv([[runs[0], CLOTH_NAME[lv]] for lv, runs in CLOTH.items()], ["stiff_rel", "drop_chamfer_mm"], title="Time course (first runs)", xmax=360)]))
 
     # ---------------- 11 · Gemini vs astra ----------------
-    effort = {r: json.loads((NETRUNS / r / "config-private.json").read_text())["inference"].get("reasoning_effort")
+    effort = {r: json.loads((RUN(r) / "config-private.json").read_text())["inference"].get("reasoning_effort")
               for lv, (_, astra, _) in GEM_LEVELS.items() for r in astra + [x for m in GEM_MODELS for x in GEM_DONE[(lv, m)]]}
     assert set(effort.values()) == {"medium"}, effort  # same reasoning level for every compared run (Gemini: thinkingLevel = medium)
     point = lambda r, k, cut: next((u["m"].get(k) for u in reversed(R[r]["subs"]) if cut(u) and u["m"].get(k) is not None), None)
