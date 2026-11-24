@@ -28,6 +28,9 @@ Keep this list current: strike items when a log entry covers them.
 1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
 2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
    (`scontrol top`).
+   Blocked (builder, 2026-11-24): the premise check failed. Soft gear couplings make the deep train compliant, so the
+   deep and shallow models do not predict identically, and the cost ratio is 5× rather than 10×. The decision is with the
+   designer and the user. Do not queue `wave28-20261124` from any branch until a merged handoff arrives.
 3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
