@@ -155,18 +155,18 @@ def press(sim, ball, offset, mode):
             "body_totals_n": {p: round(v["total_normal_force_n"], 3) for p, v in obs["tactile"].items() if isinstance(v, dict) and v["total_normal_force_n"]}}
 
 
-def scripted_grab(sim, ball):
+def scripted_grab(sim, ball, dz=.025, closing=None, forward=None):
     """Open hand palm down (wrist flexed, PITCHED) over the ball, lower around it, close every finger and the thumb, lift 15 cm."""
     sim.action({"op": "reset"}, render=False)
     centre = sim._data.xpos[sim._model.body(ball).id].copy()
     open_hand = {**PITCHED, **{f"rh_{f}J{j}": 0. for f in ("FF", "MF", "RF", "LF") for j in (3, 2, 1)}, "rh_THJ5": .6, "rh_THJ4": 1.1}
     ik = IK(sim._model, open_hand)
-    above = ik.solve([*centre[:2], centre[2] + .10], point=GRIP)
-    closed = {**open_hand, **{f"rh_{f}J{j}": q for f in ("FF", "MF", "RF", "LF") for j, q in ((3, 1.2), (2, 1.0), (1, 1.0))},
-              "rh_THJ5": .8, "rh_THJ4": 1.2, "rh_THJ2": .5, "rh_THJ1": .8}
+    above = ik.solve([*centre[:2], centre[2] + .10], forward=forward, point=GRIP)
+    closed = {**open_hand, **(closing or {**{f"rh_{f}J{j}": q for f in ("FF", "MF", "RF", "LF") for j, q in ((3, 1.2), (2, 1.0), (1, 1.0))},
+                                          "rh_THJ5": .8, "rh_THJ4": 1.2, "rh_THJ2": .5, "rh_THJ1": .8})}
     sim.action({"op": "hand_target", "actuator_targets": hand_targets(open_hand), "ticks": 200}, render=False)
     sim.action({"op": "arm_target", "joint_targets": above["q"], "ticks": 600}, render=False)
-    down = ik.solve([*centre[:2], centre[2] + S.SMOOTH_R + .025], forward=above["forward"], point=GRIP, start=above["q"], restarts=1)
+    down = ik.solve([*centre[:2], centre[2] + dz], forward=above["forward"], point=GRIP, start=above["q"], restarts=1)
     sim.action({"op": "arm_target", "joint_targets": down["q"], "ticks": 500}, render=False)
     sim.action({"op": "hand_target", "actuator_targets": hand_targets(closed), "ticks": 400}, render=False)
     lift = ik.solve([*centre[:2], centre[2] + .20], forward=above["forward"], point=GRIP, start=down["q"], restarts=1)
@@ -291,7 +291,9 @@ def main(out):
         key: {stat: [p[stat] for p in rows] for stat in ("active_taxels", "max_taxel_share", "hand_contact_points", "contact_depth_mm", "ball_moved_mm")}
         for key, rows in presses.items()}}
     print(json.dumps({"discriminability": results["discriminability"]["summary"]}), flush=True)
-    results["scripted_grab"] = scripted_grab(sims["bin_spiky"], spiky)
+    # Existence proof: an open-loop sweep (12 hand yaws x 2 grip heights x 3 closing poses, job 63324769) lifted the spiky ball in
+    # 1 of 72 tries (this one); it is a hard grasp that needs the fingers aligned with the tips.
+    results["scripted_grab"] = scripted_grab(sims["bin_spiky"], spiky, .02, None, [np.cos(np.radians(210)), np.sin(np.radians(210)), 0.])
     print(json.dumps({"scripted_grab": results["scripted_grab"]}), flush=True)
     # Private metrics on reference candidates.
     table_metrics = ["objects", "chamfer", "center_of_mass", "density"]
