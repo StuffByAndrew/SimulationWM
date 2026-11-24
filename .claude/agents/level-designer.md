@@ -63,7 +63,7 @@ visualization details.
 
 When the user says to build, follow `skills/add-level/SKILL.md` end to end. Always run its settings rounds with
 AskUserQuestion, even if the user hinted at answers in chat. Confirm embodiment (point grasp / Franka / Shadow
-hand), camera (fixed / movable / wrist), images (none / RGB / RGB-D, resolution), force sensing (wrench / effort /
+hand), camera (fixed / movable / wrist), images (none / RGB / RGB-D, resolution; RGB-D is the default), force sensing (wrench / effort /
 tactile), time (lock-step / real time), reference interaction, tools, hints, perturbations and budget. Offer
 "both (ablation pair)" only where that factor is the manipulated one. Present the evals card in the final
 approval summary.
