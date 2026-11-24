@@ -27,7 +27,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - `w26-cube-spring-block-lowrank-20261123-001` (221 min) and `-002` (231 min): neither submitted.
   - `w26-cube-spring-block-mjcf-20261123-001`: 241 min, 1 submission.
   - All count as infrastructure failures (truncated). `mjcf-002` was resumed at its 4 h checkpoint, then died the same
-    way at 04:30 UTC (312 run-minutes, 1 submission, held 14,855 s). Carbon cloth continues.
+    way at 04:30 UTC (312 run-minutes, 1 submission, held 14,855 s).
+  - `w22-cloth-holes-carbon-20261123-001` **completed** at about 05:30 UTC (356 run-minutes, 644 real, 1 submission):
+    the only full-length run of the 2026-11-23 launch. It is the first complete Carbon data point.
 - **Sapphire backlog:** about 4,400 pending jobs and no start estimate for the 15 reruns. `test` (12 h cap) is too short
   with these outages; other partitions are not approved for strict runs.
 - **Wave 26 rerun in full:** both conditions, n=2, from `experiments/configs/wave26-20261124/` (36 h allowance, image
