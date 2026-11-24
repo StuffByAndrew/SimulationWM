@@ -445,9 +445,11 @@ Provider outages are a separate failure class, `ProviderUnavailable`: a call tha
 HTTP 429/5xx after those retries, or fails in transport. With `provider_hold_seconds = N` the controller holds the outage
 outside the run:
 
-- The failed attempt's time is credited back to both clocks.
+- The failed attempt's time is credited back to both clocks. A real-time world is rewound to its state at the start of the
+  attempt (physics, a running timed action, kept frames and frame grid), as if it had been frozen for the attempt.
 - The backoff (15 s, doubling to at most 300 s) runs with the containers paused and the clocks stopped.
-- The identical request is then retried. Each hold is audited as `provider_hold`.
+- The identical request is then retried. Each hold is audited as `provider_hold` (with a real-time world, also the
+  `discarded_ticks` and `discarded_frames` of the rewound attempt, which no reply or audit event ever carried).
 - After N held seconds, outages reach the agent as ordinary failures again.
 
 A successful call's latency always counts as run time.
@@ -748,7 +750,9 @@ and `calibration` settings. `src/sim2sim/realtime.py` implements it.
 - **Clock.** A host thread advances the reference world at one simulated second per wall-clock second (`RealtimeWorld`).
   It keeps running while the agent reasons, while its code runs and between requests. The agent cannot pause it, slow it,
   step it, or save and restore it. There is no reconstruction world and no `load_reconstruction`. Host-side holds outside
-  the run (budget and provider holds, private evaluation) pause the world with the run clocks.
+  the run (budget and provider holds, private evaluation) pause the world with the run clocks. A provider-failed inference
+  attempt is not known to fail until it ends, so the world runs through it and is then rewound to the attempt's start
+  (`RealtimeWorld.mark`/`rewind`): it continues exactly as if frozen. A successful call's latency advances the world.
 - **Actions.** Agent actions take effect in arrival order at the next physics tick boundary. A timed action
   (`move`, `arm_target`, `hand_target`; `ticks` is its duration) occupies its ticks, and later actions wait for it.
   Chained actions such as `move` then `release` therefore take effect back to back, whatever the transport latency.
