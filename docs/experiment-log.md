@@ -22,7 +22,17 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Carbon reruns** (`experiments/configs/gemini-carbon-20261124/`, sources identical to the -001 runs):
   `w19-marble-heavy-hint-carbon-20261124-001`, `w21-hand-smooth-mesh-carbon-20261124-001`, and
   `w20-latch-out-carbon-20261124-001` (replaces the never-started -003, whose job `63210168` was cancelled).
-- **Wave 26:** a rerun set `experiments/configs/wave26-20261124/` (36 h allowance) is ready in case the running runs die.
+- **03:50 UTC, four more died the same way** (`held_seconds` 14,425–14,792):
+  - `w11-tetra-spring-k-carbon-20261123-001`: 237 run-minutes, 1 submission.
+  - `w26-cube-spring-block-lowrank-20261123-001` (221 min) and `-002` (231 min): neither submitted.
+  - `w26-cube-spring-block-mjcf-20261123-001`: 241 min, 1 submission.
+  - All count as infrastructure failures (truncated). `mjcf-002` was resumed at its 4 h checkpoint and continues; Carbon
+    cloth also continues.
+- **Wave 26 rerun in full:** both conditions, n=2, from `experiments/configs/wave26-20261124/` (36 h allowance, image
+  `d9cc983d1fc8`), so the low-rank vs MJCF pair stays matched. Runs `w26-cube-spring-block-{lowrank,mjcf}-20261124-00{1,2}`,
+  jobs `63281858` and `63281861`.
+- **Carbon w11 rerun:** `w11-tetra-spring-k-carbon-20261124-001`, job `63281862`.
+- **Sources:** all byte-identical to the -20261123 runs (job `prepare-20261124b`).
 - **Jobs** (sapphire, 3-day limit, 40 CPUs):
   - w25: `63264367`, `63264369`–`71`.
   - w23: `63264372`–`73`.
