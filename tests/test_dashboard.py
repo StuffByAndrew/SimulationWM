@@ -266,6 +266,10 @@ def test_unmatched_metrics_remain_available_as_gaps():
     assert values['hinges.joint.frictionloss_absolute_error'] is None
     assert _metric_group('reconstruction.density.per_primitive.a.absolute_error_kg_m3') == \
            _metric_group('reconstruction.density.per_primitive.b.absolute_error_kg_m3')
+    # Sampled curves are not checkpoint series (one force_profile run had 12k of them); summaries and xyz vectors stay.
+    profile=_metric_values({'force_profile':{'rms_resistance_error_n':.5,'source':{'resistance_n':[1.,2.,3.,4.],'force_world_n':[[0.,0.,1.]]*4}},
+                            'reconstruction':{'center_of_mass_error_vector_m':[.1,.2,.3]}})
+    assert set(profile)=={'force_profile.rms_resistance_error_n',*(f'reconstruction.center_of_mass_error_vector_m.{i}' for i in range(3))}
 
 
 def test_recorded_overlay_is_private_metadata_and_missing_is_not_invented(tmp_path):

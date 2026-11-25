@@ -49,6 +49,9 @@ def _scalars(value,path=()):
             if key in ('seed','surface_seed','samples','surface_samples','source_hinge_count','candidate_hinge_count') or key.endswith('_count'): continue
             yield from _scalars(child,path+(str(key),))
     elif isinstance(value,list):
+        # A numeric array longer than an xyz vector is a sampled curve (force_profile's 610-sample source/candidate
+        # profiles became 12k one-point series, 52 of a run's 57 MB); its report summaries are kept as metrics.
+        if len(value)>3 and not any(isinstance(child,dict) for child in value): return
         for index,child in enumerate(value):
             label=(child.get('source_name') or child.get('name')) if isinstance(child,dict) else None
             yield from _scalars(child,path+(str(label or index),))
