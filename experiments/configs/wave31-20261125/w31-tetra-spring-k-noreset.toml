@@ -50,10 +50,10 @@ calibration = true
 wrench = false
 effort = false
 movable_camera = true
-resets = false
 width = 320
 height = 240
 camera = "fixed"
+resets = false
 default_ticks = 20
 
 [evaluation]

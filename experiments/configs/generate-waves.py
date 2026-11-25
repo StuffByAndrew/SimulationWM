@@ -604,7 +604,7 @@ event_log_bytes = 67108864
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}
-{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}{"resets = false" + chr(10) if o.get("resets") is False else ""}width = 320
+{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}{'resets = false' + chr(10) if o.get("noreset") else ""}default_ticks = 20
@@ -747,7 +747,7 @@ print(out.name, sorted(p.name for p in out.glob("*.toml")))
 
 # Wave 31 (user, 2026-11-25, top priority): resets vs no resets. Levels whose completed Neon runs reset often (gemini-20261120:
 # latch-out 27, hand smooth-mesh 21, cloth-holes 17, tetra-spring-k 11, marble-heavy-hint 9; w26 cube-spring-block mjcf 24).
-# Each no-reset config is its Neon baseline's config with [simulation] resets = false (the reset action is not offered) and,
+# Each no-reset config is its Neon baseline's config with [simulation] resets = false (option noreset) (the reset action is not offered) and,
 # for the hand, the task's reset sentence removed; the provider-hold allowance is the current 36 h (held time is off the
 # run clock). Baselines: those Neon runs, which kept resets.
 out = Path(__file__).parent / "wave31-20261125"
@@ -756,10 +756,10 @@ for wave_dir, run_id in HARD:
     wave, _, _, runs = WAVES[wave_dir]
     env, factor, overrides = runs[run_id]
     overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": "gemini-4-neon", "cost": 1e6, "pool_usd": 1e6,
-                                                                           "hold": 129600, "provider_hold": PROVIDER_HOLD, "resets": False}
+                                                                           "hold": 129600, "provider_hold": PROVIDER_HOLD, "noreset": True}
     overrides["task"] = overrides.get("task", TASK).replace(HAND_RESET, " The object starts resting in the robot hand.")
     (out / f"w31-{run_id[4:]}-noreset.toml").write_text(config("Wave 31", "gemini-20261125", 1e6, env, factor + "; no resets; neon", overrides))
 env, factor, overrides = RUNS28["w26-cube-spring-block-mjcf"]
 (out / "w31-cube-spring-block-mjcf-noreset.toml").write_text(config("Wave 31", "gemini-20261125", 1e6, env, factor + "; no resets; neon",
-                                                                    {**overrides, "provider_hold": PROVIDER_HOLD, "resets": False}))
+                                                                    {**overrides, "provider_hold": PROVIDER_HOLD, "noreset": True}))
 print(out.name, sorted(p.name for p in out.glob("*.toml")))

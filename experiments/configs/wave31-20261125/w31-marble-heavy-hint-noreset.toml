@@ -49,10 +49,10 @@ depth = false
 calibration = true
 wrench = false
 movable_camera = true
-resets = false
 width = 320
 height = 240
 camera = "fixed"
+resets = false
 default_ticks = 20
 
 [evaluation]
