@@ -41,17 +41,20 @@ BATCHES = [  # (run-id pattern, batch, question); each new run matches exactly o
     (r"^w27-", "Wave 27: touch-only tabletop",
      "With a Shadow hand on a Franka and touch alone, can the agent find and rebuild several objects on a table, and tell a spiky ball from smooth "
      "ones? Each level paired with the wave-25 touch tooling."),
+    (r"^w28-", "Wave 28: gear train, explanation depth",
+     "When a deep (mechanistic, costly) and a shallow (lumped, cheap) model predict the probes equally well, which does the agent build, "
+     "and does the stated downstream use change it (reconstruct / cheap / deep task)?"),
     (r"^w29-", "Wave 29: low-rank prompt",
      "Does asking the agent first to find the scene's low-rank structure make it converge faster on the target mass and spring stiffness?"),
 ]
 CANCELLED = {"w20-latch-out-carbon-20261123-001": "cancelled to free a test slot for the live dashboard",
              "w20-latch-out-carbon-20261123-002": "cancelled to free a test slot for the live dashboard"}  # status.json still says running
 CAUSES = [  # (regex over the run's status error and its job logs, cause); every failed run must match one
-    (r"Disk quota exceeded", "netscratch disk quota exceeded"),
     (r"pre-action audit reservation", "runtime error: audit event over its reservation"),
     (r"podman', '(inspect|volume)", "podman command timed out at start (node)"),
 ]
 ROOTS = B.RUN_ROOTS
+ROOT_NAME = dict(zip(ROOTS, ("lab", "netscratch", "home")))
 
 
 def _new_runs():
@@ -73,13 +76,14 @@ def _state(run, path):
     minutes = json.loads(lines[-1])["wall_elapsed"] / 60 if lines else 0.0
     subs = len(list(path.glob("submission-*.zip")))
     logs = " ".join(f.read_text(errors="replace") for f in (B.MAIN / "validation").glob(f"experiment-strict-*-{run}.log"))
-    if s["status"] == "prepared":
-        sib = re.sub(r"-001$", "-002", run)
-        return "never started", ("superseded by " + sib) if sib != run and sib in NEW else "queued", minutes, subs
+    if s["status"] == "prepared":  # superseded when the same stem was re-prepared later (a later date or sequence number)
+        stem, suffix = re.match(r"(.*)-(\d{8}-\d{3})$", run).groups()
+        later = sorted(r for r in NEW if r.startswith(stem + "-") and re.fullmatch(r"\d{8}-\d{3}", r[len(stem) + 1:]) and r[len(stem) + 1:] > suffix)
+        return "never started", f"superseded by {later[-1]}" if later else "queued", minutes, subs
     if run in CANCELLED:
         return "cancelled", CANCELLED[run], minutes, subs
     if "Disk quota exceeded" in logs or "Disk quota exceeded" in str(s.get("error")):
-        return "failed", "netscratch disk quota exceeded", minutes, subs
+        return "failed", f"{ROOT_NAME[path.parent]} disk quota exceeded", minutes, subs
     if s["status"] in ("completed", "running"):
         return s["status"], s.get("result", {}).get("reason", ""), minutes, subs
     assert s["status"] == "failed", (run, s["status"])
@@ -183,7 +187,7 @@ def methods(ctx):
     return [
         "<b>Strict runs only</b>: isolated container, no access to scene files, model called through its API; asserted by the builder.",
         "<b>New runs</b>: every run directory dated 2026-11-17 or later in the three experiment roots that is not in the two 2026-11-24 reports. "
-        "States come from each run's own status, progress and termination records and its Slurm job log (a job killed by the disk quota could "
+        "States come from each run's own status, progress and termination records and its Slurm job log (a job killed by a disk quota could "
         "not update its status file).",
         "<b>Same configurations</b>: the Carbon configs equal the Gemini batch's (sources byte-identical); the wave-26 MJCF arm is the w20 "
         "cube-on-a-spring config on Neon. Every scored run used <code>reasoning_effort = \"medium\"</code> (asserted).",
