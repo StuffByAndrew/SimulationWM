@@ -391,7 +391,7 @@ def _tags(metadata,status,config,robot,scene,series,factor,root):
         'Observations':[label for flag,label in ((simulation.get('rgb'),'RGB'),(simulation.get('depth'),'Depth'),
             (simulation.get('wrist_camera'),'Wrist camera'),(simulation and not simulation.get('rgb'),'Proprioception only')) if flag],
         'Interaction':[label for flag,label in ((simulation.get('wrench'),'Wrench sensing'),(simulation and not simulation.get('wrench'),'No wrench'),
-            (simulation.get('reference_interaction') is False,'Observe-only reference')) if flag],
+            (simulation.get('reference_interaction') is False,'Observe-only reference'),(simulation.get('resets') is False,'No resets')) if flag],
         'Variant':[label for key,label in (('perturbation.physics','Hard physics'),('perturbation.colors','Recolored')) if key in physical] or ['Authored'],
         'Tools':sorted(name for name,enabled in (config.get('tools') or {}).items() if enabled) or (['None'] if config else []),
         'Prompt':[label for flag,label in (('finishing early earns nothing' in task,'Full-budget prompt'),('Call finish when you believe' in task,'Converge prompt'),

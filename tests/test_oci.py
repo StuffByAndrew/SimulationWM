@@ -620,6 +620,49 @@ class TouchHarnessOCITests(unittest.TestCase):
         self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
         print("panda_shadow touch level: " + report[-1]["text"])
 
+    def test_no_reset_run_harness_offers_no_reset_tool(self):
+        """resets = false: the agent image's harness builds no reset tool, and a reset request is rejected."""
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/touch-harness" / ("oci-noreset-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(root / "environments/blocks/scene.xml")},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
+                              "command": ["python", "-c", NO_RESET_AGENT], "memory": "3g", "cpus": 2, "pids": 128, "workspace": "1g",
+                              "worker": {"memory": "2g", "cpus": 1}},
+                  "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 300, "physics_ticks": 1000, "submissions": 1},
+                  "simulation": {"camera": "fixed", "width": 80, "height": 60, "resets": False},
+                  "evaluation": {"source_dir": str(root / "environments"), "source_entrypoint": "blocks/scene.xml",
+                                 "manifest": "blocks/manifest.toml", "camera": "fixed", "width": 80, "height": 60, "timeout_seconds": 120}}
+        try:
+            run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual(json.loads((output / "termination.json").read_text())["status"], "finished")
+        report = [json.loads(line) for line in (output / "progress.jsonl").read_text().splitlines() if '"origin": "agent"' in line]
+        self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
+        print("no-reset harness: " + report[-1]["text"])
+
+
+NO_RESET_AGENT = r'''
+import json, sys
+sys.path[:0] = ["/opt/agent"]
+import sandbox_agent
+from sim2sim.client import Client
+client = Client()
+names = [tool["name"] for tool in sandbox_agent.tool_schemas(client.task)]
+assert "reset" not in client.task["actions"] and "reset" not in names and "observe" in names, names
+try:
+    client.request("reset")
+    raise AssertionError("reset was accepted")
+except RuntimeError as exc:
+    assert "reset is not available" in str(exc), exc
+client.request("observe", ticks=1)
+client.progress(json.dumps({"tools": names}), origin="agent")
+client.finish()
+'''
+
 
 ARM_SHADOW_AGENT = r'''
 import json, shutil, sys
