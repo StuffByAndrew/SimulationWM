@@ -46,6 +46,18 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 23:10 UTC — All held jobs released (file headroom from compaction)
+- Maintenance snapshot at 17:50 ET: netscratch files 92.55M/100M (about 7.5M free); lab 9.26M/10M (about 736K free,
+  still compacting). New runs avoid lab.
+- The 15 still-held jobs were re-submitted with the compaction step (netscratch root, `trusted-image-isolated-gear.json`):
+  - wave 27, all 8 runs, as single kempner_cpu jobs `63733348`–`63733824`;
+  - on sapphire: w25 pairs `63733826`, `63733865`, `63733891`, `63733947`; w26 `63733958`; w29 `63733967`, `63734041`,
+    `63734055`, `63734098`;
+  - Carbon (nice) `63734100`, `63734113`.
+- kempner_cpu order (4 runs at a time): wave 31, then gear, fixture, die, then wave 27.
+- The freezer-failure diagnostics are merged (297cdf7, builder commit 0cc98d6), and the latch-out -002 audit compacted
+  cleanly (`compact-63730140.log`: 25,051 loose files packed into 6, verified).
+
 ## 2026-11-25 22:50 UTC — Latch-out no-reset lost to a freezer failure; top-priority held runs released on kempner_cpu
 - `w31-latch-out-noreset-20261125-002` (kempner_cpu `63706221`, holygpu8a11104) failed at its first evaluation, at 115
   run-minutes: "Slurm step 63706221.1 freezer did not reach frozen=1". Infrastructure failure, reported to the builder.
