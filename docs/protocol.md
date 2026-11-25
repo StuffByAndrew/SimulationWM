@@ -489,6 +489,37 @@ api_key_env = "GEMINI_API_KEY"
 price_usd_per_mtok = { input = 3.0, cached_input = 0.15, output = 15.0 }
 ```
 
+`api = "local_openai"` sends the same validated transcript (labelled tool turns) to a keyless researcher-hosted OpenAI
+chat-completions service, such as `scripts/inkling-service.slurm` (open-weights Inkling 2 Mini under llama.cpp on two
+A100s; its header explains the engine choice and precision).
+
+- `endpoint` is the absolute path of the service's private record `service.json`, not a URL. The record must be an
+  owner-only file in an owner-only directory. While the server is healthy, the service rewrites it every 5 s with its
+  address (`http://<node>:<port>/v1/chat/completions`), the served `model`, a per-job bearer `token`, `heartbeat_unix`,
+  and its engine, checkpoint and precision.
+- The broker reads the record on every call. Plain HTTP is allowed only to that cluster-internal address, never through a
+  proxy; keyed APIs still require HTTPS.
+- A missing record, a heartbeat older than 120 s, or a refused connection is a provider outage (`ProviderUnavailable`),
+  so `provider_hold_seconds` holds a dead or requeued service until it is back. A record for another model, a non-chat
+  address or loose permissions is a hard failure.
+- The run refuses to launch without a live record and audits it once as `local_inference_service` (without the token).
+- Requests carry `max_tokens` and `chat_template_kwargs.reasoning_effort`, which the model's chat template reads. The
+  broker requires the returned `model` to equal `model`.
+- Usage maps as for Gemini. `promptTokens` is the prompt minus prefix-cache hits (`prompt_tokens_details.cached_tokens`),
+  `cacheReadTokens` is the hits, and `completionTokens` includes reasoning. `reasoningTokens` is the service's
+  `completion_tokens_details.reasoning_tokens`, or null (unknown, not zero) when it reports none, as llama-server does.
+- Cost is always 0. A timed-out call charges no reserve. Pool and cap lines are accounting-only.
+- The model's raw reasoning is not a provider summary and is not recorded. `reasoning_summary`, `api_key_env`,
+  `metadata`, `provider` and `price_usd_per_mtok` are refused.
+
+```toml
+[inference]
+api = "local_openai"
+endpoint = "/n/netscratch/qianqian_lab/Lab/aejxie/inkling/service/service.json"
+model = "inkling-2-mini"
+reasoning_effort = "medium"
+```
+
 `Client.progress(text, origin="agent")` emits a concise public note, maximum
 4096 characters. `origin` is `model`, `adapter` or `agent`; the host always records
 the sender as `source="agent"`. Actual provider summaries are host-recorded as

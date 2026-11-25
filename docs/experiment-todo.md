@@ -36,6 +36,19 @@ Keep this list current: strike items when a log entry covers them.
 3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
+## Inkling 2 Mini on the five hard levels (user, 2026-11-24): configs ready, not launched
+- `experiments/configs/inkling-20261124/*.toml`, zero cost, self-hosted (AGENTS.md "Inkling 2 Mini, self-hosted").
+- **Launch:**
+  1. `sbatch scripts/inkling-service.slurm` from the repository root. For requeue, add
+     `-p kempner_requeue --qos=normal`. The lab's 16-GPU priority QoS was full on 2026-11-25.
+  2. Wait until `$INKLING_ROOT/service/service.json` exists and the log says `healthy`.
+  3. Prepare and submit the five runs like the Carbon ones (`trusted-image-isolated.json`, sapphire). No key is needed.
+- **Capacity:** one service, 5 slots and 262144 shared cache cells, serves all five runs. Expect slow calls, about 14
+  tokens/s per run when all five generate at once.
+  - Keep the service's `-t` longer than the 6 h walls plus queueing.
+  - A preempted or dead service is held as a provider outage (36 h allowance).
+- **Report:** compare at matched tokens as well as matched wall time, and report the timeout and malformed-call rates.
+
 ## 2026-11-23 batch (launched; see the log)
 - [ ] Recordings (a1a65b1): jobs submitted before 2026-11-24 ~07:30 UTC keep their submit-time copy of
   `experiment-strict.slurm`, so they do not record. Run `.venv/bin/python experiments/validation/run-video.py RUN_DIR`

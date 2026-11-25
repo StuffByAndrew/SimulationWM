@@ -6,6 +6,21 @@ details (batch JSON, reports) rather than copying them; never put private scores
 source values or parameter descriptions where an agent could read them. "Budget
 used" = native wall time ÷ wall limit. How to run experiments: [experiments.md](experiments.md).
 
+## 2026-11-25 05:30 UTC — Inkling 2 Mini self-hosted: service validated, five hard-level configs planned (not launched)
+- **Service:** `scripts/inkling-service.slurm` (llama.cpp b12706 on 2× A100-40GB) serves the official checkpoint in BF16 at
+  zero cost (see AGENTS.md).
+  - Requeue job `63571190` became healthy.
+  - Broker smoke `63573091` passed: tool call, tool-result round trip, image, six efforts, 143K-token needle.
+- **Pipeline smoke:** `inkling-smoke-20261125-001` (`experiments/validation/inkling-smoke.toml`) ran in strict test job
+  `63575871`.
+  - Run root: `/n/netscratch/qianqian_lab/Lab/aejxie/inkling/smoke-root`, so no dashboard or report picks it up.
+  - It is the w20-latch-out Inkling config with a 20-minute wall.
+  - 22 calls, all tool calls except the last stop, with no provider errors, about 13.5K completion tokens and prefix-cache
+    reuse.
+  - It ended by the harness reserve with 0 submissions. It is validation, not a result.
+- **Planned:** `experiments/configs/inkling-20261124/`, the five hard levels on the gemini-carbon-20261124 recipe, pool
+  `inkling-20261124`, per-call timeout 1800 s.
+
 ## 2026-11-24 20:10 UTC — Netscratch quota killed all 8 running jobs (19:12 UTC); everything moved to the lab root
 - Jobs `63264369`, `63264376`, `63264378`, `63264379`, `63281858`, `63281862`, `63320565` and `63320572` died between
   19:12 and 19:18 UTC on "Disk quota exceeded" writing `status.json.tmp`, so those files still say `running`.

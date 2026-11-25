@@ -528,14 +528,22 @@ GEMINI_PRICES = {"gemini-4-neon": (3.0, 0.15, 15.0), "gemini-4-hydrogen": (1.5, 
                  "gemini-4-carbon": (3.0, 0.15, 15.0)}  # Carbon: Neon's prices as a placeholder (accounting only; spend is unlimited)
 
 
+# Self-hosted open-weights models (api local_openai, zero cost): the private record of the researcher's GPU service.
+# Their raw reasoning is no provider summary, so their route has no reasoning_summary line (the broker refuses one).
+LOCAL_SERVICES = {"inkling-2-mini": "/n/netscratch/qianqian_lab/Lab/aejxie/inkling/service/service.json"}  # scripts/inkling-service.slurm
+
+
 def route(model, key_env="GEMINI_API_KEY"):
-    """[inference] lines (before and after the reasoning settings) that select the model; the rest is model-independent."""
+    """[inference] lines (before and after the reasoning effort) that select the model; the rest is model-independent."""
+    summary = 'reasoning_summary = "auto"\n'
     if model == "gpt-6-astra":
         return ('endpoint = "https://api.aqinference.com/v1/responses"\nprovider = "openai"\nmodel = "gpt-6-astra"\n',
-                'metadata = { project = "amish-research", feature = "sim2sim-agent-eval" }\napi_key_env = "INFERENCE_API_KEY"\n')
+                summary + 'metadata = { project = "amish-research", feature = "sim2sim-agent-eval" }\napi_key_env = "INFERENCE_API_KEY"\n')
+    if model in LOCAL_SERVICES:
+        return f'api = "local_openai"\nendpoint = "{LOCAL_SERVICES[model]}"\nmodel = "{model}"\n', ""
     price = GEMINI_PRICES[model]
     return (f'api = "gemini"\nendpoint = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"\nmodel = "{model}"\n',
-            f'api_key_env = "{key_env}"\nprice_usd_per_mtok = {{ input = {price[0]}, cached_input = {price[1]}, output = {price[2]} }}\n')
+            summary + f'api_key_env = "{key_env}"\nprice_usd_per_mtok = {{ input = {price[0]}, cached_input = {price[1]}, output = {price[2]} }}\n')
 
 
 ROBOT_FAMILIES = {"panda": "panda", "panda_small": "panda", "shadow_hand": "shadow_hand", "panda_shadow": "panda_shadow"}
@@ -621,7 +629,6 @@ timeout_seconds = {o.get("eval_timeout", 180)}
 {extra}
 {(chr(10) + "[tools]" + chr(10) + "".join(f"{k} = true" + chr(10) for k in o["tools"])) if o.get("tools") else ""}[inference]
 {route(o.get("model", "gpt-6-astra"), *o.get("key_env", ()))[0]}reasoning_effort = "medium"
-reasoning_summary = "auto"
 {route(o.get("model", "gpt-6-astra"), *o.get("key_env", ()))[1]}max_calls = 2000
 max_cost_usd = {o.get("cost", cap)}
 cost_pool = "{o.get("pool", pool)}"
@@ -631,7 +638,7 @@ call_reserve_usd = 2.0
 max_output_tokens = 16384
 max_request_bytes = 12582912
 max_response_bytes = 1048576
-timeout_seconds = 300
+timeout_seconds = {o.get("call_timeout", 300)}
 {f"budget_hold_seconds = {o['hold']}" + chr(10) if o.get("hold") else ""}{f"checkpoint_wall_seconds = {o['checkpoint']}" + chr(10) if o.get("checkpoint") else ""}{f"provider_hold_seconds = {o['provider_hold']}" + chr(10) if o.get("provider_hold") else ""}"""
 
 
@@ -706,15 +713,23 @@ for directory, pool, extra in (("gemini-20261119", "gemini-20261119", {}), ("gem
 # 2026-11-23 (user: Neon is the default; evaluate Carbon on the same five hard levels in parallel): the gemini-20261120 recipe
 # (provider holds, accounting-only caps) with gemini-4-carbon.
 # gemini-carbon-20261124: the same with the 36 h provider-hold allowance, for reruns of runs that outages killed.
-for directory, allowance in (("gemini-carbon-20261123", 14400), ("gemini-carbon-20261124", PROVIDER_HOLD)):
+# inkling-20261124 (user, 2026-11-24): Thinking Machines' open-weights Inkling 2 Mini, self-hosted at zero cost (api local_openai,
+# scripts/inkling-service.slurm on a Kempner A100), with the gemini-carbon-20261124 recipe; its cost lines are accounting-only
+# (the broker charges $0) and its own pool counts calls and tokens. Its per-call timeout is 1800 s instead of 300 s: on the
+# A100 service one stream decodes ~26 tokens/s (~14 with five runs), so a valid 16384-token reply needs up to ~20 min. Successful
+# calls' latency still counts as run time, and a timed-out attempt is a held provider outage, so this grants no extra budget.
+for directory, model, pool, allowance in (("gemini-carbon-20261123", "gemini-4-carbon", "gemini-carbon-20261123", 14400),
+                                          ("gemini-carbon-20261124", "gemini-4-carbon", "gemini-carbon-20261123", PROVIDER_HOLD),
+                                          ("inkling-20261124", "inkling-2-mini", "inkling-20261124", PROVIDER_HOLD)):
     out = Path(__file__).parent / directory
     out.mkdir(exist_ok=True)
     for wave_dir, run_id in HARD:
         wave, _, _, runs = WAVES[wave_dir]
         env, factor, overrides = runs[run_id]
-        overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": "gemini-4-carbon", "cost": 1e6, "pool_usd": 1e6,
-                                                                               "hold": 129600, "provider_hold": allowance}
-        (out / f"{run_id}-carbon.toml").write_text(config(wave, "gemini-carbon-20261123", 1e6, env, factor, overrides))
+        overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": model, "cost": 1e6, "pool_usd": 1e6,
+                                                                               "hold": 129600, "provider_hold": allowance,
+                                                                               **({"call_timeout": 1800} if model in LOCAL_SERVICES else {})}
+        (out / f"{run_id}-{model.removeprefix('gemini-4-').removesuffix('-2-mini')}.toml").write_text(config(wave, pool, 1e6, env, factor, overrides))
     print(out.name, sorted(p.name for p in out.glob("*.toml")))
 
 # Wave 28 (user-approved design docs/level-designs/gear-train-depth-20261124.md; planned): explanation depth on the gear train
