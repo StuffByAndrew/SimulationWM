@@ -56,6 +56,10 @@ Do not launch local simulations to investigate a failed compute job.
   (opacity in the viewer; mass, friction via a worker `set` op on the live
   MjModel + `mj_setConst`) and an object CoM marker (non-welded, non-robot
   bodies). Edits never touch recorded runs, audits or scores.
+- `src/sim2sim/monitor.py` (+ `monitor_view.html`): researcher-only lightweight job monitor kept up on the login node by
+  `scripts/serve-monitor.sh` (port 8090; also reachable over the user's Tailscale node `holylogin08-aejxie`). Stdlib only:
+  running/queued strict jobs, failures with reasons, per-job Slurm CPU/RAM use (stored in `experiments/monitor/usage.json`,
+  backfilled from sacct), API spend per key (ledger) and storage headroom. It shows spend, so never expose it to agents.
 - `src/sim2sim/robots.py`: public robot fixture registry (Panda `arm_target`, Shadow hand `hand_target`: include file,
   fixture root body, actuator/joint order, home pose); no MuJoCo import so the host runtime can use it. Robot levels
   expose only proprioception and optional taxels (`simulation.TACTILE`); the fixture is verified byte-for-byte.
