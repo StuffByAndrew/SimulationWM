@@ -83,6 +83,6 @@ call_reserve_usd = 2.0
 max_output_tokens = 16384
 max_request_bytes = 12582912
 max_response_bytes = 1048576
-timeout_seconds = 300
+timeout_seconds = 1800
 budget_hold_seconds = 129600
 provider_hold_seconds = 129600

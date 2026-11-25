@@ -638,7 +638,7 @@ call_reserve_usd = 2.0
 max_output_tokens = 16384
 max_request_bytes = 12582912
 max_response_bytes = 1048576
-timeout_seconds = 300
+timeout_seconds = {o.get("call_timeout", 300)}
 {f"budget_hold_seconds = {o['hold']}" + chr(10) if o.get("hold") else ""}{f"checkpoint_wall_seconds = {o['checkpoint']}" + chr(10) if o.get("checkpoint") else ""}{f"provider_hold_seconds = {o['provider_hold']}" + chr(10) if o.get("provider_hold") else ""}"""
 
 
@@ -715,7 +715,9 @@ for directory, pool, extra in (("gemini-20261119", "gemini-20261119", {}), ("gem
 # gemini-carbon-20261124: the same with the 36 h provider-hold allowance, for reruns of runs that outages killed.
 # inkling-20261124 (user, 2026-11-24): Thinking Machines' open-weights Inkling 2 Mini, self-hosted at zero cost (api local_openai,
 # scripts/inkling-service.slurm on a Kempner A100), with the gemini-carbon-20261124 recipe; its cost lines are accounting-only
-# (the broker charges $0) and its own pool counts calls and tokens.
+# (the broker charges $0) and its own pool counts calls and tokens. Its per-call timeout is 1800 s instead of 300 s: on the
+# A100 service one stream decodes ~26 tokens/s (~14 with five runs), so a valid 16384-token reply needs up to ~20 min. Successful
+# calls' latency still counts as run time, and a timed-out attempt is a held provider outage, so this grants no extra budget.
 for directory, model, pool, allowance in (("gemini-carbon-20261123", "gemini-4-carbon", "gemini-carbon-20261123", 14400),
                                           ("gemini-carbon-20261124", "gemini-4-carbon", "gemini-carbon-20261123", PROVIDER_HOLD),
                                           ("inkling-20261124", "inkling-2-mini", "inkling-20261124", PROVIDER_HOLD)):
@@ -725,7 +727,8 @@ for directory, model, pool, allowance in (("gemini-carbon-20261123", "gemini-4-c
         wave, _, _, runs = WAVES[wave_dir]
         env, factor, overrides = runs[run_id]
         overrides = {k: v for k, v in overrides.items() if k != "checkpoint"} | {"model": model, "cost": 1e6, "pool_usd": 1e6,
-                                                                               "hold": 129600, "provider_hold": allowance}
+                                                                               "hold": 129600, "provider_hold": allowance,
+                                                                               **({"call_timeout": 1800} if model in LOCAL_SERVICES else {})}
         (out / f"{run_id}-{model.removeprefix('gemini-4-').removesuffix('-2-mini')}.toml").write_text(config(wave, pool, 1e6, env, factor, overrides))
     print(out.name, sorted(p.name for p in out.glob("*.toml")))
 
