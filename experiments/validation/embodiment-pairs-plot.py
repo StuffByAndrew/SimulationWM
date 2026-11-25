@@ -1,14 +1,23 @@
-"""Researcher figure: same hidden scene, ideal point grasp + wrench vs Panda/Franka arm. One row per scene-matched pair, one panel per
-tracked metric, each run's per-submission value against run-clock minutes (step until the next submission, to the run's end).
+"""Researcher figure: same hidden scene, ideal point grasp + wrench vs Panda/Franka arm. One row per scene-matched pair: each setup's
+first recorded reference-camera frame (from the verified audit) with its settings from the private config, then one panel per tracked
+metric, each run's per-submission value against run-clock minutes (step until the next submission, to the run's end).
 Reads the built report data (per-submission metrics computed by build-results-report.py); prints when each run first got within
 tolerance. Usage (Slurm): .venv/bin/python experiments/validation/embodiment-pairs-plot.py OUT.png"""
+import io
 import json
 import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
+
+from sim2sim.audit import read_audit
+from sim2sim.replay import _observations
+
+ROOTS = (Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs"), Path("/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments/runs"),
+         Path("/n/home00/aejxie/sim2sim/experiments/runs"))
 
 TUNNEL_DATA = Path("/n/home00/aejxie/sim2sim/experiments/reports/results-report-20261124/data.js")
 LEVER_DATA = Path("/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/reports/results-report-20261104-plain/data.js")
@@ -36,6 +45,35 @@ def series(run, key):
     return [(u["t"], u["m"].get(key)) for u in run["subs"]]
 
 
+def run_dir(run):
+    hits = [d / run for d in ROOTS if (d / run / "config-private.json").is_file()]
+    assert len(hits) == 1, (run, hits)
+    return hits[0]
+
+
+def first_view(run):
+    """The first reference-world RGB frame the run recorded: the scene as its agent first saw it (verified audit, nothing rendered)."""
+    for _, event in read_audit(run_dir(run)):
+        if event.get("world") == "reference":
+            for _, _, images in _observations(event):
+                if "rgb" in images:
+                    return mpimg.imread(io.BytesIO(images["rgb"]), format="png")
+    raise AssertionError(f"{run}: no reference RGB frame in its audit")
+
+
+def settings(run):
+    """The setup's distinguishing settings, from the run's private config."""
+    c = json.loads((run_dir(run) / "config-private.json").read_text())
+    sim = c["simulation"]
+    body = "Franka arm: joint targets; reads joint angles + efforts" if sim.get("robot") == "panda" else \
+        "ideal point grasp: reads grasp force (wrench)" if sim.get("wrench") else None
+    assert body, run
+    extra = [s for s, on in (("sequence tool", (c.get("tools") or {}).get("sequence")),
+                             ("no interaction with the hidden scene", sim.get("reference_interaction") is False)) if on]
+    view = f"{sim['camera']} camera, " + " + ".join(k.upper() for k in ("rgb", "depth") if sim.get(k))
+    return f"{body}\n{view}, {c['budget']['wall_seconds'] / 60:.0f} min wall" + (f"\n{', '.join(extra)}" if extra else "")
+
+
 def first_within(pts, key, tol):
     """Run-clock minute when the value first got within tolerance: |ratio - 1| <= tol for ratios, error <= tol otherwise."""
     ok = (lambda v: abs(v - 1) <= tol) if key.startswith("r:") else (lambda v: v <= tol)
@@ -44,10 +82,20 @@ def first_within(pts, key, tol):
 
 def main(out):
     keys = {"tunnel": TUNNEL_KEYS, "lever": LEVER_KEYS}
-    fig, axes = plt.subplots(len(PAIRS), 4, figsize=(19, 3.0 * len(PAIRS)), squeeze=False)
+    fig, grid = plt.subplots(len(PAIRS), 6, figsize=(26, 3.6 * len(PAIRS)), squeeze=False, gridspec_kw=dict(width_ratios=[1.25, 1.25, 1, 1, 1, 1]))
     summary = []
-    for row, (title, fam, sides) in zip(axes, PAIRS):
+    for cells, (title, fam, sides) in zip(grid, PAIRS):
         R = RUNS[fam]
+        for ax, side, color in ((cells[0], "grasp", GRASP), (cells[1], "arm", ARM)):
+            run = sides[side][0]
+            ax.imshow(first_view(run))
+            ax.set_xticks([]), ax.set_yticks([])
+            for s in ax.spines.values():
+                s.set_color(color), s.set_linewidth(3)
+            ax.set_title(title.replace(chr(10), " ") if side == "grasp" else "same scene, Franka/Panda arm", fontsize=10 if side == "grasp" else 9,
+                         color=TEXT, loc="left", fontweight="bold" if side == "grasp" else "normal")
+            ax.set_xlabel(settings(run), fontsize=8, color=MUTED, loc="left")
+        row = cells[2:]
         end = max(R[r]["wall_min"] for runs in sides.values() for r in runs)
         for ax, (key, label, tol) in zip(row, keys[fam]):
             for side, color in (("grasp", GRASP), ("arm", ARM)):
@@ -76,15 +124,14 @@ def main(out):
             ax.tick_params(labelsize=8, colors=MUTED)
             for s in ax.spines.values():
                 s.set_color(GRID)
-        row[0].set_ylabel(title, fontsize=10, color=TEXT, rotation=0, ha="right", va="center", labelpad=12)
-    for ax in axes[-1]:
+    for ax in grid[-1][2:]:
         ax.set_xlabel("run-clock minutes", fontsize=9, color=MUTED)
     handles = [plt.Line2D([], [], color=GRASP, lw=2, marker="o", mec="white"), plt.Line2D([], [], color=ARM, lw=2, marker="o", mec="white")]
     fig.legend(handles, [NAME["grasp"], NAME["arm"]], loc="upper center", ncol=2, frameon=False, fontsize=11, bbox_to_anchor=(0.55, 0.998))
-    fig.suptitle("Same hidden scene: ideal point grasp + wrench vs Franka/Panda arm (gpt-6-astra, strict runs). Each dot is a scored submission; the line "
+    fig.suptitle("Same hidden scene: ideal point grasp + wrench vs Franka/Panda arm (gpt-6-astra, strict runs). Left: each setup's first camera frame and settings. Each dot is a scored submission; the line "
                  "holds its value until the next one.\nDotted line: truth (ratios) or no-mechanism error (1). One run per embodiment: no repetitions "
                  "exist on these scenes, so no dashed repeat lines appear.", fontsize=10, color=MUTED, y=0.99)
-    fig.tight_layout(rect=(0.03, 0, 1, 0.975))
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
     fig.savefig(out, dpi=110)
     for s in summary:
         print(*s, sep="\t")
