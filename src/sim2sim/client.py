@@ -39,14 +39,15 @@ class Client:
     def hand_target(self, actuator_targets, ticks=20, *, world="reference"):
         return self.request("hand_target", actuator_targets=list(actuator_targets), ticks=ticks, world=world)["observation"]
 
-    def grasp(self, pixel, *, world="reference"):
-        return self.request("grasp", pixel=list(pixel), world=world)["observation"]
+    # fields: grasp_index=0 or 1 when the task offers two point grasps (public_tool_config point_grasps = 2).
+    def grasp(self, pixel, *, world="reference", **fields):
+        return self.request("grasp", pixel=list(pixel), world=world, **fields)["observation"]
 
-    def move(self, displacement, ticks=20, *, world="reference"):
-        return self.request("move", displacement=list(displacement), ticks=ticks, world=world)["observation"]
+    def move(self, displacement, ticks=20, *, world="reference", **fields):
+        return self.request("move", displacement=list(displacement), ticks=ticks, world=world, **fields)["observation"]
 
-    def release(self, ticks=0, *, world="reference"):
-        return self.request("release", ticks=ticks, world=world)["observation"]
+    def release(self, ticks=0, *, world="reference", **fields):
+        return self.request("release", ticks=ticks, world=world, **fields)["observation"]
 
     def reset(self, *, world="reference"):
         return self.request("reset", world=world)["observation"]

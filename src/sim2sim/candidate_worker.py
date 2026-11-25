@@ -11,7 +11,7 @@ from .robots import ROBOTS
 MAX_LINE = 48 * 1024 * 1024
 MAX_STATE = 4 * 1024 * 1024
 PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "movable_camera",
-                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "recording_fps"}
+                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "recording_fps", "point_grasps"}
 
 
 # Public proprioception fields per robot; actuator_effort_nm is added unless simulation.effort = false.
@@ -41,26 +41,33 @@ def snapshot_simulation(sim):
                                 "data_b64": base64.b64encode(value.tobytes(order="C")).decode()}
     state["arrays"] = arrays
     state["constraints"] = {str(body): list(ids) for body, ids in sim._constraints.items()}
-    # Researcher-only projected evidence, never included in public observations.
-    # Projection uses current native state without rendering or advancing physics.
-    state["grasp_overlay"] = None
-    if sim._grasp is not None:
-        import numpy as np
-        eq, mocap = sim._grasp
-        body = int(sim._model.eq_obj1id[eq])
-        anchor = data.xpos[body] + data.xmat[body].reshape(3, 3) @ sim._model.eq_data[eq, :3]
-        calibration = sim.calibration()
-        pose = np.asarray(calibration['world_from_camera'])
-        intrinsic = np.asarray(calibration['intrinsics'])
-        def project(point):
-            camera = pose[:3, :3].T @ (point - pose[:3, 3])
-            if not np.isfinite(camera).all() or camera[2] >= -1e-9:
-                return None
-            return [float(intrinsic[0, 2] + intrinsic[0, 0]*camera[0]/-camera[2]),
-                    float(intrinsic[1, 2] - intrinsic[1, 1]*camera[1]/-camera[2])]
-        state['grasp_overlay'] = {'anchor': project(anchor), 'handle': project(data.mocap_pos[mocap]),
-                                  'width': sim.width, 'height': sim.height}
+    state["grasp_overlay"] = _grasp_overlay(sim, sim._grasp)
+    if sim.point_grasps > 1:  # two grasps: every grasp's anchors and overlay, grasp 0 first (also in grasp/grasp_overlay)
+        state["grasps"] = [list(grasp) if grasp is not None else None for grasp in sim._grasps]
+        state["grasp_overlays"] = [_grasp_overlay(sim, grasp) for grasp in sim._grasps]
     return state
+
+
+def _grasp_overlay(sim, grasp):
+    """Researcher-only projected evidence of one grasp (anchor and handle pixels), never included in public observations.
+    Projection uses current native state without rendering or advancing physics."""
+    if grasp is None:
+        return None
+    import numpy as np
+    data = sim._data
+    eq, mocap = grasp
+    body = int(sim._model.eq_obj1id[eq])
+    anchor = data.xpos[body] + data.xmat[body].reshape(3, 3) @ sim._model.eq_data[eq, :3]
+    calibration = sim.calibration()
+    pose = np.asarray(calibration['world_from_camera'])
+    intrinsic = np.asarray(calibration['intrinsics'])
+    def project(point):
+        camera = pose[:3, :3].T @ (point - pose[:3, 3])
+        if not np.isfinite(camera).all() or camera[2] >= -1e-9:
+            return None
+        return [float(intrinsic[0, 2] + intrinsic[0, 0]*camera[0]/-camera[2]),
+                float(intrinsic[1, 2] - intrinsic[1, 1]*camera[1]/-camera[2])]
+    return {'anchor': project(anchor), 'handle': project(data.mocap_pos[mocap]), 'width': sim.width, 'height': sim.height}
 
 
 def full_observation(sim):
