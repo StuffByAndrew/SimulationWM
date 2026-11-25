@@ -275,8 +275,8 @@ The user forbids paying for Inkling: never route an Inkling request to a paid AP
 - **Service:** `scripts/inkling-service.slurm` (Kempner A100s only, never H100/H200).
   - vLLM and SGLang need Hopper or Blackwell for this checkpoint, so llama.cpp b12706 serves it.
   - It serves the official `thinkingmachines/Inkling-2-Mini@c9d0283`, whose files are SHA-256-verified against the hub.
-  - llama.cpp's converter turned it into BF16 GGUF: its NVFP4/MXFP8 experts are dequantized into BF16, and activations are
-    BF16 rather than FP4/FP8.
+  - llama.cpp's converter turned it into BF16 GGUF. Its MXFP8 experts are exact in BF16, its NVFP4 experts are rounded to
+    BF16 after their fp32 scale, and activations are BF16 rather than FP4/FP8.
   - It uses two A100-40GB GPUs.
   - Files are under `INKLING_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/inkling`: `model/`, `gguf/`, `src/`, `logs/`.
 - **Broker:** `[inference] api = "local_openai"`, with `endpoint` set to the service's private `service/service.json`.

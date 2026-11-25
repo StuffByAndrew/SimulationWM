@@ -11,8 +11,8 @@
 # Researcher-run Inkling 2 Mini service for strict runs with [inference] api = "local_openai" (zero cost; never H100/H200).
 # vLLM and SGLang run this checkpoint only on Hopper/Blackwell (vLLM's inkling2 quantization needs capability >= 9.0), so
 # on A100s llama.cpp (INKLING_ROOT/src, b12706, sm_80) serves the official checkpoint converted to GGUF by llama.cpp's own
-# converter: its NVFP4/MXFP8 experts dequantized exactly into BF16, computed with BF16 activations (two 40 GB A100s, layer
-# split). While healthy it rewrites the private record INKLING_ROOT/service/service.json (0600 in a 0700 dir: address,
+# converter: MXFP8 experts dequantized exactly and NVFP4 experts rounded to BF16 after their fp32 scale (relative error
+# at most 2^-8), with BF16 activations (two 40 GB A100s, layer split). While healthy it rewrites the private record INKLING_ROOT/service/service.json (0600 in a 0700 dir: address,
 # per-job bearer token, heartbeat, engine and checkpoint) every 5 s; the strict controller's broker reads it per call, so
 # a dead or requeued service is a provider outage there. Start it before the experiment jobs and keep -t longer than they
 # run. Also works on kempner_requeue (-p kempner_requeue, no --qos): preemption then shows up as an outage that
@@ -57,7 +57,7 @@ echo "healthy at $(date -u +%FT%TZ)"
 umask 077
 while kill -0 $server 2>/dev/null; do
     if curl -fsS -m 10 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
-        printf '{"endpoint":"http://%s:%s/v1/chat/completions","model":"inkling-2-mini","token":"%s","heartbeat_unix":%s,"job":"%s","node":"%s","gpus":"%s","engine":"%s","checkpoint":"thinkingmachines/Inkling-2-Mini@c9d028302cd0f035fdf8e7e91f089a4ce94d2195","precision":"official NVFP4/MXFP8 expert weights dequantized exactly to BF16 GGUF (llama.cpp converter); BF16 weights and activations, F16 KV cache","slots":%s,"context":%s}\n' \
+        printf '{"endpoint":"http://%s:%s/v1/chat/completions","model":"inkling-2-mini","token":"%s","heartbeat_unix":%s,"job":"%s","node":"%s","gpus":"%s","engine":"%s","checkpoint":"thinkingmachines/Inkling-2-Mini@c9d028302cd0f035fdf8e7e91f089a4ce94d2195","precision":"official checkpoint as BF16 GGUF (llama.cpp converter): MXFP8 experts exact, NVFP4 experts rounded to BF16 after their fp32 scale; BF16 activations, F16 KV cache","slots":%s,"context":%s}\n' \
             "$host" "$port" "$LLAMA_API_KEY" "$(date +%s.%N)" "$SLURM_JOB_ID" "$host" "$gpus" "$engine" "$slots" "$context" > "$record.tmp"
         mv -f "$record.tmp" "$record"
     fi
