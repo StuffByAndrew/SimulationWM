@@ -267,6 +267,34 @@ docs/protocol.md). The models are `gemini-4-neon` and `gemini-4-hydrogen`.
   - Successful-call latency still counts.
   - Treat a run that died of provider outages as an infrastructure failure and rerun it.
 
+## Inkling 2 Mini, self-hosted (user, 2026-11-24)
+
+The user forbids paying for Inkling: never route an Inkling request to a paid API (the aqinference gateway's
+`thinkingmachines/inkling-2-mini` and Tinker are paid). It runs only on the researcher's own service.
+
+- **Service:** `scripts/inkling-service.slurm` (Kempner A100s only, never H100/H200).
+  - vLLM and SGLang need Hopper or Blackwell for this checkpoint, so llama.cpp b12706 serves it.
+  - It serves the official `thinkingmachines/Inkling-2-Mini@c9d0283`, whose files are SHA-256-verified against the hub.
+  - llama.cpp's converter turned it into BF16 GGUF: its NVFP4/MXFP8 experts are dequantized into BF16, and activations are
+    BF16 rather than FP4/FP8.
+  - It uses two A100-40GB GPUs.
+  - Files are under `INKLING_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/inkling`: `model/`, `gguf/`, `src/`, `logs/`.
+- **Broker:** `[inference] api = "local_openai"`, with `endpoint` set to the service's private `service/service.json`.
+  - That record is a 0600 heartbeat holding the address and a per-job token.
+  - Cost is always 0. A dead or requeued service is a provider outage, held by `provider_hold_seconds`.
+- **Configs:** `experiments/configs/inkling-20261124/` follows the gemini-carbon-20261124 recipe with the local route.
+  - It has no `reasoning_summary`: raw reasoning is not recorded.
+  - Its per-call `timeout_seconds` is 1800.
+- **Launch:**
+  - Start the service first and keep its `-t` longer than the runs.
+  - Wait for `service.json` to appear.
+  - Then submit the strict runs as usual. The controller needs no key for Inkling.
+- **Speed (job 63571190):**
+  - About 26 tokens/s for one stream and 67 tokens/s for five streams.
+  - About 10 tokens/s at 143K context.
+  - A cold 143K-token prefill takes 13 min. A cached re-call takes 12 s.
+  - Compare Inkling with other models at matched tokens as well as wall time.
+
 ## Repository experiment skills
 
 Record every launched or planned batch in [docs/experiment-log.md](docs/experiment-log.md)
