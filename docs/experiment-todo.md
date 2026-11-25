@@ -29,6 +29,8 @@ Keep this list current: strike items when a log entry covers them.
 0. **Wave 31, resets vs no resets (user, 2026-11-25): top priority.** Prepare and `scontrol top` as soon as the runtime's
    `[simulation] resets` switch is merged (builder).
 1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
+2. Explanation-depth gear-train runs (wave 28): **held for the weld grasp** (user, 2026-11-25). Rerun all three
+   conditions (recon, cheap, deep) from the builder's weld configs; the connect-grasp deep run is not part of the set.
 2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
    (`scontrol top`).
    Built (builder, 2026-11-24; option (b): public grip slip, 0.5 ms step). Launch only after a trusted image that contains
