@@ -42,8 +42,12 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - for the hand, the task's "If it falls out of the hand, use reset…" clause removed (the starting-pose sentence kept);
   - the cost pool, and the 36 h provider-hold allowance (held time is off the run clock).
 - **Baselines:** the same Neon runs, which kept resets.
-- **Blocked on** the builder adding the `resets = false` runtime switch (requested 03:00 UTC). Then: prepare, queue at the
-  top.
+- **Switch merged:** builder commit 335a3c3 (tests 63554593; OCI 63554758: no reset tool, reset rejected). The generator
+  uses the builder's `noreset` option (cf7b8cf). No image rebuild was needed.
+- **Prepared on netscratch** as `w31-<level>-noreset-20261125-001` (`prepare-w31.sh`). Scene sources are identical to the
+  baselines'; the Panda copies also hold the new sibling `panda_small` levels.
+- **Jobs at the very top:** `63556096` (latch-out + cloth-holes), `63556113` (hand + cube-spring-block-mjcf), `63556116`
+  (marble + tetra-spring-k). Image `trusted-image-isolated-gear.json`.
 
 ## 2026-11-25 00:50 UTC — Lab quota killed the fixture-bimodal run; everything re-prepared on home and netscratch
 - **Lab hit its shared group quota at about 00:00 UTC.**
