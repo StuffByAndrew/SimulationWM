@@ -607,7 +607,7 @@ wrench = {str(wrench).lower()}
 {f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
 height = 240
 camera = "fixed"
-{'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}default_ticks = 20
+{'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}{'resets = false' + chr(10) if o.get("noreset") else ""}default_ticks = 20
 {f"grasp_slip_m = {o['slip']}{chr(10)}" if o.get("slip") else ""}
 [evaluation]
 manifest = "{entry}manifest.toml"

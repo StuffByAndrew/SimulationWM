@@ -1538,10 +1538,12 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
     (output / "source-snapshot.zip").write_bytes(source_bundle)
     sim_config = dict(config.get("simulation", {}))
     for key, default in (("default_ticks", 20), ("rgb", True), ("depth", False), ("calibration", True), ("wrench", False),
-                         ("tactile", False), ("reference_interaction", True)):
+                         ("tactile", False), ("reference_interaction", True), ("resets", True)):
         sim_config.setdefault(key, default)
     if not isinstance(sim_config["reference_interaction"], bool):
         raise RuntimeFailure("simulation.reference_interaction must be a boolean")
+    if not isinstance(sim_config["resets"], bool):
+        raise RuntimeFailure("simulation.resets must be a boolean")
     if sim_config.get("movable_camera", False) not in (True, False):
         raise RuntimeFailure("simulation.movable_camera must be a boolean")
     if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or not sim_config.get("robot")):
@@ -2027,10 +2029,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             "({\"op\": ..., fields}), and read one JSON reply per line (the controller's reply, with base64 images)",
                 "ops": [op for op in task["actions"] if op in PHYSICAL + ("frames", "throw")],
                 "python": "from sim2sim.client import Channel; channel = Channel(); reply = channel.request('observe')"}
+        if not sim_config["resets"]:  # no-reset ablation: the agent has no reset action in either world
+            task["actions"].remove("reset")
+            del task["action_schema"]["reset"]
         if not sim_config["reference_interaction"]:  # no-action ablation: the reference world can only be watched
             blocked = [op for op in INTERACTIONS + FIXTURE_OPS if op in task["actions"]]
             task["worlds"]["reference"] = ("Observe-only: " + ", ".join(blocked) + " are unavailable in the reference world; "
-                                           "observe and reset work there, and every action works in the reconstruction world.")
+                                           + ("observe and reset work" if sim_config["resets"] else "observe works")
+                                           + " there, and every action works in the reconstruction world.")
             for op in blocked:
                 task["action_schema"][op] = {**task["action_schema"][op], "world": "reconstruction only"}
         with audit.reserve(len(json.dumps(task)) * 3 + 65536) as token:
@@ -2061,6 +2067,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     raise RuntimeFailure("Operation must be a string")
                 if op in INTERACTIONS and op not in (ROBOTS[robot][2] if robot else ("grasp", "move", "release")):
                     raise RuntimeFailure("Operation unavailable for configured robot")
+                if op == "reset" and not sim_config["resets"]:
+                    raise RuntimeFailure("reset is not available in this run")
                 if op in FIXTURE_OPS and (not fixture_table or world != "reference"):
                     raise RuntimeFailure("Unknown operation" if not fixture_table else f"{op} works only in the reference world")
                 if world == "reference" and op in INTERACTIONS + FIXTURE_OPS and not sim_config["reference_interaction"]:

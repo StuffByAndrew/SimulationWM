@@ -182,7 +182,15 @@ default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # grasp_solref = [0.01, 1.0]
 # grasp_solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
 # grasp_slip_m = 0.004  # optional: the grip slips (releases) when stretched farther; absent = it never slips
+# resets = false        # optional no-reset condition; default true
 ```
+
+`resets` (boolean, default true) offers the `reset` action. With `resets = false` the task's `actions` and
+`action_schema` omit `reset`, so the harness builds no reset tool and a `sequence` may not contain one, and the host
+rejects any reset request in either world (also through the code channel) with the public error "reset is not available
+in this run" before anything runs: no world, tick or episode changes. Nothing else changes: `load_reconstruction`, the
+fixture's `reset_carriage`/`release_carriage`, and the launcher's `throw` (which restores the die's start state internally
+in real-time levels) keep working. The task text says nothing about it; a condition's task sentences are the config's.
 
 `grasp_solref` (2 numbers) and `grasp_solimp` (5 numbers) set the point grasp's connect-constraint softness (MuJoCo
 `solref`/`solimp`); the defaults above apply when they are absent, so existing configs and prepared runs are unchanged.

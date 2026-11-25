@@ -352,6 +352,28 @@ input()
             result = self.run_agent(directory, script, simulation={"reference_interaction": False})
             self.assertEqual(result["total_ticks"], 1)
 
+    def test_no_reset_run_has_no_reset_action_in_either_world(self):
+        script = '''
+assert "reset" not in task["actions"] and "reset" not in task["action_schema"], task["actions"]
+for action, ok in [({"op":"observe","ticks":2}, True), ({"op":"reset"}, False), ({"op":"reset","world":"reconstruction"}, False),
+                   ({"op":"observe","ticks":1}, True)]:
+ print(json.dumps(action),flush=True)
+ reply=json.loads(input())
+ assert reply["ok"] is ok, reply
+ assert ok or "reset is not available" in reply["error"], reply
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.run_agent(directory, script, simulation={"resets": False})["total_ticks"], 3)
+        default = '''
+assert "reset" in task["actions"] and "reset" in task["action_schema"]
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.run_agent(directory, default)["total_ticks"], 0)
+
     def test_reset_never_refunds_ticks(self):
         script = '''
 for action in [{"op":"observe","ticks":2},{"op":"reset"},{"op":"observe","ticks":2}]:
