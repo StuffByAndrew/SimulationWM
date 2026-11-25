@@ -31,6 +31,29 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 00:50 UTC — Lab quota killed the fixture-bimodal run; everything re-prepared on home and netscratch
+- **Lab hit its shared group quota at about 00:00 UTC.**
+  - It killed `w23-fixture-bimodal-neon-20261123-003` (kempner_cpu job `63471018`) at 231 run-minutes, after 1
+    submission that scored `ok` (the first fixture evaluation on the isolated image). Infrastructure failure, truncated.
+  - The maintenance move (`63470430`) had moved 13 finished runs (about 5 GB) from netscratch to lab before lab filled;
+    it stopped itself on the quota error with each source intact. Moves into lab are paused until it has headroom.
+- **All 23 queued jobs (37 runs, prepared on lab) were held before starting, then cancelled.**
+- **Every run re-prepared as `<stem>-20261125-001`** (`prepare-20261125.sh`; mapping in
+  `experiments/validation/held-20261125-map.txt`; all 40 sources byte-identical to the lab preparations):
+  - top priority on **home** (55 GB free): wave 28 gear ×3, wave 23 fixture ×3, wave 24 die ×4;
+  - the rest on **netscratch** (writable): waves 25, 26, 27 and 29, and Carbon.
+  - Image: `trusted-image-isolated-gear.json`.
+- **Jobs:**
+  - Gear: `63530252`, running at 00:50 UTC; `63530256` and `63530318` at the top.
+  - Fixture: rigid + rubber `63530413`; bimodal on kempner_cpu `63530440`, running.
+  - Die: `63530345`, `63530376`, `63530378`, `63530407`.
+  - Wave 27: `63530328`, `63530336`, `63530339`, `63530342`.
+  - Wave 25: `63530236`, `63530242`, `63530245`, `63530249`.
+  - Wave 26: `63530226`.
+  - Wave 29: `63530205`, `63530208`, `63530210`, `63530217`.
+  - Carbon (nice): `63530189`, `63530199`.
+- The hold watcher covers all three roots.
+
 ## 2026-11-24 20:30 UTC — Wave 28 gear-train (explanation depth) queued at top priority
 - Merged builder commit 83ba220 (01304fa). Premise check `63463232`: deep vs shallow probe error 3% of the gate; the deep
   model costs 51× per simulated second.
