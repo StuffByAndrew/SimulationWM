@@ -36,11 +36,23 @@ Every request has an `op` string:
 
 Pixel origin is the image's top left, with coordinates inside the image. An
 occluded object cannot be grasped through the visible surface. Only one grasp
-exists at a time; release it before grasping again. The point constraint supplies
+exists at a time (unless `simulation.point_grasps = 2`, below); release it before grasping again. The point constraint supplies
 force without an orientation target, so off-center pulling can rotate a body.
 A cloth (any MuJoCo flex, from `flexcomp` or `<deformable><flex>`) is grasped at
 the vertex of the hit flex nearest the ray hit, held at the hit point's offset;
 the wrench then reports that vertex's pull. Ray hits and body identity stay private.
+
+**Two point grasps** (`[simulation] point_grasps = 2`; default 1, the single grasp above, whose configs, tasks, observations
+and snapshots are unchanged): two simultaneous, independent point grasps, for example one holding a strand still while the
+other pulls. `grasp`, `move` and `release` take `grasp_index` 0 or 1 (default 0; the harness tools require it); each grasp
+has its own connect constraint and mocap handle for every graspable body (grasp 1's are suffixed `_1`), so both may hold the
+same body. A `move` moves only its grasp; the other handle stays where it is. `reset` releases both. The observation's
+`grasped` becomes `[grasp 0, grasp 1]` and `wrench` a list of one reading per grasp, each only that grasp's own connect
+force under the wrench rules below. The task adds `grasp_index` to those actions' schema and an
+`observation_contract.point_grasps` note, and `public_tool_config.point_grasps = 2` loads the reconstruction world with two
+grasps too. Ticks are charged as for one grasp (a move of either grasp costs its ticks); nothing is refunded. Point-grasp
+embodiment in a lock-step world only (a robot or `realtime` config with 2 is rejected). Researcher snapshots add `grasps`
+and `grasp_overlays` (both grasps; the dashboard marks both).
 
 Ticks must be nonnegative integers for `observe` and `release`, and positive for
 `move`. Move defaults to the configured duration (runtime default 20). The core
@@ -175,6 +187,7 @@ rgb = true
 depth = false
 calibration = true
 wrench = false         # optional 6-axis grasp-point reading
+# point_grasps = 1     # 2: two simultaneous independent point grasps (grasp_index on grasp/move/release)
 tactile = false        # optional robot taxel normal forces (robot = "panda", "shadow_hand" or "panda_shadow" only)
 default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # timestep = 0.002      # optional override; otherwise scene timestep
@@ -215,7 +228,7 @@ the `action` alias for `op` are not accepted by the public runtime protocol.
 `observe(full=True)` supplies all modalities to trusted evaluation/video callers,
 independently of agent settings. A `recording_callback(sim)` runs after each
 physics step. A `grasp_controller_factory(sim)` can replace `PointGrasp`, whose
-interface is `attach(body, world_point)`, `move(delta)` and `release()`.
+interface is `attach(body, world_point, index=0)`, `move(delta, index=0)` and `release(index=0)` (index: the grasp).
 Private `trusted_camera` configuration injects a source camera into candidate
 models for evaluation; agents cannot set it through the protocol.
 
@@ -260,6 +273,8 @@ produce a moment about the object's center of mass; that COM-relative moment
 is not exposed. `active` indicates whether a grasp is attached. An inactive
 reading contains zero force and torque. No body identity, anchor coordinates,
 mass or center-of-mass position is included in this optional observation.
+With `point_grasps = 2`, `wrench` is a list of two such readings (grasp 0, grasp 1), each from its own grasp's connect
+rows only; a body held by both grasps shares its load between the two readings as the solver splits it.
 
 
 ## Optional Panda tactile sensing

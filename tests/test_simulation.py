@@ -50,6 +50,47 @@ def test_observation_grasp_motion_and_reset():
         sim.close()
 
 
+def test_two_point_grasps_hold_move_and_sense_independently():
+    one = Simulation(ROOT / 'environments/blocks/scene.xml', {'width': 160, 'height': 120})
+    sim = Simulation(ROOT / 'environments/blocks/scene.xml', {'width': 160, 'height': 120, 'wrench': True, 'point_grasps': 2})
+    try:
+        assert sim._model.neq - one._model.neq == len(sim._body_names) and sim._model.nmocap == 2 * one._model.nmocap
+        assert sim._model.equality(one._model.neq).name == '_grasp_connect_0_1'
+        red, blue = (next(b for b in sim._constraints if sim._model.body(b).name == name) for name in ('block_red', 'block_blue'))
+        starts = sim._data.xpos[[red, blue]].copy()
+        for index, body in enumerate((red, blue)):
+            assert sim.action({'op': 'grasp', 'pixel': project(sim, sim._data.xpos[body] + [0, 0, .04]), 'grasp_index': index}, render=False) is None
+        observation = sim.observe()
+        assert observation['grasped'] == [True, True] and len(observation['wrench']) == 2
+        from sim2sim.candidate_worker import snapshot_simulation
+        state = snapshot_simulation(sim)
+        assert state['grasp'] == state['grasps'][0] and all(o['anchor'] for o in state['grasp_overlays'])
+        assert not {'grasps', 'grasp_overlays'} & set(snapshot_simulation(one))
+        sim.action({'op': 'move', 'displacement': [0, 0, .15], 'ticks': 150, 'grasp_index': 1}, render=False)
+        assert sim._data.xpos[blue, 2] > starts[1, 2] + .1 and abs(sim._data.xpos[red, 2] - starts[0, 2]) < .01
+        held, lifted = sim.observe()['wrench']
+        mass = sim._model.body_subtreemass[blue]
+        assert -1.2 * mass * 9.81 < lifted['force'][2] < -.8 * mass * 9.81  # grasp 1 carries the (still swinging) lifted block
+        assert held['active'] and abs(held['force'][2]) < lifted['force'][2] * -.5 and held['torque'] == lifted['torque'] == [0, 0, 0]
+        with pytest.raises(ValueError, match='release the current grasp'):
+            sim.action({'op': 'grasp', 'pixel': [0, 0], 'grasp_index': 1})
+        for bad in (2, -1, True, 1.0):
+            with pytest.raises(ValueError, match='grasp_index'):
+                sim.action({'op': 'release', 'grasp_index': bad})
+        sim.action({'op': 'release', 'grasp_index': 1})
+        assert sim.observe()['grasped'] == [True, False]
+        sim.action({'op': 'reset'})
+        assert sim.observe()['grasped'] == [False, False] and sim.total_ticks == 150
+        with pytest.raises(ValueError, match='point_grasps'):
+            Simulation(ROOT / 'environments/blocks/scene.xml', {'point_grasps': 3})
+        assert one.observe()['grasped'] is False
+        with pytest.raises(ValueError, match='grasp_index'):
+            one.action({'op': 'grasp', 'pixel': [0, 0], 'grasp_index': 1})
+    finally:
+        one.close()
+        sim.close()
+
+
 def test_spring_loads_and_private_raycast_misses_table():
     sim = Simulation(ROOT / 'environments/spring/scene.xml', {'width': 160, 'height': 120})
     try:

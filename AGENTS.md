@@ -112,6 +112,7 @@ key is exposed. When enabled, report only the active connect constraint's
 object-on-handle force in world coordinates and zero torque about the actual
 grasp point. Do not disclose grasp coordinates, body COM lever arms, mass, or
 forces from unrelated contacts. Refreshing force must not advance time/ticks.
+With `point_grasps = 2` the same rule holds per grasp: each reading is only that grasp's own connect force.
 
 Weld grasp (user, 2026-11-25): from now on, "ideal point grasp with wrench" in a new level means a **weld grasp**: the
 grasped object is rigidly fixed to the handle at the grasp point; the agent translates the grasp and rotates the object
@@ -207,7 +208,7 @@ live probe still found `memory.max=max` and `cpu.max=max 100000`. Strict OCI
 remains blocked; these checks are not an isolated-agent run.
 
 The current design is in `docs/2026-10-28-design.md`. Preserve minimal scope:
-MuJoCo XML projects, one ideal point grasp, explicit submissions, configurable
+MuJoCo XML projects, one or two (configured `simulation.point_grasps`) ideal point grasps, explicit submissions, configurable
 observations, and researcher-only evaluation. See `docs/evaluation.md` for metric
 limitations.
 
