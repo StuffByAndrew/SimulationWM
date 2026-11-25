@@ -46,6 +46,19 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 20:20 UTC — Fixture-bimodal completed; wave 31 still unstarted on sapphire, two runs moved to kempner_cpu
+- `w23-fixture-bimodal-neon-20261125-001` (home) **completed**: the agent called finish at 320 run-minutes, after the
+  checkpoint was resumed. 179 calls, all succeeded; 3 submissions, all scored `ok`. It is the first complete stochasticity
+  run on the isolated image.
+- Wave 31's three home jobs had been pending on sapphire for about 14 h.
+  - `63694745` (latch-out + cloth-holes) was cancelled before starting. Its runs went to kempner_cpu as single-run jobs
+    `63706221` and `63706223`, which run one after the other (8 CPUs per user).
+  - `63694746` and `63694747` stay at the top of sapphire.
+- The other 22 jobs remain held (storage).
+- Builder's analysis of the per-run file count (no code changed): reference-tick checkpoints are about 50% of audit records
+  and candidate-worker boundary messages about 42%. No existing setting reduces this materially; packing blobs, or a lower
+  tick cadence (which weakens per-tick replay), would need the user's go-ahead.
+
 ## 2026-11-25 05:40 UTC — Netscratch file quota nearly exhausted: queue held; wave 31 on home; Inkling merged, not launched
 - **Storage:**
   - Netscratch qianqian_lab is at about 99.35M of its 100M **file** quota (builder's measurement); lab is full by bytes;
