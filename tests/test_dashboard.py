@@ -177,7 +177,7 @@ const originalFrame=recorded.frames.reference[0];recorded.frames.reference=[[1,1
 w.__dashboardRunData(recorded);test.setTime(.45);check(d.querySelectorAll('#reference-overlay polyline').length===2,'trajectory must break across unavailable projections');check([...d.querySelectorAll('#reference-overlay polyline')].every(path=>path.getAttribute('points').split(' ').length===2),'stationary handle positions coalesced');
 const overlayToggle=d.getElementById('grasp-overlay');overlayToggle.checked=false;overlayToggle.dispatchEvent(new w.Event('change'));check(d.querySelector('#reference-overlay svg')===null,'overlay disabled');overlayToggle.checked=true;overlayToggle.dispatchEvent(new w.Event('change'));check(d.querySelectorAll('#reference-overlay circle').length===2,'recorded grasp and handle markers');
 recorded.frames.reference.push({...originalFrame,seq:107,wall_elapsed:.5,grasp_overlay:null},{...originalFrame,seq:108,wall_elapsed:.6,grasp_overlay:{width:320,height:240,anchor:[10,10],handle:[8,8]}});w.__dashboardRunData(recorded);test.setTime(.6);check(d.querySelectorAll('#reference-overlay polyline').length===0,'release starts a new trajectory');
-check(d.getElementById('reference-frame').hidden===false&&d.getElementById('candidate-frame').hidden===false,'both recording panes');const runRows=[...d.querySelectorAll('#run-list .run-row')],target=runRows.find(r=>r.dataset.id!==preferred.id)||runRows[0],sel=w.getSelection(),pick=node=>{const r=d.createRange();r.selectNodeContents(node);sel.removeAllRanges();sel.addRange(r);};pick(target.querySelector('code'));d.getElementById('run-title').textContent='-';target.click();check(d.getElementById('run-title').textContent==='-','selecting text in a row does not open it');pick(d.getElementById('run-directory'));target.click();check(d.getElementById('run-title').textContent===w.__dashboardCatalog.find(item=>item.id===target.dataset.id).name,'a selection elsewhere does not block opening a run');sel.removeAllRanges();document.getElementById('result').textContent='PASS: main, recording, per-line plot toggles, cursor, text click, scroll isolation, held frames';document.body.dataset.test='passed';
+check(d.getElementById('reference-frame').hidden===false&&d.getElementById('candidate-frame').hidden===false,'both recording panes');const runRows=[...d.querySelectorAll('#run-list .run-row')],target=runRows.find(r=>r.dataset.id!==preferred.id)||runRows[0],sel=w.getSelection(),pick=node=>{const r=d.createRange();r.selectNodeContents(node);sel.removeAllRanges();sel.addRange(r);};pick(target.querySelector('code'));d.getElementById('run-title').textContent='-';target.click();check(d.getElementById('run-title').textContent==='-','selecting text in a row does not open it');pick(d.getElementById('run-directory'));target.click();check(d.getElementById('run-title').textContent===w.__dashboardCatalog.find(item=>item.id===target.dataset.id).name,'a selection elsewhere does not block opening a run');sel.removeAllRanges();check(!d.getElementById('run-loading').hidden&&d.getElementById('content').classList.contains('stale'),'loading indicator while a run loads');w.__dashboardRunError({id:target.dataset.id,error:'cache quota full'});check(d.getElementById('run-loading').hidden&&!d.getElementById('run-error').hidden&&d.getElementById('run-error').textContent.includes('cache quota full'),'load failure replaces the indicator with its reason');document.getElementById('result').textContent='PASS: main, recording, per-line plot toggles, cursor, text click, scroll isolation, held frames';document.body.dataset.test='passed';
 }catch(error){clearInterval(timer);document.getElementById('result').textContent='FAIL: '+error.message;document.body.dataset.test='failed';}},50);
 </script>'''
 
@@ -266,6 +266,10 @@ def test_unmatched_metrics_remain_available_as_gaps():
     assert values['hinges.joint.frictionloss_absolute_error'] is None
     assert _metric_group('reconstruction.density.per_primitive.a.absolute_error_kg_m3') == \
            _metric_group('reconstruction.density.per_primitive.b.absolute_error_kg_m3')
+    # Sampled curves are not checkpoint series (one force_profile run had 12k of them); summaries and xyz vectors stay.
+    profile=_metric_values({'force_profile':{'rms_resistance_error_n':.5,'source':{'resistance_n':[1.,2.,3.,4.],'force_world_n':[[0.,0.,1.]]*4}},
+                            'reconstruction':{'center_of_mass_error_vector_m':[.1,.2,.3]}})
+    assert set(profile)=={'force_profile.rms_resistance_error_n',*(f'reconstruction.center_of_mass_error_vector_m.{i}' for i in range(3))}
 
 
 def test_recorded_overlay_is_private_metadata_and_missing_is_not_invented(tmp_path):
@@ -418,3 +422,12 @@ def test_environment_base_prompts_are_the_base_task_without_experiment_additions
         assert ('Panda robot fixture' in prompt['task']) == (path.split('/')[0] in ('panda', 'panda_small'))
         assert not any(addition in prompt['task'] for addition in additions), path
         assert prompt['level'] == '' or prompt['task'].startswith(g['TASK_CONVERGE'] + ' ' + prompt['level'])
+
+
+def test_live_server_threads_write_one_shared_asset_concurrently(tmp_path):
+    # Replicate runs share frames: concurrent snapshots replaced each other's per-process temp file (ENOENT).
+    from concurrent.futures import ThreadPoolExecutor
+    from sim2sim.audit import _atomic
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda _: _atomic(tmp_path/'asset.png', PNG), range(200)))
+    assert (tmp_path/'asset.png').read_bytes()==PNG and [p.name for p in tmp_path.iterdir()]==['asset.png']

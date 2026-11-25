@@ -165,7 +165,9 @@ def test_api_requires_json_and_serves_current_view_code(tmp_path):
         server.server_close()
 
 
-def test_live_server_without_physics_serves_current_catalog_and_snapshots(tmp_path):
+def test_live_server_without_physics_serves_current_catalog_and_snapshots(tmp_path, monkeypatch):
+    import errno
+    import sim2sim.dashboard as dashboard
     from sim2sim.dashboard import LiveDashboard
     inspector_run(tmp_path)
     live = LiveDashboard([tmp_path])
@@ -177,8 +179,18 @@ def test_live_server_without_physics_serves_current_catalog_and_snapshots(tmp_pa
         assert '"inspect-fixture"' in catalog
         identifier = hashlib.sha256(b'inspect-fixture').hexdigest()[:16]
         assert urllib.request.urlopen(f'{base}/runs/{identifier}.js', timeout=30).read().startswith(b'window.__dashboardRunData(')
+        assert urllib.request.urlopen(f'{base}/runs/{identifier}.progress.json', timeout=5).read() == b'null'  # not building
         inspector_run(tmp_path, 'added-later')
         assert '"added-later"' in urllib.request.urlopen(base + '/catalog.js', timeout=5).read().decode()
+        # A failed snapshot is reported to the page (a dropped connection left it loading with no reason).
+        def full(path, data):
+            raise OSError(errno.EDQUOT, 'Disk quota exceeded')
+        monkeypatch.setattr(dashboard, '_atomic', full)
+        later = hashlib.sha256(b'added-later').hexdigest()[:16]
+        failed = urllib.request.urlopen(f'{base}/runs/{later}.js', timeout=30).read().decode()
+        assert failed.startswith('window.__dashboardRunError(') and later in failed and 'Disk quota exceeded' in failed
+        missing = urllib.request.urlopen(f'{base}/runs/{"0" * 16}.js', timeout=5).read().decode()
+        assert missing.startswith('window.__dashboardRunError(') and 'no longer in any experiment root' in missing
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(base + '/api/inspector/state', timeout=5)
         assert error.value.code == 503

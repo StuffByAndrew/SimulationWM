@@ -5,10 +5,8 @@ from datetime import datetime,timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import re
-import shutil
 import threading
 import time
 from .audit import AuditFailure,read_audit,_atomic,_json,_digest,_safe_file
@@ -51,6 +49,9 @@ def _scalars(value,path=()):
             if key in ('seed','surface_seed','samples','surface_samples','source_hinge_count','candidate_hinge_count') or key.endswith('_count'): continue
             yield from _scalars(child,path+(str(key),))
     elif isinstance(value,list):
+        # A numeric array longer than an xyz vector is a sampled curve (force_profile's 610-sample source/candidate
+        # profiles became 12k one-point series, 52 of a run's 57 MB); its report summaries are kept as metrics.
+        if len(value)>3 and not any(isinstance(child,dict) for child in value): return
         for index,child in enumerate(value):
             label=(child.get('source_name') or child.get('name')) if isinstance(child,dict) else None
             yield from _scalars(child,path+(str(label or index),))
@@ -78,13 +79,26 @@ def _unit(name):
     return 'value'
 
 
+class UnknownRun(KeyError):
+    """No run directory in any root has this identifier (moved away, renamed or removed)."""
+
+
+class CacheFailure(RuntimeError):
+    """The dashboard cache (not a run or its audit) could not be written, e.g. its storage quota is full."""
+
+
+def _cache_write(path,data):
+    try: _atomic(path,data)
+    except OSError as exc: raise CacheFailure(f'dashboard cache write failed at {path}: {exc.strerror or exc}') from exc
+
+
 def _asset(output,data,suffix,verified=None):
     digest=_digest(data);relative=f'assets/{digest}{suffix}'
     path=output/relative
     if verified is not None and relative in verified: return relative
     if path.is_symlink(): raise AuditFailure('dashboard cached asset symlink forbidden')
     if not path.is_file() or path.stat().st_size!=len(data) or _digest(path.read_bytes())!=digest:
-        _atomic(path,data)
+        _cache_write(path,data)
     if verified is not None: verified[relative]=len(data)
     return relative
 
@@ -189,7 +203,8 @@ def _candidate_evaluations(run):
     return sorted(result,key=lambda item:item['wall_elapsed']),unavailable
 
 
-def _run_snapshot(run,output,identifier,verified_assets=None):
+def _run_snapshot(run,output,identifier,verified_assets=None,progress=None):
+    """``progress(verified_events, total_events)`` is called as the audit is verified."""
     metadata=_metadata(run/'experiment.json');status_meta=_metadata(run/'status.json')
     experiment=metadata.get('experiment') if isinstance(metadata.get('experiment'),dict) else {}
     name=metadata.get('name') or experiment.get('name') or run.name
@@ -207,6 +222,7 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
         # require or imply that the actively growing run has a final anchor.
         for pointer,event in read_audit(run,snapshot=True,manifest_out=snapshot_manifest,storage_out=audit_storage):
             last_pointer=pointer
+            if progress: progress(pointer['seq'],snapshot_manifest['event_count'])
             _declared_hashes(event)
             payload=event.get('payload')
             if isinstance(payload,dict) and payload.get('type')=='task':
@@ -262,25 +278,9 @@ def _run_snapshot(run,output,identifier,verified_assets=None):
             if event.get('kind')=='video':
                 relative=event.get('path')
                 if not isinstance(relative,str) or not relative.endswith('.mp4'): raise AuditFailure('invalid dashboard video path')
-                source=_safe_file(run,relative)
-                if source.stat().st_size!=event.get('size'): raise AuditFailure('dashboard video size mismatch')
-                digest=hashlib.sha256()
-                with source.open('rb') as handle:
-                    for chunk in iter(lambda:handle.read(1024*1024),b''): digest.update(chunk)
-                if digest.hexdigest()!=event.get('sha256'): raise AuditFailure('dashboard video hash mismatch')
-                target=f"assets/{event['sha256']}.mp4"
-                destination=output/target
-                if destination.is_symlink(): raise AuditFailure('dashboard cached video symlink forbidden')
-                cached=hashlib.sha256()
-                if destination.is_file():
-                    with destination.open('rb') as handle:
-                        for chunk in iter(lambda:handle.read(1024*1024),b''): cached.update(chunk)
-                if not destination.is_file() or cached.hexdigest()!=event['sha256']:
-                    temporary=destination.with_suffix(f'.mp4.{os.getpid()}.tmp')
-                    if temporary.is_symlink(): raise AuditFailure('dashboard temporary video symlink forbidden')
-                    shutil.copyfile(source,temporary);temporary.replace(destination)
-                data['videos'].append(dict(world=world,path=target,original_path=relative,episode=event.get('episode'),wall_elapsed=wall))
-                if verified_assets is not None: verified_assets[target]=event['size']
+                video=_safe_file(run,relative).read_bytes()  # recorded MP4s are small (largest 74 KB on 2026-11-24)
+                if len(video)!=event.get('size') or _digest(video)!=event.get('sha256'): raise AuditFailure('dashboard video size or hash mismatch')
+                data['videos'].append(dict(world=world,path=_asset(output,video,'.mp4',verified_assets),original_path=relative,episode=event.get('episode'),wall_elapsed=wall))
             if world and event.get('kind') not in ('boundary','worker_boundary','action_begin','action_end'):
                 for _,observation,images in _observations(event):
                     if wall is None: untimed+=1;continue
@@ -463,8 +463,8 @@ def _record_key(run):
 def _write_run(output,identifier,data,key):
     (output/'runs').mkdir(exist_ok=True)
     if (output/'runs').is_symlink(): raise AuditFailure('dashboard runs symlink forbidden')
-    _atomic(output/'runs'/f'{identifier}.js',('window.__dashboardRunData('+_encode(data)+');').encode())
-    _atomic(output/'runs'/f'{identifier}.key.json',json.dumps(key).encode())
+    _cache_write(output/'runs'/f'{identifier}.js',('window.__dashboardRunData('+_encode(data)+');').encode())
+    _cache_write(output/'runs'/f'{identifier}.key.json',json.dumps(key).encode())
 
 
 def _prepare_output(roots,output):
@@ -473,7 +473,7 @@ def _prepare_output(roots,output):
     if output.is_symlink(): raise AuditFailure('dashboard destination symlink forbidden')
     output.mkdir(parents=True,exist_ok=True);(output/'assets').mkdir(exist_ok=True)
     if (output/'assets').is_symlink(): raise AuditFailure('dashboard assets symlink forbidden')
-    _atomic(output/'dashboard.js',SCRIPT.encode());_atomic(output/'index.html',HTML.encode())
+    _cache_write(output/'dashboard.js',SCRIPT.encode());_cache_write(output/'index.html',HTML.encode())
     return output
 
 
@@ -485,7 +485,11 @@ class LiveDashboard:
     def __init__(self,roots,output=None):
         self.roots=[Path(r).resolve() for r in roots]
         self.output=_prepare_output(self.roots,output)
-        self.verified,self.guard,self.locks={},threading.Lock(),{}
+        self.verified,self.guard,self.locks,self.building={},threading.Lock(),{},{}
+
+    def progress(self,identifier):
+        """Verified and total audit events of a snapshot being built now, else None."""
+        return self.building.get(identifier)
 
     def catalog_script(self):
         summaries=[_summary(run,root,identifier) for root,run,identifier in _discover(self.roots)]
@@ -493,13 +497,16 @@ class LiveDashboard:
 
     def run_script(self,identifier):
         runs=[run for _,run,key in _discover(self.roots) if key==identifier]
-        if not runs: raise KeyError('unknown run snapshot '+identifier)
+        if not runs: raise UnknownRun('unknown run snapshot '+identifier)
         path,key_path=(self.output/'runs'/f'{identifier}{suffix}' for suffix in ('.js','.key.json'))
         with self.guard: lock=self.locks.setdefault(identifier,threading.Lock())
         with lock:
             key=_record_key(runs[0])
             if not (path.is_file() and key_path.is_file() and json.loads(key_path.read_text())==key):
-                _write_run(self.output,identifier,_run_snapshot(runs[0],self.output,identifier,self.verified),key)
+                self.building[identifier]=dict(events=0,total=None)
+                try: data=_run_snapshot(runs[0],self.output,identifier,self.verified,lambda done,total:self.building.__setitem__(identifier,dict(events=done,total=total)))
+                finally: self.building.pop(identifier)
+                _write_run(self.output,identifier,data,key)
             return path.read_bytes()
 
 
@@ -529,8 +536,8 @@ def build_dashboard(root='experiments',output=None,workers=1):
         _write_run(output,identifier,data,key)
         summary.update(status=data['status'],execution_mode=data['execution_mode'],duration_wall=data['duration_wall'])
         summary['tags']['Status']=[str(data['status'])]  # the verified audit's termination status, as listed
-    _atomic(output/'catalog.js',_catalog_script(summaries,comparisons))
+    _cache_write(output/'catalog.js',_catalog_script(summaries,comparisons))
     manifest=dict(schema_version=2,runs=summaries,comparisons=comparisons,generated_at_unix=time.time(),
                   verified_assets=dict(count=len(verified_assets),logical_bytes=sum(verified_assets.values())))
-    _atomic(output/'dashboard.json',_json(manifest))
+    _cache_write(output/'dashboard.json',_json(manifest))
     return manifest

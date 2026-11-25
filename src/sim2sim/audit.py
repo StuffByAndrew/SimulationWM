@@ -1,13 +1,17 @@
 """Bounded, durable researcher-only boundary/state audit with content-addressed blobs."""
 from __future__ import annotations
 import base64
-from collections import OrderedDict
+from collections import OrderedDict,deque
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
 from pathlib import Path
 import stat
 import threading
+
+
+PREFETCH=256  # index lines whose blobs read_audit reads ahead in parallel
 
 
 class AuditFailure(RuntimeError):
@@ -35,7 +39,7 @@ def _safe_file(root, relative):
 
 
 def _atomic(path,data):
-    temp=path.with_name(f'{path.name}.{os.getpid()}.tmp')  # per process: parallel dashboard workers share assets
+    temp=path.with_name(f'{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # per process and thread: dashboard workers and live-server threads share assets
     if path.is_symlink() or temp.is_symlink(): raise AuditFailure('atomic output symlinks forbidden')
     with temp.open('wb') as handle:
         handle.write(data);handle.flush();os.fsync(handle.fileno())
@@ -162,7 +166,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
     """Verify a complete log, or the fixed initial-manifest prefix for an active snapshot."""
     root=Path(run_dir).resolve()/'audit'
     if root.is_symlink(): raise AuditFailure('audit symlinks forbidden')
-    blob_directory=None
+    blob_directory=pool=None
     try:
         manifest=json.loads(_safe_file(root,'manifest.json').read_bytes())
         if manifest_out is not None: manifest_out.update(manifest)
@@ -198,21 +202,54 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
         # A snapshot reuses exact bytes already hash-verified in this traversal.
         # Never cache across calls: a later refresh must detect changed evidence.
         verified=OrderedDict();verified_bytes=0;cache_limit=16*1024*1024
-        def blob(digest,size):
-            nonlocal verified_bytes
-            if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
-                raise AuditFailure('invalid blob digest')
-            if digest in verified:
-                data=verified[digest]
-                if len(data)!=size: raise AuditFailure('blob size mismatch')
-                verified.move_to_end(digest)
-                return data
+        # Blob opens are NFS-latency bound (~2 ms each, so a 250k-event run took ~20 min serially). Threads read the
+        # blobs named by the next PREFETCH index lines ahead of time; blob() still checks size and hash of every byte,
+        # in log order, so errors surface at the same event as a serial read.
+        pool=ThreadPoolExecutor(16);pending={}
+        def valid(digest):
+            return isinstance(digest,str) and len(digest)==64 and all(c in '0123456789abcdef' for c in digest)
+        def fetch(digest,size):
             descriptor=os.open(digest,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=blob_directory)
             with os.fdopen(descriptor,'rb') as handle:
                 info=os.fstat(handle.fileno())
                 if not stat.S_ISREG(info.st_mode) or info.st_size!=size or size>128*1024*1024:
                     raise AuditFailure('blob size mismatch or excessive blob')
-                data=handle.read(size+1)
+                return handle.read(size+1)
+        def prefetch(digest,size):
+            if valid(digest) and isinstance(size,int) and digest not in verified and digest not in pending:
+                pending[digest]=pool.submit(fetch,digest,size)
+        def lookahead(lines):
+            # Malformed lines or blobs are skipped here; the in-order pass below reports them.
+            envelopes=[]
+            for line in lines:
+                try: pointer=json.loads(line);prefetch(pointer['event_sha256'],pointer['event_size']);envelopes.append(pointer['event_sha256'])
+                except (ValueError,KeyError,TypeError): pass
+            for digest in envelopes:
+                try:
+                    for item in json.loads(pending[digest].result())['attachments']: prefetch(item['sha256'],item['size'])
+                except Exception: pass
+        def index_lines(handle):
+            buffered=deque()
+            while True:
+                if not buffered:
+                    room=PREFETCH if not snapshot or manifest.get('sealed',False) else min(PREFETCH,manifest['event_count']-count)
+                    for _ in range(room):
+                        line=handle.readline(4097)
+                        if not line: break
+                        buffered.append(line)
+                    if not buffered: return
+                    lookahead(buffered)
+                yield buffered.popleft()
+        def blob(digest,size):
+            nonlocal verified_bytes
+            if not valid(digest): raise AuditFailure('invalid blob digest')
+            if digest in verified:
+                data=verified[digest]
+                if len(data)!=size: raise AuditFailure('blob size mismatch')
+                verified.move_to_end(digest)
+                return data
+            future=pending.pop(digest,None)
+            data=future.result() if future else fetch(digest,size)
             if len(data)!=size: raise AuditFailure('blob size changed while reading')
             if _digest(data)!=digest: raise AuditFailure('blob hash mismatch')
             if len(data)<=cache_limit:
@@ -221,9 +258,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
                 verified[digest]=data;verified_bytes+=len(data)
             return data
         with _safe_file(root,'events.jsonl').open('rb') as handle:
-            while not snapshot or manifest.get('sealed',False) or count<manifest['event_count']:
-                line=handle.readline(4097)
-                if not line: break
+            for line in index_lines(handle):
                 if not line.endswith(b'\n') or len(line)>4096: raise AuditFailure('truncated or excessive audit index')
                 pointer=json.loads(line);count+=1
                 core={k:pointer[k] for k in ('seq','previous','event_sha256','event_size')}
@@ -249,4 +284,5 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
         if isinstance(exc,AuditFailure): raise
         raise AuditFailure(f'invalid audit: {exc}') from exc
     finally:
+        if pool is not None: pool.shutdown(cancel_futures=True)  # waits for running reads before the directory closes
         if blob_directory is not None: os.close(blob_directory)
