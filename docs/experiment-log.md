@@ -46,6 +46,21 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 22:50 UTC — Latch-out no-reset lost to a freezer failure; top-priority held runs released on kempner_cpu
+- `w31-latch-out-noreset-20261125-002` (kempner_cpu `63706221`, holygpu8a11104) failed at its first evaluation, at 115
+  run-minutes: "Slurm step 63706221.1 freezer did not reach frozen=1". Infrastructure failure, reported to the builder.
+  - Rerun as `-003` (`63730642`), excluding that node.
+  - Marble (`63717620`, about 3 run-minutes in, on the same node) was cancelled and rerun as `-003` (`63730864`).
+  - Cloth-holes (2 submissions), hand, cube-spring-block and tetra-spring-k run on other nodes.
+- `my_storage.sh` at 22:34 UTC: lab 96% files, netscratch 96% files (about 4M files free), as compaction proceeds.
+- **Released on kempner_cpu**, re-submitted so they carry the compaction step (netscratch root; same prepared runs):
+  - gear cheap `63730955` and recon `63730958`;
+  - fixture rigid `63730961` and rubber `63730963`;
+  - die grasp `63731004`, franka `63731009`, grasp-fps100 `63731075` and franka-fps100 `63731081`.
+  - Die jobs get 16 CPUs / 64 GB: the stream predictor container needs 4 CPUs beside the paused agent's 4.
+  - They start in order as the 4 per-user slots free.
+- Still held: waves 25, 26, 27 and 29, and Carbon (14 jobs).
+
 ## 2026-11-25 21:40 UTC — Audit compaction: strict jobs now compact their runs at the end
 - The maintenance session merged audit compaction (9b16820; `sim2sim.compact`, `scripts/compact-runs.slurm`). It packs
   each run's one-file-per-blob audit into one file per stream and verifies it before removing loose blobs, e.g. 39,329
