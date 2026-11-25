@@ -26,6 +26,8 @@ Keep this list current: strike items when a log entry covers them.
   Touch-tabletop (wave 27, WIP branch `worktree-agent-a873b0bc2546edb50`) and gear-train (wave 28) were handed over.
 
 ## Queue priority (user, 2026-11-24)
+0. **Wave 31, resets vs no resets (user, 2026-11-25): top priority.** Prepare and `scontrol top` as soon as the runtime's
+   `[simulation] resets` switch is merged (builder).
 1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
 2. Explanation-depth gear-train runs (wave 28), as soon as the builder hands them over: put them at the top
    (`scontrol top`).
