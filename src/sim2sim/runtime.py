@@ -1228,11 +1228,12 @@ class InferenceBroker:
             calls.append({"id": call["id"], "name": function["name"], "arguments": function["arguments"]})
         meta = result.get("usage")
         details = lambda key: (meta.get(key) or {}) if isinstance(meta, dict) and isinstance(meta.get(key) or {}, dict) else {}
-        cached, reasoning = details("prompt_tokens_details").get("cached_tokens", 0), details("completion_tokens_details").get("reasoning_tokens", 0)
+        cached, reasoning = details("prompt_tokens_details").get("cached_tokens", 0), details("completion_tokens_details").get("reasoning_tokens")
         usage = None
         if isinstance(meta, dict) and _count(meta.get("prompt_tokens")) and _count(meta.get("completion_tokens")) and _count(cached) \
-                and _count(reasoning) and cached <= meta["prompt_tokens"] and reasoning <= meta["completion_tokens"]:
-            # Same fields as the gateway: promptTokens excludes prefix-cache hits; completion includes reasoning.
+                and cached <= meta["prompt_tokens"] and (reasoning is None or _count(reasoning) and reasoning <= meta["completion_tokens"]):
+            # Same fields as the gateway: promptTokens excludes prefix-cache hits; completion includes reasoning, whose own
+            # count stays null (a gap, not zero) when the service reports none (llama-server does not).
             fresh, output = meta["prompt_tokens"] - cached, meta["completion_tokens"]
             usage = {"promptTokens": fresh, "completionTokens": output, "totalTokens": fresh + output, "cacheReadTokens": cached,
                      "cacheWriteTokens": 0, "reasoningTokens": reasoning, "accountedTokens": fresh + output + cached}

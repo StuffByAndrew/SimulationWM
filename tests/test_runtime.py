@@ -230,7 +230,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((out["content"], out["tool_calls"], out["finish_reason"], out["summaries"], out["cost_usd"]),
                          ("", [{"id": "chatcmpl-tool-1", "name": "bash", "arguments": '{"command": "ls"}'}], "tool_calls", [], 0.))
         self.assertEqual(out["usage"], {"promptTokens": 600, "completionTokens": 200, "totalTokens": 800, "cacheReadTokens": 400,
-                                        "cacheWriteTokens": 0, "reasoningTokens": 0, "accountedTokens": 1200})
+                                        "cacheWriteTokens": 0, "reasoningTokens": None, "accountedTokens": 1200})
         with self.assertRaises(RuntimeFailure):
             broker.parse_chat({**reply, "model": "gpt-6-astra"}, {"bash"})
 
