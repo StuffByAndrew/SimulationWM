@@ -5,9 +5,11 @@ import json, sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 
+from sim2sim.audit import blob_reader  # loose or compacted (sim2sim.compact) audits
+
 
 def envelope(blobs, pointer):
-    data = (blobs / pointer["event_sha256"]).read_bytes()
+    data = blobs(pointer["event_sha256"])
     assert len(data) == pointer["event_size"]
     env = json.loads(data)
     event = env["payload"]
@@ -17,7 +19,7 @@ def envelope(blobs, pointer):
         target = event
         for part in item["path"][:-1]:
             target = target[part]
-        target[item["path"][-1]] = json.loads((blobs / item["sha256"]).read_bytes())
+        target[item["path"][-1]] = json.loads(blobs(item["sha256"]))
     return event
 
 
@@ -36,7 +38,7 @@ def keep(event):
 def one(args):
     run_dir, out_dir = map(Path, args)
     pointers = [json.loads(line) for line in (run_dir / "audit" / "events.jsonl").read_text().splitlines()]
-    blobs = run_dir / "audit" / "blobs"
+    blobs, _ = blob_reader(run_dir)
     with ThreadPoolExecutor(24) as pool:
         events = [e for e in pool.map(lambda p: keep(envelope(blobs, p)), pointers) if e]
     (out_dir / f"{run_dir.name}.json").write_text(json.dumps(events))
