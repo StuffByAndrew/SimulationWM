@@ -34,6 +34,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 ## 2026-11-25 04:55 UTC — First new-image runs: gear-deep completed; fixture-bimodal extended to 6 h
 - `w28-gear-deep-20261125-001` (home, job `63530252`) **completed**: 235 run-minutes of 240, 264 real minutes, 133
   calls, all succeeded, 3 submissions, all scored `ok` by the gear-train metric. It is the first complete gear-train run.
+  The agent called finish itself; every submission is depth class **deep** (all gears matched, fraction 1.0).
 - `w23-fixture-bimodal-neon-20261125-001` (home, kempner_cpu `63530440`) reached its 4 h checkpoint at 04:47 UTC.
   - It had 1 submission and was measuring low-mode drift and hit rates at candidate settings for the target and the
     narrow target, i.e. still working on the mechanism.
