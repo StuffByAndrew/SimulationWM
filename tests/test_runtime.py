@@ -161,6 +161,79 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeFailure):
             broker.parse_gemini({**reply, "modelVersion": "gemini-4-hydrogen"}, {"bash"})
 
+    def test_local_openai_service_record_transcript_and_zero_cost(self):
+        import http.server
+        import os
+        import threading
+        from sim2sim.runtime import ProviderUnavailable
+        seen = []
+        reply = {"model": "inkling-2-mini", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+            "role": "assistant", "content": None, "reasoning_content": "private thinking",
+            "tool_calls": [{"id": "chatcmpl-tool-1", "type": "function", "function": {"name": "bash", "arguments": '{"command": "ls"}'}}]}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200, "prompt_tokens_details": {"cached_tokens": 400}}}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen.append((self.path, self.headers["Authorization"], json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                data = json.dumps(reply).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        with tempfile.TemporaryDirectory() as directory:
+            os.chmod(directory, 0o700)
+            record = Path(directory) / "service.json"
+            cfg = {"api": "local_openai", "endpoint": str(record), "model": "inkling-2-mini", "reasoning_effort": "medium", "max_output_tokens": 64}
+            for bad in ({"api_key_env": "K"}, {"reasoning_summary": "auto"}, {"endpoint": "http://127.0.0.1/v1/chat/completions"}):
+                with self.assertRaises(RuntimeFailure):
+                    InferenceBroker({**cfg, **bad})
+            broker = InferenceBroker(cfg)
+            tools = [{"name": "bash", "parameters": {"type": "object", "properties": {"command": {"type": "string"}}}}]
+            messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "U"},
+                        {"role": "assistant", "content": "thinking aloud", "tool_calls": [{"id": "c1", "name": "bash", "arguments": "{}"}]},
+                        {"role": "tool", "tool_call_id": "c1", "content": [{"type": "text", "text": "out"},
+                                                                           {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]}]
+            with self.assertRaises(ProviderUnavailable):  # no service yet: an outage, covered by provider_hold_seconds
+                broker._call({"messages": messages, "tools": tools}, 10)
+
+            def advertise(age=0., **change):
+                record.write_text(json.dumps({"endpoint": "http://127.0.0.1:%d/v1/chat/completions" % server.server_port, "model": "inkling-2-mini",
+                                              "token": "t0k", "heartbeat_unix": time.time() - age, **change}))
+                os.chmod(record, 0o600)
+            advertise(age=600.)
+            with self.assertRaises(ProviderUnavailable):
+                broker._call({"messages": messages, "tools": tools}, 10)
+            advertise(model="other")
+            with self.assertRaises(RuntimeFailure):
+                broker._call({"messages": messages, "tools": tools}, 10)
+            advertise()
+            os.chmod(record, 0o644)
+            with self.assertRaises(RuntimeFailure):
+                broker._call({"messages": messages, "tools": tools}, 10)
+            os.chmod(record, 0o600)
+            out = broker.call({"messages": messages, "tools": tools}, 10)  # through the spawned host-only inference process
+        path, auth, body = seen[-1]
+        self.assertEqual((path, auth, body["model"], body["max_tokens"], body["chat_template_kwargs"]),
+                         ("/v1/chat/completions", "Bearer t0k", "inkling-2-mini", 64, {"reasoning_effort": "medium"}))
+        # Same labelled transcript as the other APIs: transport note + system, user, assistant text, labelled tool result.
+        self.assertEqual([m["role"] for m in body["messages"]], ["system", "system", "user", "assistant", "user"])
+        self.assertEqual(body["messages"][3]["content"], "thinking aloud")
+        self.assertEqual(body["messages"][4]["content"][2], {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}})
+        self.assertEqual(body["tools"][0]["function"]["name"], "bash")
+        self.assertEqual((out["content"], out["tool_calls"], out["finish_reason"], out["summaries"], out["cost_usd"]),
+                         ("", [{"id": "chatcmpl-tool-1", "name": "bash", "arguments": '{"command": "ls"}'}], "tool_calls", [], 0.))
+        self.assertEqual(out["usage"], {"promptTokens": 600, "completionTokens": 200, "totalTokens": 800, "cacheReadTokens": 400,
+                                        "cacheWriteTokens": 0, "reasoningTokens": 0, "accountedTokens": 1200})
+        with self.assertRaises(RuntimeFailure):
+            broker.parse_chat({**reply, "model": "gpt-6-astra"}, {"bash"})
+
     def test_client_protocol(self):
         writer = io.StringIO()
         client = Client(io.StringIO('{"type":"task"}\n{"ok":true,"observation":{"ticks":2}}\n'), writer)

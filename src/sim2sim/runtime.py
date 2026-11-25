@@ -157,6 +157,28 @@ def _inference_process(config, request, timeout, connection):
         connection.close()
 
 
+def local_service(record, model):
+    """(endpoint, token) of a running local inference service from its private record (owner-only file in an owner-only
+    directory). A missing or stale record is an outage (ProviderUnavailable); a record that breaks its contract is not."""
+    path = Path(record)
+    try:
+        info, parent = path.lstat(), path.parent.stat()
+        service = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise ProviderUnavailable("Local inference service is not running (no readable %s)" % path) from exc
+    if not stat.S_ISREG(info.st_mode) or (info.st_mode | parent.st_mode) & 0o077 or info.st_uid != os.getuid() or parent.st_uid != os.getuid():
+        raise RuntimeFailure("Local inference service record must be an owner-only file in an owner-only directory")
+    age = time.time() - float(service["heartbeat_unix"])
+    if not -LOCAL_STALE < age < LOCAL_STALE:
+        raise ProviderUnavailable("Local inference service heartbeat is stale (%.0f s)" % age)
+    url = urllib.parse.urlsplit(service["endpoint"])
+    # Plain HTTP only to the cluster-internal address the researcher's own service advertised; nothing billed travels.
+    if not (url.scheme == "http" and url.hostname and url.port and url.path == "/v1/chat/completions" and not url.query
+            and not url.fragment and url.username is None and service["model"] == model and isinstance(service["token"], str) and service["token"]):
+        raise RuntimeFailure("Local inference service record does not serve this model at a plain chat-completions address")
+    return service["endpoint"], service["token"]
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeFailure("Inference redirects are forbidden")
@@ -775,7 +797,10 @@ INFERENCE_SETTINGS = {"endpoint", "model", "provider", "metadata", "reasoning_ef
                       "provider_hold_seconds"}
 # "responses": the aqinference gateway's normalized Responses route (reports cost). "gemini": Google's native
 # generateContent, which reports no cost, so the host prices its token counts from the configured list prices.
-INFERENCE_APIS = ("responses", "gemini")
+# "local_openai": a keyless researcher-hosted OpenAI chat-completions service on the cluster (scripts/inkling-service.slurm);
+# its endpoint setting is the path of the service's private record, which names the current address; it costs nothing.
+INFERENCE_APIS = ("responses", "gemini", "local_openai")
+LOCAL_STALE = 120.  # seconds; an older local-service heartbeat is an outage (NFS caching delays fresh heartbeats by tens of s)
 GEMINI_PRICES = {"input", "cached_input", "output"}  # USD per million tokens; thinking tokens bill as output
 # Spend-cap reasons a budget hold may resume from; other stops (call/token caps, missing accounting) always suspend.
 HOLDABLE = ("Run inference cost budget exhausted", "Shared inference cost pool exhausted")
@@ -851,13 +876,19 @@ class InferenceBroker:
         self.cancelled = threading.Event()
         endpoint = config.get("endpoint", "")
         parsed = urllib.parse.urlsplit(endpoint)
-        if endpoint and (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment):
-            raise RuntimeFailure("Inference endpoint must be a fixed HTTPS URL")
         metadata = config.get("metadata", {})
         api = config.get("api", "responses")
         if api not in INFERENCE_APIS:
             raise RuntimeFailure("Unknown inference api")
-        if endpoint and not (isinstance(config.get("model"), str) and isinstance(config.get("api_key_env"), str)):
+        if endpoint and api == "local_openai":
+            # The model's raw reasoning is not a provider summary, so reasoning_summary is refused rather than relabelled.
+            if not (os.path.isabs(endpoint) and Path(endpoint).name == "service.json" and isinstance(config.get("model"), str)
+                    and not {"api_key_env", "metadata", "provider", "price_usd_per_mtok", "reasoning_summary"} & set(config)):
+                raise RuntimeFailure("local_openai inference takes the absolute path of the service's service.json record as endpoint "
+                                     "and a model, and no key, gateway metadata, provider, prices or reasoning_summary")
+        elif endpoint and (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment):
+            raise RuntimeFailure("Inference endpoint must be a fixed HTTPS URL")
+        elif endpoint and not (isinstance(config.get("model"), str) and isinstance(config.get("api_key_env"), str)):
             raise RuntimeFailure("Inference requires model and api_key_env")
         if endpoint and api == "responses" and not (isinstance(metadata, dict) and {"project", "feature"} <= set(metadata)
                                                     and all(isinstance(value, str) and value for value in metadata.values())):
@@ -954,7 +985,8 @@ class InferenceBroker:
             child.close()
             if not parent.poll(allowance):
                 with self.budget_lock:
-                    self.cost += self.reserve  # An abandoned request may still be billed; charge its worst case.
+                    if self.config.get("api") != "local_openai":  # a self-hosted model bills nothing
+                        self.cost += self.reserve  # An abandoned request may still be billed; charge its worst case.
                 # Only the provider's own per-call limit is an outage; the run's remaining time running out is not.
                 raise (ProviderUnavailable if allowance >= float(self.config.get("timeout_seconds", 60)) else RuntimeFailure)(
                     "Inference wall-time budget exhausted")
@@ -1166,21 +1198,68 @@ class InferenceBroker:
         return {"content": "".join(text), "tool_calls": calls, "finish_reason": candidate.get("finishReason") if isinstance(candidate.get("finishReason"), str) else None,
                 "model": result["modelVersion"], "usage": usage, "cost_usd": cost, "summaries": [summary] if summary.strip() else []}
 
+    def chat_payload(self, payload):
+        """OpenAI chat-completions form of the same validated transcript (labelled tool turns, as for the other APIs)."""
+        cfg = self.config
+        messages = [{"role": item["role"], "content": "".join(part["text"] for part in item["content"]) if item["role"] == "assistant" else
+                     [{"type": "text", "text": part["text"]} if part["type"] == "input_text" else {"type": "image_url", "image_url": {"url": part["imageUrl"]}}
+                      for part in item["content"]]} for item in payload["input"]]
+        body = {"model": cfg["model"], "messages": messages, "max_tokens": payload["max_output_tokens"], "stream": False}
+        if "tools" in payload:
+            body["tools"] = payload["tools"]
+        if cfg.get("reasoning_effort"):
+            body["chat_template_kwargs"] = {"reasoning_effort": cfg["reasoning_effort"]}  # the model's chat template reads it
+        return body
+
+    def parse_chat(self, result, names):
+        cfg = self.config
+        if not isinstance(result, dict) or result.get("model") != cfg["model"]:
+            raise RuntimeFailure("Provider returned an unexpected model; no substitution is allowed")
+        choices = result.get("choices")
+        message = choices[0].get("message") if isinstance(choices, list) and len(choices) == 1 and isinstance(choices[0], dict) else None
+        if not (isinstance(message, dict) and isinstance(message.get("content") or "", str)):
+            raise RuntimeFailure("Provider returned invalid public output")
+        calls = []
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") if isinstance(call, dict) else None
+            if not (isinstance(function, dict) and call.get("type") == "function" and isinstance(call.get("id"), str)
+                    and function.get("name") in names and isinstance(function.get("arguments"), str)):
+                raise RuntimeFailure("Provider returned an invalid tool call")
+            calls.append({"id": call["id"], "name": function["name"], "arguments": function["arguments"]})
+        meta = result.get("usage")
+        details = lambda key: (meta.get(key) or {}) if isinstance(meta, dict) and isinstance(meta.get(key) or {}, dict) else {}
+        cached, reasoning = details("prompt_tokens_details").get("cached_tokens", 0), details("completion_tokens_details").get("reasoning_tokens", 0)
+        usage = None
+        if isinstance(meta, dict) and _count(meta.get("prompt_tokens")) and _count(meta.get("completion_tokens")) and _count(cached) \
+                and _count(reasoning) and cached <= meta["prompt_tokens"] and reasoning <= meta["completion_tokens"]:
+            # Same fields as the gateway: promptTokens excludes prefix-cache hits; completion includes reasoning.
+            fresh, output = meta["prompt_tokens"] - cached, meta["completion_tokens"]
+            usage = {"promptTokens": fresh, "completionTokens": output, "totalTokens": fresh + output, "cacheReadTokens": cached,
+                     "cacheWriteTokens": 0, "reasoningTokens": reasoning, "accountedTokens": fresh + output + cached}
+        finish = choices[0].get("finish_reason")
+        return {"content": message.get("content") or "", "tool_calls": calls, "finish_reason": finish if isinstance(finish, str) else None,
+                "model": result["model"], "usage": usage, "cost_usd": 0., "summaries": []}
+
     def _call(self, request, timeout):
         cfg = self.config
         if not cfg.get("endpoint"):
             raise RuntimeFailure("Inference is disabled")
-        gemini = cfg.get("api", "responses") == "gemini"
+        api = cfg.get("api", "responses")
         payload, names = self.payload(request)
-        body = json.dumps(self.gemini_payload(payload) if gemini else payload).encode()
+        body = json.dumps({"gemini": self.gemini_payload, "local_openai": self.chat_payload}.get(api, lambda value: value)(payload)).encode()
         if len(body) > int(cfg.get("max_request_bytes", 4 * 1024 * 1024)):
             raise RuntimeFailure("Inference request exceeds byte limit")
-        key = os.environ.get(cfg["api_key_env"], "")
+        if api == "local_openai":
+            endpoint, key = local_service(cfg["endpoint"], cfg["model"])
+            opener = urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({}))  # cluster-internal: never via a proxy
+        else:
+            endpoint, key = cfg["endpoint"], os.environ.get(cfg["api_key_env"], "")
+            opener = urllib.request.build_opener(NoRedirect())
         if not key:
             raise RuntimeFailure("Host inference credential is missing")
-        req = urllib.request.Request(cfg["endpoint"], data=body, headers={"x-goog-api-key" if gemini else "Authorization": key if gemini else "Bearer " + key,
-                                                                          "Content-Type": "application/json"})
-        opener = urllib.request.build_opener(NoRedirect())
+        gemini = api == "gemini"
+        req = urllib.request.Request(endpoint, data=body, headers={"x-goog-api-key" if gemini else "Authorization": key if gemini else "Bearer " + key,
+                                                                   "Content-Type": "application/json"})
         inference_deadline = time.monotonic() + max(0, min(timeout, float(cfg.get("timeout_seconds", 60))))
         limit = int(cfg.get("max_response_bytes", 1048576))
         attempt = 0
@@ -1218,7 +1297,7 @@ class InferenceBroker:
         if len(raw) > limit:
             raise RuntimeFailure("Inference response exceeds byte limit")
         # Expose only generated content, tool calls, accounting and documented summaries; never headers or route internals.
-        return (self.parse_gemini if gemini else self.parse)(json.loads(raw), names)
+        return {"gemini": self.parse_gemini, "local_openai": self.parse_chat}.get(api, self.parse)(json.loads(raw), names)
 
 
 def zip_directory(directory, max_bytes=64 * 1024 * 1024):
@@ -1504,7 +1583,14 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         backend.preflight()
     supervisor.check()
     inference_config = config.get("inference", {})
-    if inference_config.get("endpoint") and not os.environ.get(inference_config.get("api_key_env", "")):
+    local_record = None
+    if inference_config.get("endpoint") and inference_config.get("api") == "local_openai":
+        try:
+            local_service(inference_config["endpoint"], inference_config["model"])
+            local_record = {k: v for k, v in json.loads(Path(inference_config["endpoint"]).read_text()).items() if k != "token"}
+        except RuntimeFailure as exc:
+            raise RuntimeFailure("%s; agent was not launched" % exc) from None
+    elif inference_config.get("endpoint") and not os.environ.get(inference_config.get("api_key_env", "")):
         raise RuntimeFailure("Host inference credential is missing; agent was not launched")
     if backend is None:
         # Pin tags to immutable IDs: every container of this run uses the image that passed preflight.
@@ -1530,6 +1616,8 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         output.mkdir(parents=True, exist_ok=False)
     audit = TimedAudit(AuditLog(output, int(limits.get("audit_bytes", 512 * 1024 * 1024))), clocks)
     emergency = audit.reserve(256 * 1024)
+    if local_record:  # which engine, checkpoint and precision served this run's model (researcher provenance; no token)
+        audit.record({"kind": "local_inference_service", **local_record})
     broker = InferenceBroker(config.get("inference", {}), run_id=output.name)
     supervisor.add_cleanup(broker.cancel)
     scene = config["source"]["scene"]

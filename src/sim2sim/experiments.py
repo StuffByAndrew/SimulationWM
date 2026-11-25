@@ -296,7 +296,7 @@ def start_experiment(experiment_id, root='experiments', *, refresh_dashboard=Tru
     _write(directory / 'status.json', status)
     inference = config.get('inference', {})
     preflight = {'schema_version': 1, 'started_at': utc_now(), 'host_credential_present':
-                 bool(os.environ.get(inference.get('api_key_env', 'OPENAI_API_KEY'))) if inference.get('endpoint') else None}
+                 bool(os.environ.get(inference.get('api_key_env', 'OPENAI_API_KEY'))) if inference.get('endpoint') and inference.get('api') != 'local_openai' else None}
     leaked = [key for key, value in metadata.get('physical_parameters', {}).items()
               if isinstance(value, str) and value and value in config['task']]
     boundary = {'schema_version': 1,
