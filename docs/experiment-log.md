@@ -53,6 +53,13 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - Wave 29: `63530205`, `63530208`, `63530210`, `63530217`.
   - Carbon (nice): `63530189`, `63530199`.
 - The hold watcher covers all three roots.
+- **01:45 UTC, home protected:** the fixture run writes about 1.4 GB per hour (not the assumed 1 GB per 6 h), and home
+  dropped from 55 to 49 GB free in an hour. The die runs' audits may reach 32 GiB each, and home is the user's own quota.
+  - The two running home runs stay put: gear-deep `63530252` and fixture-bimodal `63530440`.
+  - The 7 queued home jobs were held and cancelled before starting. Their 8 runs were re-prepared on netscratch as
+    `-20261125-002`, sources byte-identical (`prepare-20261125b.sh`, map `home-held-20261125-map.txt`).
+  - New jobs at the top: gear cheap `63539120`, recon `63539134`; die `63539140`, `63539168`, `63539177`, `63539182`;
+    fixture rigid + rubber `63539189`.
 
 ## 2026-11-24 20:30 UTC — Wave 28 gear-train (explanation depth) queued at top priority
 - Merged builder commit 83ba220 (01304fa). Premise check `63463232`: deep vs shallow probe error 3% of the gate; the deep
