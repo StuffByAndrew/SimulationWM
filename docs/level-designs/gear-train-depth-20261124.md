@@ -106,3 +106,7 @@ reproduce, and the point grasp is softened differently by the deep and lumped cr
   knob, default off; a slipping grip, in the reference world, agent world and evaluator alike); the grasp stiffness
   returns to the default; evaluation probes stay within reach. The threshold must never trip on in-reach turns and must
   trip before any over-pull excites springback.
+- **Weld grasp (user, 2026-11-25)**: the point grasp is a weld grasp (AGENTS.md): it fixes the crank handle's orientation
+  to the grasp, so turning the crank means rotating the grasp in step, and pose mismatch with the crank hinge becomes
+  constraint force. The slip threshold (now on force and torque) and the equal-probe premise must be re-checked with the
+  weld grasp before configs.

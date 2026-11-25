@@ -113,6 +113,14 @@ object-on-handle force in world coordinates and zero torque about the actual
 grasp point. Do not disclose grasp coordinates, body COM lever arms, mass, or
 forces from unrelated contacts. Refreshing force must not advance time/ticks.
 
+Weld grasp (user, 2026-11-25): from now on, "ideal point grasp with wrench" in a new level means a **weld grasp**: the
+grasped object is rigidly fixed to the handle at the grasp point; the agent translates the grasp and rotates the object
+about the grasp point; the wrench reports the weld's full force and torque on the object at the grasp point, in world
+coordinates. It is selected by a `[simulation]` key (to be built); the default stays the translation-only connect grasp
+above, so existing configs and recorded runs are unchanged. The other wrench rules (only the active grasp's own
+constraint, nothing from unrelated contacts, no grasp coordinates, lever arms or mass, no time/ticks on refresh) still
+apply. Applies to the childproof bottle, gear-train and cable levels (`docs/level-designs/`).
+
 The default sandbox process-limit backend is `cgroup` and requires enforced
 CPU, memory and pids controllers. Explicit `sandbox.process_limit_backend =
 "rlimit"` is valid only on hosts enforcing CPU/memory but lacking delegated pids:

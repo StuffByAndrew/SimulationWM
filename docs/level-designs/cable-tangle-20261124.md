@@ -70,7 +70,7 @@ The MJCF conditions add: also submit a MuJoCo scene of the cable(s) in their ini
 | Typical-cable prior baseline (generic values, e.g. a USB cable) scored by the same metric | baseline | new baseline entry |
 | MJCF conditions: Chamfer of the cable surfaces in the initial state, `dynamics` probes (lift each free end), and the piece count implied by the scene (connected bodies and equalities) vs the stated one | H4 | existing Chamfer/probes + small count check |
 
-A missing or malformed `parameters.json` makes the answer metrics unavailable (a gap), not zero. Twist stiffness and
+A missing or malformed `parameters.json` makes the answer metrics unavailable (a gap), not zero. (Superseded 2026-11-25: with the weld grasp, twist stiffness is identifiable and is added to the answer; see Revisions.) Twist stiffness and
 stretch are excluded: a point grasp cannot apply torque, and the cable is inextensible.
 
 ## Evals card
@@ -100,3 +100,6 @@ friction (e.g. toward ~2) until the tangle stays compact (≲ 15 cm) and at rest
 allowed against creep. C2's loop counts as hidden when its visible fraction is ≤ ~30% **and** no sampled camera view
 shows its whole closed path. The tuned values become the truth the agent must report; flag values outside plausible
 cable ranges. Wave 30 (`experiments/configs/wave30-20261124/`, pool `gemini-20261124-cable`).
+- **Weld grasp (user, 2026-11-25)**: the point grasps are weld grasps (AGENTS.md): the agent rotates the grasped segment
+  about the grasp point and the wrench reports full force and torque. Because the agent can now twist the cable, **twist
+  stiffness (N·m²) is added to the per-piece answer** and to the `cable` metric; stretch stays excluded.
