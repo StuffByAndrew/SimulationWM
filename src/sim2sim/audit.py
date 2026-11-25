@@ -3,15 +3,21 @@ from __future__ import annotations
 import base64
 from collections import OrderedDict,deque
 from concurrent.futures import ThreadPoolExecutor
+import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
 import stat
 import threading
+import zlib
 
 
 PREFETCH=256  # index lines whose blobs read_audit reads ahead in parallel
+# Compacted audits (sim2sim.compact): audit/pack/<stream>.pack holds a stream's blobs in chunks, raw or zlib-compressed;
+# audit/pack/index.tsv.gz maps each blob digest to its stream, chunk and offset. Bytes and digests are unchanged.
+PACK_STREAMS={'events':'zlib','rgb':'raw','depth':'raw','state':'zlib','other':'zlib'}
+PACK_COLUMNS=('sha256','stream','chunk_start','chunk_length','offset','size','first_seq')
 
 
 class AuditFailure(RuntimeError):
@@ -47,6 +53,48 @@ def _atomic(path,data):
     directory=os.open(path.parent,os.O_RDONLY | getattr(os,'O_DIRECTORY',0))
     try: os.fsync(directory)
     finally: os.close(directory)
+
+
+class PackedBlobs:
+    """Read-only access to a compacted audit's blobs; callers still verify size and digest of every blob."""
+    def __init__(self,root):
+        pack=_safe_file(root,'pack')
+        self.index={}
+        with gzip.open(_safe_file(pack,'index.tsv.gz'),'rt',encoding='ascii') as handle:
+            if tuple(next(handle).rstrip('\n').split('\t'))!=PACK_COLUMNS: raise AuditFailure('unsupported audit pack index')
+            for line in handle:
+                digest,stream,start,length,offset,size,_=line.rstrip('\n').split('\t')
+                if stream not in PACK_STREAMS: raise AuditFailure('unknown audit pack stream')
+                self.index[digest]=(stream,int(start),int(length),int(offset),int(size))
+        self.files={name:open(_safe_file(pack,f'{name}.pack'),'rb') for name in PACK_STREAMS}
+        self.chunks=OrderedDict();self.lock=threading.Lock()
+    def get(self,digest,size):
+        stream,start,length,offset,stored=self.index[digest]
+        if stored!=size or size>128*1024*1024: raise AuditFailure('blob size mismatch or excessive blob')
+        with self.lock:
+            chunk=self.chunks.get((stream,start))
+            if chunk is None:
+                handle=self.files[stream];handle.seek(start);data=handle.read(length)
+                if len(data)!=length: raise AuditFailure('truncated audit pack')
+                chunk=zlib.decompress(data) if PACK_STREAMS[stream]=='zlib' else data
+                self.chunks[(stream,start)]=chunk
+                if len(self.chunks)>8: self.chunks.popitem(last=False)
+            else:
+                self.chunks.move_to_end((stream,start))
+        return chunk[offset:offset+size]
+    def close(self):
+        for handle in self.files.values(): handle.close()
+
+
+def blob_reader(run_dir):
+    """(digest -> verified bytes, close) for scripts that read individual blobs, loose or compacted."""
+    root=Path(run_dir).resolve()/'audit'
+    packs=PackedBlobs(root) if (root/'pack').is_dir() else None
+    def read(digest):
+        data=packs.get(digest,packs.index[digest][4]) if packs and digest in packs.index else (root/'blobs'/digest).read_bytes()
+        if _digest(data)!=digest: raise AuditFailure('blob hash mismatch')
+        return data
+    return read,(packs.close if packs else lambda: None)
 
 
 class Reservation:
@@ -162,11 +210,12 @@ class AuditLog:
             self.used+=len(manifest)-len(self.manifest);self.manifest=manifest
 
 
-def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
-    """Verify a complete log, or the fixed initial-manifest prefix for an active snapshot."""
+def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None, budget=True):
+    """Verify a complete log, or the fixed initial-manifest prefix for an active snapshot. budget=False is only for
+    sim2sim.compact's verification before it removes loose blobs, while loose blobs and packs briefly coexist."""
     root=Path(run_dir).resolve()/'audit'
     if root.is_symlink(): raise AuditFailure('audit symlinks forbidden')
-    blob_directory=pool=None
+    blob_directory=pool=packs=None
     try:
         manifest=json.loads(_safe_file(root,'manifest.json').read_bytes())
         if manifest_out is not None: manifest_out.update(manifest)
@@ -191,7 +240,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
                     if stat.S_ISDIR(info.st_mode): directories.append(entry.path)
                     elif stat.S_ISREG(info.st_mode) and not (snapshot and entry.name.endswith('.tmp')):
                         actual+=info.st_size;regular_files+=1;allocated+=info.st_blocks*512
-        if actual>maximum: raise AuditFailure('audit files exceed declared budget')
+        if budget and actual>maximum: raise AuditFailure('audit files exceed declared budget')
         if storage_out is not None:
             storage_out.update(logical_bytes=actual,allocated_file_bytes=allocated,regular_file_count=regular_files)
         previous='0'*64;count=0
@@ -199,6 +248,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
         # the full NFS ancestry for every content-addressed blob, and cannot
         # follow a replaced parent symlink out of this snapshot directory.
         blob_directory=os.open(root/'blobs',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        packs=PackedBlobs(root) if (root/'pack').is_dir() else None
         # A snapshot reuses exact bytes already hash-verified in this traversal.
         # Never cache across calls: a later refresh must detect changed evidence.
         verified=OrderedDict();verified_bytes=0;cache_limit=16*1024*1024
@@ -209,6 +259,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
         def valid(digest):
             return isinstance(digest,str) and len(digest)==64 and all(c in '0123456789abcdef' for c in digest)
         def fetch(digest,size):
+            if packs and digest in packs.index: return packs.get(digest,size)
             descriptor=os.open(digest,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=blob_directory)
             with os.fdopen(descriptor,'rb') as handle:
                 info=os.fstat(handle.fileno())
@@ -216,7 +267,7 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
                     raise AuditFailure('blob size mismatch or excessive blob')
                 return handle.read(size+1)
         def prefetch(digest,size):
-            if valid(digest) and isinstance(size,int) and digest not in verified and digest not in pending:
+            if valid(digest) and isinstance(size,int) and digest not in verified and digest not in pending and not (packs and digest in packs.index):
                 pending[digest]=pool.submit(fetch,digest,size)
         def lookahead(lines):
             # Malformed lines or blobs are skipped here; the in-order pass below reports them.
@@ -285,4 +336,5 @@ def read_audit(run_dir, *, snapshot=False, manifest_out=None, storage_out=None):
         raise AuditFailure(f'invalid audit: {exc}') from exc
     finally:
         if pool is not None: pool.shutdown(cancel_futures=True)  # waits for running reads before the directory closes
+        if packs is not None: packs.close()
         if blob_directory is not None: os.close(blob_directory)

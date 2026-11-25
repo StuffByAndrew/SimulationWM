@@ -6,15 +6,17 @@ Each model call lists the messages that are new since the previous call (everyth
 messages for the first call), then the model's reply. Every message therefore appears once, at the call where it first entered the
 context, with its images intact (the harness later replaces old images with a placeholder and old turns with a model-written summary).
 Images are the exact bytes the model received, written once per content hash. Private: never mount the output in an agent sandbox."""
-import json, shutil, sys
+import json, sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
+
+from sim2sim.audit import blob_reader  # loose or compacted (sim2sim.compact) audits
 
 COMPACT = "Your context is nearly full, so older turns will now be removed."  # examples/sandbox_agent.py COMPACT prompt
 
 
 def load(blobs, pointer):
-    data = (blobs / pointer["event_sha256"]).read_bytes()
+    data = blobs(pointer["event_sha256"])
     assert len(data) == pointer["event_size"], pointer["seq"]
     return json.loads(data)
 
@@ -28,7 +30,7 @@ def place(event, path, value):
 
 def one(args):
     run_dir, out_dir = map(Path, args)
-    blobs, out = run_dir / "audit" / "blobs", out_dir / run_dir.name
+    (blobs, _), out = blob_reader(run_dir), out_dir / run_dir.name
     pointers = [json.loads(line) for line in (run_dir / "audit" / "events.jsonl").read_text().splitlines()]
     with ThreadPoolExecutor(24) as pool:
         envelopes = list(pool.map(lambda p: load(blobs, p), pointers))
@@ -44,7 +46,7 @@ def one(args):
                 assert item["path"][:2] == ["payload", "messages"] and item["prefix"].startswith("data:image/"), item["path"]
                 name = f"img/{item['sha256']}.{item['prefix'][len('data:image/'):].split(';')[0].replace('jpeg', 'jpg')}"
                 if item["sha256"] not in images:
-                    shutil.copyfile(blobs / item["sha256"], out / name)
+                    (out / name).write_bytes(blobs(item["sha256"]))
                     images.add(item["sha256"])
                 place(event, item["path"], name)
             calls.append(dict(action_id=event["action_id"], t=event["wall_elapsed"], messages=payload["messages"]))
