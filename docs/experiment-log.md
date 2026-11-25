@@ -31,6 +31,20 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 03:10 UTC — Wave 31 planned (top priority): resets vs no resets (6 runs, waiting on a runtime switch)
+- **User:** compare resets with no resets allowed, on at least 5 levels where agents reset a few times; make it the top
+  priority.
+- **Reset census of strict runs** (`events.jsonl` reset ops). The completed Neon runs that reset often:
+  - gemini-20261120: latch-out 27, hand smooth-mesh 21, cloth-holes 17, tetra-spring-k 11, marble-heavy-hint 9;
+  - w26 cube-spring-block mjcf: 17–32.
+- **Configs** `experiments/configs/wave31-20261125/` (6 runs): each is its Neon baseline's config with only these changes:
+  - `[simulation] resets = false`;
+  - for the hand, the task's "If it falls out of the hand, use reset…" clause removed (the starting-pose sentence kept);
+  - the cost pool, and the 36 h provider-hold allowance (held time is off the run clock).
+- **Baselines:** the same Neon runs, which kept resets.
+- **Blocked on** the builder adding the `resets = false` runtime switch (requested 03:00 UTC). Then: prepare, queue at the
+  top.
+
 ## 2026-11-25 00:50 UTC — Lab quota killed the fixture-bimodal run; everything re-prepared on home and netscratch
 - **Lab hit its shared group quota at about 00:00 UTC.**
   - It killed `w23-fixture-bimodal-neon-20261123-003` (kempner_cpu job `63471018`) at 231 run-minutes, after 1
