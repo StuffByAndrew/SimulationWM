@@ -31,6 +31,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 04:55 UTC — First new-image runs: gear-deep completed; fixture-bimodal extended to 6 h
+- `w28-gear-deep-20261125-001` (home, job `63530252`) **completed**: 235 run-minutes of 240, 264 real minutes, 133
+  calls, all succeeded, 3 submissions, all scored `ok` by the gear-train metric. It is the first complete gear-train run.
+- `w23-fixture-bimodal-neon-20261125-001` (home, kempner_cpu `63530440`) reached its 4 h checkpoint at 04:47 UTC.
+  - It had 1 submission and was measuring low-mode drift and hit rates at candidate settings for the target and the
+    narrow target, i.e. still working on the mechanism.
+  - **Resumed to 6 h.**
+
 ## 2026-11-25 03:10 UTC — Wave 31 planned (top priority): resets vs no resets (6 runs, waiting on a runtime switch)
 - **User:** compare resets with no resets allowed, on at least 5 levels where agents reset a few times; make it the top
   priority.
