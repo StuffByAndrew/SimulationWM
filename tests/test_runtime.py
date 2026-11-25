@@ -838,6 +838,29 @@ def test_slurm_step_freeze_resends_signal_after_controller_timeout(tmp_path):
     assert calls == [["scancel", "--signal=CONT", "1.2"]] * 2
 
 
+def test_slurm_step_freeze_failure_reports_cgroup_and_task_states(tmp_path):
+    """A step that never freezes (job 63706221) fails loudly with the freezer, memory and per-task evidence."""
+    import os
+    import pytest
+    from unittest.mock import patch
+    from sim2sim import runtime
+    leaf = tmp_path / "step" / "leaf"
+    leaf.mkdir(parents=True)
+    (leaf / "cgroup.events").write_text("populated 1\nfrozen 0\n")
+    (leaf / "cgroup.freeze").write_text("1\n")
+    (leaf / "cgroup.procs").write_text("%d\n" % os.getpid())
+    (leaf.parent / "memory.events").write_text("low 0\nhigh 0\nmax 7\noom 0\noom_kill 0\n")
+    clock = [0.]
+    with patch.dict(runtime.SLURM_STEPS, {"agent": ("1.1", leaf)}), patch.object(runtime.subprocess, "run", lambda *a, **k: None), \
+            patch.object(runtime.time, "monotonic", lambda: clock[0]), \
+            patch.object(runtime.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s)), \
+            pytest.raises(runtime.SandboxFailure) as failure:
+        runtime._set_paused("agent", True, "slurm_step")
+    evidence = json.loads(str(failure.value).split(": ", 1)[1])
+    assert evidence["cgroups"][str(leaf)]["cgroup.freeze"] == "1" and "max 7" in evidence["cgroups"][str(leaf.parent)]["memory.events"]
+    assert evidence["tasks"][str(os.getpid())]["state"] in "RS" and evidence["tasks"][str(os.getpid())]["comm"]
+
+
 def test_prepared_output_accepts_continuation_prior_directory(tmp_path):
     """Regression (c1-assembly-*-20261103-001): a prepared continuation's prior/ carry-over is a directory."""
     from sim2sim.runtime import validate_prepared_output
