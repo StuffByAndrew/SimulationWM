@@ -3,8 +3,8 @@ first recorded reference-camera frame (from the verified audit) with its setting
 metric, each run's per-submission value against run-clock minutes (step until the next submission, to the run's end).
 Reads the built report data (per-submission metrics computed by build-results-report.py); prints when each run first got within
 tolerance. Usage (Slurm): .venv/bin/python experiments/validation/embodiment-pairs-plot.py OUT.png"""
-import io
 import json
+import time
 import sys
 from pathlib import Path
 
@@ -27,17 +27,19 @@ TUNNEL_KEYS = [("mech_rel", "mechanism force error ÷ true force", 0.2), ("fp_pu
                ("fp_retract_n", "slow-retract force error (N)", None), ("fp_fast_n", "fast-cycle force error (N)", None)]
 LEVER_KEYS = [("r:mass", "lever mass ÷ true", 0.1), ("r:inertia", "inertia ÷ true", 0.1), ("r:damping", "hinge damping ÷ true", 0.1),
               ("r:frictionloss", "hinge friction loss ÷ true", 0.1)]
-LEVEL = {"spring": "spring", "damper": "spring + damper", "nonlinear": "nonlinear spring", "latch": "push-push latch", "curved": "curved tunnel, spring"}
+BLOCK_KEYS = [("chamfer_mm", "shape error, Chamfer (mm)", 2.0), ("com_mm", "COM error (mm)", 2.0), ("r:mass:block_red", "red block mass ÷ true", 0.1),
+              ("r:mass:block_blue", "blue block mass ÷ true", 0.1)]
+LEVEL ={"spring": "spring", "damper": "spring + damper", "nonlinear": "nonlinear spring", "latch": "push-push latch", "curved": "curved tunnel, spring"}
 # (row title, family, {embodiment: [runs]}); a list longer than one would be repetitions, drawn dashed
 PAIRS = [(f"Tunnel: {LEVEL[lv]}" + (",\nsequence tool" if seq else ""), "tunnel",
           {"grasp": [f"w16-{lv}-grasp{seq}-20261109-001"], "arm": [f"w16-{lv}-franka{seq}-20261109-001"]})
          for lv in LEVEL for seq in ("", "-seq")] + \
         [("Randomized\ndamped lever", "lever", {"grasp": ["w2-lever-hard-base-20261103-002"], "arm": ["w3-panda-lever-hard-20261104-002"]}),
-         ("Randomized\ndamped lever,\nno interaction", "lever",
-          {"grasp": ["w5-lever-hard-noaction-20261103-002"], "arm": ["w5-panda-lever-hard-noaction-20261103-002"]})]
+         ("Two blocks", "blocks", {"grasp": ["w1-blocks-base-20261102-003"], "arm": ["w2-panda-vision-20261103-001"]})]  # scenes compiled identical
 NAME = {"grasp": "point grasp + wrench", "arm": "Franka/Panda arm (joint efforts)"}
 load = lambda p: json.loads(p.read_text()[len("window.R="):-1])["runs"]
 RUNS = {"tunnel": load(TUNNEL_DATA), "lever": load(LEVER_DATA)}
+RUNS["blocks"] = RUNS["lever"]  # both from the 2026-11-04 plain report
 
 
 def series(run, key):
@@ -51,14 +53,24 @@ def run_dir(run):
     return hits[0]
 
 
-def first_view(run):
-    """The first reference-world RGB frame the run recorded: the scene as its agent first saw it (verified audit, nothing rendered)."""
-    for _, event in read_audit(run_dir(run)):
-        if event.get("world") == "reference":
-            for _, _, images in _observations(event):
-                if "rgb" in images:
-                    return mpimg.imread(io.BytesIO(images["rgb"]), format="png")
-    raise AssertionError(f"{run}: no reference RGB frame in its audit")
+def first_view(run, cache):
+    """The first reference-world RGB frame the run recorded: the scene as its agent first saw it (verified audit, nothing rendered).
+    Saved once as CACHE/<run>.png (the exact audit PNG bytes), so re-renders need not read audits again."""
+    path = cache / f"{run}.png"
+    if not path.is_file():
+        audit = run_dir(run) / "audit"
+        for _ in range(720):  # mid-compaction (pack written, loose blobs being removed): wait for sim2sim.compact to finish the run
+            if not ((audit / "pack").is_dir() and (audit / "blobs").is_dir() and any((audit / "blobs").iterdir())):
+                break
+            time.sleep(10)
+        else:
+            raise AssertionError(f"{run}: audit still mid-compaction after 2 h")
+        png = next((images["rgb"] for _, event in read_audit(run_dir(run)) if event.get("world") == "reference"
+                    for _, _, images in _observations(event) if "rgb" in images), None)
+        assert png is not None, f"{run}: no reference RGB frame in its audit"
+        cache.mkdir(exist_ok=True)
+        path.write_bytes(png)
+    return mpimg.imread(path, format="png")
 
 
 def settings(run):
@@ -81,14 +93,14 @@ def first_within(pts, key, tol):
 
 
 def main(out):
-    keys = {"tunnel": TUNNEL_KEYS, "lever": LEVER_KEYS}
+    keys = {"tunnel": TUNNEL_KEYS, "lever": LEVER_KEYS, "blocks": BLOCK_KEYS}
     fig, grid = plt.subplots(len(PAIRS), 6, figsize=(26, 3.6 * len(PAIRS)), squeeze=False, gridspec_kw=dict(width_ratios=[1.25, 1.25, 1, 1, 1, 1]))
     summary = []
     for cells, (title, fam, sides) in zip(grid, PAIRS):
         R = RUNS[fam]
         for ax, side, color in ((cells[0], "grasp", GRASP), (cells[1], "arm", ARM)):
             run = sides[side][0]
-            ax.imshow(first_view(run))
+            ax.imshow(first_view(run, Path(out).parent / "first-frames"))
             ax.set_xticks([]), ax.set_yticks([])
             for s in ax.spines.values():
                 s.set_color(color), s.set_linewidth(3)
@@ -113,6 +125,8 @@ def main(out):
             if key.startswith("r:"):
                 ax.axhline(1, color=MUTED, lw=1, ls=":")
                 ax.set_ylim(0, max(1.6, max((v for runs in sides.values() for r in runs for _, v in series(R[r], key) if v is not None), default=1) * 1.1))
+            elif fam == "blocks":  # errors that reach exactly 0: linear from 0
+                ax.set_ylim(bottom=0)
             else:
                 ax.set_yscale("log")
                 ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
