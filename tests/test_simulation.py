@@ -1,5 +1,6 @@
 """Physics and image boundary checks (require a working MuJoCo render backend)."""
 import base64
+import json
 import io
 from pathlib import Path
 
@@ -321,3 +322,192 @@ def test_movable_camera_cannot_clip_into_a_sealed_box():
     covered = sim.observe()
     for key in ('rgb', 'depth'):
         assert not np.asarray(Image.open(io.BytesIO(base64.b64decode(covered[key])))).any(), key
+
+
+WELD_SCENE = '''<mujoco><option timestep=".002"/>
+  <worldbody><camera name="fixed" pos="0 -2 .5" xyaxes="1 0 0 0 0 1"/>
+  <body name="box" pos="0 0 .5"><freejoint/>
+    <inertial pos=".04 0 0" mass=".5" diaginertia=".001 .002 .002"/>
+    <geom type="box" size=".06 .03 .02" contype="0" conaffinity="0"/></body>
+  <body name="bar" pos=".5 0 .5"><joint name="hinge" type="hinge" axis="0 0 1"/>
+    <geom type="box" size=".1 .02 .02" mass=".3" contype="0" conaffinity="0"/></body>
+  </worldbody></mujoco>'''
+WELD = {'width': 64, 'height': 48, 'rgb': False, 'calibration': False, 'wrench': True, 'grasp': 'weld'}
+
+
+def weld_sim(tmp_path, **config):
+    (tmp_path / 'weld.xml').write_text(WELD_SCENE)
+    sim = Simulation(tmp_path / 'weld.xml', {**WELD, **config})
+    return sim, *(mujoco.mj_name2id(sim._model, mujoco.mjtObj.mjOBJ_BODY, name) for name in ('box', 'bar'))
+
+
+def assert_wrench_is_the_weld_rows(sim, index=0):
+    """The reported object-on-handle force and couple at the pinned point reproduce, through the body Jacobian, exactly the
+    generalized force of that grasp's own weld rows (J^T efc_force)."""
+    model, data = sim._model, sim._data
+    eq = sim._grasps[index][0]
+    rows = np.flatnonzero((data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY) & (data.efc_id == eq))
+    vector, qfrc = np.zeros(data.nefc), np.zeros(model.nv)
+    vector[rows] = data.efc_force[rows]
+    mujoco.mj_mulJacTVec(model, data, qfrc, vector)
+    jacp, jacr = np.zeros((3, model.nv)), np.zeros((3, model.nv))
+    mujoco.mj_jac(model, data, jacp, jacr, sim.grasp_anchor(sim._grasps[index]), model.eq_obj1id[eq])
+    wrench = sim._wrench(index)
+    assert len(rows) == 6 and wrench['active']
+    np.testing.assert_allclose(qfrc, -(jacp.T @ wrench['force'] + jacr.T @ wrench['torque']), atol=1e-9)
+
+
+def twist(a, b):
+    error = np.zeros(4)
+    mujoco.mju_mulQuat(error, a, np.array([b[0], -b[1], -b[2], -b[3]]))
+    return 2 * np.arctan2(np.linalg.norm(error[1:]), abs(error[0]))
+
+
+def test_weld_grasp_holds_still_rotates_and_reports_offset_com_torque(tmp_path):
+    sim, box, _ = weld_sim(tmp_path)
+    try:
+        assert sim._model.eq_type[sim._constraints[box][0]] == mujoco.mjtEq.mjEQ_WELD
+        assert sim._model.equality(sim._constraints[box][0]).name.startswith('_grasp_weld_')
+        assert sim.action({'op': 'grasp', 'pixel': project(sim, sim._data.xpos[box] + [0, -.03, 0])})['grasped']
+        sim.action({'op': 'release'})
+        sim.action({'op': 'reset'})
+        sim._grasp_controller.attach(box, sim._data.xpos[box] + [0, 0, .02])  # top centre; the COM is .04 m off along body x
+        sim._advance(1000)
+        settled = sim._data.qpos.copy()
+        sim._advance(500)
+        drift, speed = np.abs(sim._data.qpos - settled).max(), np.abs(sim._data.qvel[:6]).max()
+        print(f'weld hold: drift {drift:.2e}, speed {speed:.2e}, stretch {sim.grasp_stretch():.2e} m, twist {sim.grasp_twist():.2e} rad')
+        assert drift < 1e-5 and speed < 1e-4 and sim.grasp_stretch() < 2e-3 and sim.grasp_twist() < .02
+        weight = .5 * np.array([0, 0, -9.81])  # object on handle: the object's weight, and its moment about the grasp point
+        arm = sim._data.xipos[box] - sim.grasp_anchor(sim._grasp)
+        wrench = sim.observe()['wrench']
+        print('weld wrench', wrench['force'], wrench['torque'], 'analytic', weight.tolist(), np.cross(arm, weight).tolist())
+        np.testing.assert_allclose(wrench['force'], weight, atol=1e-4)
+        np.testing.assert_allclose(wrench['torque'], np.cross(arm, weight), atol=1e-4)
+        assert abs(wrench['torque'][1]) > .19 and wrench['frame'] == 'world' and wrench['reference'] == 'grasp_point'
+        assert_wrench_is_the_weld_rows(sim)
+        start, anchor = sim._data.xquat[box].copy(), sim.grasp_anchor(sim._grasp).copy()
+        turn = np.zeros(4)
+        mujoco.mju_axisAngle2Quat(turn, [.6, 0, .8], 1.2)
+        target = np.zeros(4)
+        mujoco.mju_mulQuat(target, turn, start)
+        sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': (1.2 * np.array([.6, 0, .8])).tolist(), 'ticks': 300}, render=False)
+        assert_wrench_is_the_weld_rows(sim)  # also mid-motion, rotated off the axes
+        sim._advance(300)
+        error, moved = twist(sim._data.xquat[box], target), np.linalg.norm(sim.grasp_anchor(sim._grasp) - anchor)
+        print(f'weld rotation 1.2 rad: orientation error {error:.3e} rad, grasp point moved {moved:.2e} m')
+        assert error < .03 and moved < 3e-3
+        sim.action({'op': 'move', 'displacement': [.1, 0, .05], 'rotation': [0, 0, -1], 'ticks': 300}, render=False)  # a helical move
+        sim._advance(300)
+        np.testing.assert_allclose(sim.grasp_anchor(sim._grasp), anchor + [.1, 0, .05], atol=3e-3)
+        mujoco.mju_axisAngle2Quat(turn, [0, 0, 1], -1)
+        mujoco.mju_mulQuat(target, turn, target.copy())
+        assert twist(sim._data.xquat[box], target) < .03
+        with pytest.raises(ValueError, match='rotation'):
+            sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': [0, 1]})
+        sim.action({'op': 'reset'})
+        assert sim.observe()['wrench'] == {**wrench, 'force': [0, 0, 0], 'torque': [0, 0, 0], 'active': False}
+    finally:
+        sim.close()
+
+
+def test_weld_grasp_configuration_and_connect_unchanged(tmp_path):
+    (tmp_path / 'weld.xml').write_text(WELD_SCENE)
+    for config in ({'grasp': 'hinge'}, {'grasp': 'weld', 'robot': 'panda'}, {'grasp_slip_rad': .2}, {'grasp': 'weld', 'grasp_slip_rad': 4},
+                   {'grasp': 'weld', 'grasp_slip_rad': True}, {'grasp_slip_m': 0}):
+        with pytest.raises(ValueError, match='grasp'):
+            Simulation(tmp_path / 'weld.xml', config)
+    with pytest.raises(ValueError, match='flex'):
+        Simulation(ROOT / 'environments/cloth_quadrants/scene.xml', {'grasp': 'weld'})
+    sim = Simulation(tmp_path / 'weld.xml', {**WELD, 'grasp': 'connect'})
+    try:
+        box = mujoco.mj_name2id(sim._model, mujoco.mjtObj.mjOBJ_BODY, 'box')
+        assert sim.grasp_type == 'connect' and sim._model.equality(sim._constraints[box][0]).name == '_grasp_connect_0'
+        sim._grasp_controller.attach(box, sim._data.xpos[box] + [0, 0, .02])
+        with pytest.raises(ValueError, match='rotation'):
+            sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': [0, 0, 1]})
+        sim._advance(10)
+        assert sim.observe()['wrench']['torque'] == [0, 0, 0]
+    finally:
+        sim.close()
+
+
+def test_weld_grasp_slips_on_stretch_and_on_twist(tmp_path):
+    sim, _, bar = weld_sim(tmp_path, grasp_slip_m=.01, grasp_slip_rad=.2)
+    hinge = sim._model.jnt_qposadr[sim._model.body_jntadr[bar]]
+    try:
+        on_axis = sim._data.xpos[bar] + [0, 0, .02]
+        sim._grasp_controller.attach(bar, on_axis)
+        sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': [0, 0, 1], 'ticks': 300}, render=False)  # about the hinge
+        sim._advance(200)
+        assert sim._grasp is not None and abs(sim._data.qpos[hinge] - 1) < .02, sim._data.qpos[hinge]
+        readings = []
+        sim._callback = lambda s: readings.append((s.grasp_stretch(), s.grasp_twist()) if s._grasp is not None else None)
+        sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': [.6, 0, 0], 'ticks': 100}, render=False)  # the hinge resists
+        held = [reading for reading in readings if reading is not None]
+        assert sim._grasp is None and None in readings and len(held) < 100, held[-3:]
+        assert .15 < held[-1][1] <= .2 and max(stretch for stretch, _ in held) < .01, held[-3:]  # the twist let go
+        assert sim.observe()['grasped'] is False and sim.observe()['wrench']['active'] is False
+        sim._callback = None
+        sim._grasp_controller.attach(bar, sim._data.xpos[bar] + [0, 0, .02])
+        sim.action({'op': 'move', 'displacement': [0, 0, .05], 'ticks': 100}, render=False)  # the hinge resists lifting
+        assert sim._grasp is None
+        with pytest.raises(ValueError, match='active grasp'):
+            sim.action({'op': 'move', 'displacement': [0, 0, 0], 'rotation': [0, 0, 1]})
+    finally:
+        sim.close()
+    sim, _, bar = weld_sim(tmp_path)  # without slip settings the weld never lets go
+    try:
+        sim._grasp_controller.attach(bar, sim._data.xpos[bar] + [0, 0, .02])
+        sim.action({'op': 'move', 'displacement': [0, 0, .05], 'rotation': [.6, 0, 0], 'ticks': 100}, render=False)
+        assert sim._grasp is not None and np.isfinite(sim._data.qpos).all()
+    finally:
+        sim.close()
+
+
+def test_weld_probe_rotation_is_split_over_the_probe_moves(tmp_path):
+    from sim2sim.evaluation import _probe_actions
+    sim, box, _ = weld_sim(tmp_path)
+    try:
+        actions = _probe_actions(sim, {'body': 'box', 'local_point': [0, -.03, 0], 'displacement': [0, 0, .04], 'rotation': [0, 0, .8]})
+        moves = [action for action in actions if action['op'] == 'move']
+        assert len(moves) == 4 and all(move['rotation'] == [0, 0, .2] for move in moves)
+        assert 'rotation' not in json.dumps(_probe_actions(sim, {'body': 'box', 'local_point': [0, -.03, 0]}))
+        start = sim._data.xquat[box].copy()
+        for action in actions[:6] + [{'op': 'wait', 'ticks': 200}]:
+            sim.action(action, render=False)
+        assert sim._grasp is not None and abs(twist(sim._data.xquat[box], start) - .8) < .05
+    finally:
+        sim.close()
+
+
+def test_two_welds_on_one_body_share_the_load_without_blowing_up(tmp_path):
+    sim, box, _ = weld_sim(tmp_path, point_grasps=2)
+    try:
+        points = [sim._data.xpos[box] + [-.05, 0, .02], sim._data.xpos[box] + [.05, 0, .02]]
+        for index, point in enumerate(points):
+            sim._grasp_controller.attach(box, point, index)
+        sim._advance(1000)
+        settled = sim._data.qpos.copy()
+        sim._advance(300)
+        assert np.abs(sim._data.qpos - settled).max() < 1e-5 and np.abs(sim._data.qvel[:6]).max() < 1e-4
+        first, second = sim.observe()['wrench']
+        anchors = [sim.grasp_anchor(grasp) for grasp in sim._grasps]
+        weight = .5 * np.array([0, 0, -9.81])
+        np.testing.assert_allclose(np.add(first['force'], second['force']), weight, atol=1e-4)
+        moment = np.add(first['torque'], second['torque']) + np.cross(anchors[1] - anchors[0], second['force'])
+        np.testing.assert_allclose(moment, np.cross(sim._data.xipos[box] - anchors[0], weight), atol=1e-4)
+        for index in range(2):
+            assert_wrench_is_the_weld_rows(sim, index)
+        # Closed loop: moving and turning only grasp 0 fights grasp 1; the soft welds strain but stay finite and settle.
+        sim.action({'op': 'move', 'displacement': [.03, 0, .03], 'rotation': [0, .3, 0], 'ticks': 200, 'grasp_index': 0}, render=False)
+        sim._advance(1000)
+        assert np.isfinite(sim._data.qpos).all() and np.abs(sim._data.qvel[:6]).max() < 1e-2
+        print('two welds after a conflicting move: stretches', [sim.grasp_stretch(i) for i in range(2)],
+              'twists', [sim.grasp_twist(i) for i in range(2)])
+        assert all(np.isfinite(reading['torque']).all() for reading in sim.observe()['wrench'])
+        sim.action({'op': 'move', 'displacement': [.05, 0, 0], 'ticks': 100, 'grasp_index': 1}, render=False)
+        sim._advance(100)
+        assert np.isfinite(sim._data.qpos).all()
+    finally:
+        sim.close()

@@ -11,7 +11,8 @@ from .robots import ROBOTS
 MAX_LINE = 48 * 1024 * 1024
 MAX_STATE = 4 * 1024 * 1024
 PUBLIC_CONFIG = {"robot", "width", "height", "camera", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "movable_camera",
-                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "recording_fps", "point_grasps"}
+                 "default_ticks", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "recording_fps", "point_grasps",
+                 "grasp", "grasp_slip_rad"}
 
 
 # Public proprioception fields per robot; actuator_effort_nm is added unless simulation.effort = false.
@@ -55,9 +56,7 @@ def _grasp_overlay(sim, grasp):
         return None
     import numpy as np
     data = sim._data
-    eq, mocap = grasp
-    body = int(sim._model.eq_obj1id[eq])
-    anchor = data.xpos[body] + data.xmat[body].reshape(3, 3) @ sim._model.eq_data[eq, :3]
+    anchor = sim.grasp_anchor(grasp)
     calibration = sim.calibration()
     pose = np.asarray(calibration['world_from_camera'])
     intrinsic = np.asarray(calibration['intrinsics'])
@@ -67,7 +66,7 @@ def _grasp_overlay(sim, grasp):
             return None
         return [float(intrinsic[0, 2] + intrinsic[0, 0]*camera[0]/-camera[2]),
                 float(intrinsic[1, 2] - intrinsic[1, 1]*camera[1]/-camera[2])]
-    return {'anchor': project(anchor), 'handle': project(data.mocap_pos[mocap]), 'width': sim.width, 'height': sim.height}
+    return {'anchor': project(anchor), 'handle': project(data.mocap_pos[grasp[1]]), 'width': sim.width, 'height': sim.height}
 
 
 def full_observation(sim):

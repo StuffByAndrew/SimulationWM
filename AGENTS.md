@@ -117,8 +117,11 @@ With `point_grasps = 2` the same rule holds per grasp: each reading is only that
 Weld grasp (user, 2026-11-25): from now on, "ideal point grasp with wrench" in a new level means a **weld grasp**: the
 grasped object is rigidly fixed to the handle at the grasp point; the agent translates the grasp and rotates the object
 about the grasp point; the wrench reports the weld's full force and torque on the object at the grasp point, in world
-coordinates. It is selected by a `[simulation]` key (to be built); the default stays the translation-only connect grasp
-above, so existing configs and recorded runs are unchanged. The other wrench rules (only the active grasp's own
+coordinates. It is selected by `[simulation] grasp = "weld"` (default `"connect"`, the translation-only grasp above, so
+existing configs and recorded runs are unchanged); `move` then takes an optional world `rotation` vector (radians, about the
+grasp point, spread over its ticks), and optional `grasp_slip_rad` adds an angular slip beside `grasp_slip_m`
+(docs/protocol.md "Weld grasp"). The wrench torque is `-Mᵀ f` from the weld's own three rotation rows
+(`Simulation._weld_torque_map`, MuJoCo's weld row map); keep it reproducing the rows' `Jᵀ efc_force` exactly. The other wrench rules (only the active grasp's own
 constraint, nothing from unrelated contacts, no grasp coordinates, lever arms or mass, no time/ticks on refresh) still
 apply. Applies to the childproof bottle, gear-train and cable levels (`docs/level-designs/`).
 

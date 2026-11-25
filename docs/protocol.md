@@ -24,7 +24,7 @@ Every request has an `op` string:
 | --- | --- | --- |
 | `observe` | optional `ticks` (default 0) | Advance physics, then render. |
 | `grasp` | `pixel: [u, v]` | Attach to the first visible movable surface at the pixel. A miss leaves the grasp inactive. |
-| `move` | `displacement: [dx, dy, dz]`, optional `ticks` | Move the grasp target by world meters over physics ticks; requires an active grasp. |
+| `move` | `displacement: [dx, dy, dz]`, optional `ticks`, optional `rotation: [rx, ry, rz]` (only with `simulation.grasp = "weld"`) | Move the grasp target by world meters over physics ticks; requires an active grasp. A weld's `rotation` also turns the held object about the grasp point (below). |
 | `release` | optional `ticks` (default 0) | Disable the grasp, then advance physics. |
 | `reset` | none | Restore initial physical state and release the grasp. |
 | `camera` | `pos: [x, y, z]`, `lookat: [x, y, z]` (only with `simulation.movable_camera = true`) | Re-aim the observation camera (up = +z) without advancing time. Both points within ±4 m, at least 0.05 m apart, and `pos` at least the near-plane frustum reach (`1.5 · znear · extent · corner factor`) from every surface, so the near clip plane can never cut a wall; a camera inside a geom or a small closed cavity is rejected too. |
@@ -53,6 +53,25 @@ force under the wrench rules below. The task adds `grasp_index` to those actions
 grasps too. Ticks are charged as for one grasp (a move of either grasp costs its ticks); nothing is refunded. Point-grasp
 embodiment in a lock-step world only (a robot or `realtime` config with 2 is rejected). Researcher snapshots add `grasps`
 and `grasp_overlays` (both grasps; the dashboard marks both).
+
+**Weld grasp** (`[simulation] grasp = "weld"`; default `"connect"`, the translation-only point grasp above, whose configs,
+tasks, observations and snapshots are unchanged; `Simulation` rejects any other value). The grasp rigidly fixes the hit
+body to its handle at the grasp point: a MuJoCo weld (body1 = object, body2 = a mocap handle; solref/solimp from
+`grasp_solref`/`grasp_solimp`) holding the pinned body point at the handle and the body's orientation at grasp time.
+`move` takes an optional `rotation: [rx, ry, rz]`, a world-frame rotation vector (unit axis times angle, radians): the
+handle turns about the grasp point by `rotation / ticks` each tick (left-multiplied in world axes, so the total is exactly
+the commanded rotation) while it translates by `displacement / ticks`, so one move can be a pure turn (`displacement`
+`[0, 0, 0]`), a translation, or a screw motion. Ticks are charged exactly as for any `move` (nothing new is charged or
+refunded). With the connect grasp `rotation` is not offered: the host forwards it only when the weld is configured, and
+`Simulation` rejects it otherwise. A weld cannot hold a cloth (flex) vertex and needs the point-grasp embodiment, and
+composes with `point_grasps = 2` (each grasp its own weld; two welds on one body form a closed loop that the soft
+constraints share). The task changes only when the weld is configured: `move` gains `rotation`, `grasp`'s and `move`'s
+texts say weld, `observation_contract.grasp` describes it and `observation_contract.wrench` names the couple;
+`public_tool_config.grasp = "weld"` loads the reconstruction world (and `local_controller`) with welds too, and the
+evaluator's source and candidate worlds use it. Harness tools offer `rotation` on `move` exactly when the contract lists
+it, and a `sequence` may include it. `Client.move(displacement, ticks, rotation=[...])` sends it. A probe in a weld level's
+private manifest may declare `rotation` (radians, world) beside `displacement`; it is split over the probe's four moves.
+`grasp_slip_rad` (below) adds an angular slip.
 
 Ticks must be nonnegative integers for `observe` and `release`, and positive for
 `move`. Move defaults to the configured duration (runtime default 20). The core
@@ -188,6 +207,7 @@ depth = false
 calibration = true
 wrench = false         # optional 6-axis grasp-point reading
 # point_grasps = 1     # 2: two simultaneous independent point grasps (grasp_index on grasp/move/release)
+# grasp = "connect"    # "weld": the grasp also fixes and (move rotation) turns the object's orientation
 tactile = false        # optional robot taxel normal forces (robot = "panda", "shadow_hand" or "panda_shadow" only)
 default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # timestep = 0.002      # optional override; otherwise scene timestep
@@ -195,6 +215,7 @@ default_ticks = 20      # runtime default; standalone Python core defaults to 60
 # grasp_solref = [0.01, 1.0]
 # grasp_solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
 # grasp_slip_m = 0.004  # optional: the grip slips (releases) when stretched farther; absent = it never slips
+# grasp_slip_rad = 0.2  # optional, weld only: the grip also slips when twisted farther; absent = never
 # resets = false        # optional no-reset condition; default true
 ```
 
@@ -212,7 +233,11 @@ step, if the pinned body point lies farther than `grasp_slip_m` from the grasp t
 translate), the grasp is released exactly as by `release`. The rest of a `move` that slipped still runs its ticks without
 a grip. The agent sees what a release shows: `grasped` is false in the next observation, a wrench reading is zero, and a
 later `move` is rejected until a new `grasp` (a `sequence` stops at that rejected step). Stretch is measured on the state the step started from, so it
-lags by one step. All three knobs are public: `public_tool_config` reports the values in force, and the reference world
+lags by one step. `grasp_slip_rad` (radians, in (0, π]; absent by default; only with `grasp = "weld"`, otherwise rejected)
+is the weld's angular threshold, evaluated the same way after every step: if the held body's orientation differs from the
+handle's target orientation (the orientation held at grasp time, turned by the moves' rotations) by a rotation angle
+larger than `grasp_slip_rad`, the grasp is released exactly as above. Either threshold releases; each grasp of
+`point_grasps = 2` is checked independently. All these knobs are public: `public_tool_config` reports the values in force, and the reference world
 (lock-step and real-time), the agent's reconstruction world (candidate worker) and the evaluator's source and candidate
 worlds all use them, so the grasp behaves the same everywhere. `Simulation` rejects malformed values (lists of finite
 numbers of those lengths; a slip that is not a number in range), so they fail the run on the host at start. MuJoCo clamps
@@ -228,7 +253,8 @@ the `action` alias for `op` are not accepted by the public runtime protocol.
 `observe(full=True)` supplies all modalities to trusted evaluation/video callers,
 independently of agent settings. A `recording_callback(sim)` runs after each
 physics step. A `grasp_controller_factory(sim)` can replace `PointGrasp`, whose
-interface is `attach(body, world_point, index=0)`, `move(delta, index=0)` and `release(index=0)` (index: the grasp).
+interface is `attach(body, world_point, index=0)`, `move(delta, index=0)`, `rotate(rotation, index=0)` (weld only) and
+`release(index=0)` (index: the grasp).
 Private `trusted_camera` configuration injects a source camera into candidate
 models for evaluation; agents cannot set it through the protocol.
 
@@ -275,6 +301,15 @@ reading contains zero force and torque. No body identity, anchor coordinates,
 mass or center-of-mass position is included in this optional observation.
 With `point_grasps = 2`, `wrench` is a list of two such readings (grasp 0, grasp 1), each from its own grasp's connect
 rows only; a body held by both grasps shares its load between the two readings as the solver splits it.
+
+With `grasp = "weld"` the reading is the weld's full wrench, from only that grasp's own six weld rows (same keys, frame,
+reference and sign): `force` as above, and `torque` the couple the object applies to the handle about the grasp point, in
+world axes. MuJoCo builds the three rotation rows as `M (ω_object − ω_handle)` with `M = ½ · torquescale ·
+imag(q̄_handle ⊗ (0, ω) ⊗ q_object ⊗ relpose)` (`engine_core_constraint.c`, `mjEQ_WELD`), so a row multiplier `f` is the world
+couple `Mᵀ f` on the object; the reading is `−Mᵀ f`, computed from the kinematics the rows were built from. Together, force
+at the pinned point and couple reproduce exactly the weld rows' generalized force `Jᵀ efc_force` (tested). A body hanging
+still from a weld at point `p` reads force `m g` and torque `(c − p) × m g` for its centre of mass `c`. The other rules hold:
+no body identity, grasp or COM coordinates, lever arm or mass, and reading never advances time or ticks.
 
 
 ## Optional Panda tactile sensing

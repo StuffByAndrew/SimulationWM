@@ -57,11 +57,12 @@ def _load_xml(path, ancestors=()):
 
 
 class PointGrasp:
-    """Replaceable point constraint controller, without orientation actuation.
+    """Replaceable point grasp controller: a connect constraint without orientation actuation, or (simulation.grasp =
+    "weld") a weld holding the body's orientation at grasp time, which rotate() turns about the grasp point.
 
-    Controllers implement attach(body, world_point, index), move(delta, index), and release(index), where index selects one
-    of the simulation's point_grasps independent grasps (each its own connect constraints and mocap handles).
-    Simulation performs pixel raycasting and owns physics stepping.
+    Controllers implement attach(body, world_point, index), move(delta, index), rotate(rotation, index) and release(index),
+    where index selects one of the simulation's point_grasps independent grasps (each its own equality constraints and mocap
+    handles). Simulation performs pixel raycasting and owns physics stepping.
     """
     def __init__(self, simulation):
         self.sim = simulation
@@ -70,8 +71,13 @@ class PointGrasp:
         sim = self.sim
         eq, mocap = sim._constraint_sets[index][body]
         sim._model.eq_obj1id[eq] = body  # flex vertex bodies share one connect equality
-        sim._model.eq_data[eq, :3] = sim._data.xmat[body].reshape(3, 3).T @ (point - sim._data.xpos[body])
-        sim._model.eq_data[eq, 3:6] = 0
+        local = sim._data.xmat[body].reshape(3, 3).T @ (point - sim._data.xpos[body])
+        if sim.grasp_type == "weld":  # MuJoCo weld data: handle anchor (body2 frame), body point, relative quat, torquescale
+            sim._model.eq_data[eq, :11] = [0, 0, 0, *local, 1, 0, 0, 0, 1]
+            sim._data.mocap_quat[mocap] = sim._data.xquat[body]  # hold the body's current orientation
+        else:
+            sim._model.eq_data[eq, :3] = local
+            sim._model.eq_data[eq, 3:6] = 0
         sim._data.mocap_pos[mocap] = point
         sim._data.eq_active[eq] = True
         sim._grasps[index] = (eq, mocap)
@@ -80,6 +86,15 @@ class PointGrasp:
     def move(self, delta, index=0):
         if self.sim._grasps[index] is not None:
             self.sim._data.mocap_pos[self.sim._grasps[index][1]] += delta
+
+    def rotate(self, rotation, index=0):
+        """Turn weld grasp index's handle (and so the held body, about the grasp point) by a world-frame rotation vector."""
+        angle = float(np.linalg.norm(rotation))
+        if self.sim._grasps[index] is not None and angle > 0:
+            quat, turn = self.sim._data.mocap_quat[self.sim._grasps[index][1]], np.zeros(4)
+            mujoco.mju_axisAngle2Quat(turn, rotation / angle, angle)
+            mujoco.mju_mulQuat(quat, turn, quat.copy())
+            mujoco.mju_normalize4(quat)
 
     def release(self, index=0):
         if self.sim._grasps[index] is not None:
@@ -106,10 +121,16 @@ class Simulation:
             if not isinstance(value, (list, tuple)) or len(value) != size or any(
                     isinstance(v, bool) or not isinstance(v, (int, float)) or not np.isfinite(v) for v in value):
                 raise ValueError(f"{key} must be a list of {size} finite numbers")
-        self._slip = self.config.get("grasp_slip_m")  # public: the point grasp lets go when stretched farther (m); None never
-        if self._slip is not None and (isinstance(self._slip, bool) or not isinstance(self._slip, (int, float))
-                                       or not np.isfinite(self._slip) or not 0 < self._slip <= 1):
-            raise ValueError("grasp_slip_m must be a number of meters in (0, 1]")
+        # Public grasp type: "connect" (default; translation only) or "weld" (also holds and rotates the body's orientation).
+        self.grasp_type = self.config.get("grasp", "connect")
+        if self.grasp_type not in ("connect", "weld") or self.grasp_type == "weld" and self.robot is not None:
+            raise ValueError('grasp is "connect" or "weld", and a weld requires the point-grasp embodiment')
+        # Public slip: the grasp lets go when stretched farther (m) or, for a weld, twisted farther (rad); None never.
+        self._slip, self._slip_rad = self.config.get("grasp_slip_m"), self.config.get("grasp_slip_rad")
+        for key, value, bound in (("grasp_slip_m", self._slip, 1), ("grasp_slip_rad", self._slip_rad, np.pi)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value)
+                                      or not 0 < value <= bound or key == "grasp_slip_rad" and self.grasp_type != "weld"):
+                raise ValueError(f"{key} must be a number in (0, {bound:g}]" + ' and needs grasp = "weld"' * (key == "grasp_slip_rad"))
         self.camera = self.config.get("camera", "fixed")
         self.default_ticks = int(self.config.get("default_ticks", 60))
         self.total_ticks = self.ticks = 0
@@ -158,6 +179,8 @@ class Simulation:
         self._body_names = list(names) if pointer else []
         # Cloth (2D flex): every moving flex vertex body is graspable through one connect whose body1 attach() retargets.
         flex_grasp = pointer and any(node.tag in ("flex", "flexcomp") for node in root.iter())
+        if flex_grasp and self.grasp_type == "weld":
+            raise ValueError("a weld grasp cannot hold a flex (cloth) vertex, which has no orientation")
         equality = root.find("equality")
         if equality is None:
             equality = ET.SubElement(root, "equality")
@@ -171,7 +194,7 @@ class Simulation:
                               solimp=" ".join(map(str, self.config.get("grasp_solimp", [0.9, 0.95, 0.001, 0.5, 2]))))
             for i, name in enumerate(self._body_names):
                 ET.SubElement(world, "body", name=f"_grasp_target_{i}{suffix}", mocap="true", pos="0 0 0")
-                ET.SubElement(equality, "connect", name=f"_grasp_connect_{i}{suffix}", body1=name,
+                ET.SubElement(equality, self.grasp_type, name=f"_grasp_{self.grasp_type}_{i}{suffix}", body1=name,
                               body2=f"_grasp_target_{i}{suffix}", anchor="0 0 0", active="false", solref=" ".join(map(str, self.config.get("grasp_solref", [0.01, 1]))),
                               solimp=" ".join(map(str, self.config.get("grasp_solimp", [0.9, 0.95, 0.001, 0.5, 2]))))
         visual = root.find("visual")
@@ -191,7 +214,7 @@ class Simulation:
         for constraints, suffix in zip(self._constraint_sets, suffixes):
             for i, name in enumerate(self._body_names):
                 body = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, name)
-                eq = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_EQUALITY, f"_grasp_connect_{i}{suffix}")
+                eq = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_EQUALITY, f"_grasp_{self.grasp_type}_{i}{suffix}")
                 target = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, f"_grasp_target_{i}{suffix}")
                 constraints[body] = (eq, int(self._model.body_mocapid[target]))
             if flex_grasp:
@@ -270,12 +293,12 @@ class Simulation:
     def _wrench(self, index=0):
         """Object reaction on grasp index's ideal handle, expressed about its point anchor.
 
-        Connect equations are world Cartesian anchor1-anchor2 coordinates.
+        Connect and weld translation equations are world Cartesian anchor1-anchor2 coordinates.
         Body1 is the object, so the handle reaction is minus their multiplier.
-        A point constraint transmits no couple; body-COM moments are not exposed.
-        Only this grasp's own connect rows count, never another grasp's or a contact.
+        A connect transmits no couple; a weld's three rotation rows add the couple _weld_torque_map gives.
+        Body-COM moments are not exposed. Only this grasp's own rows count, never another grasp's or a contact.
         """
-        force, grasp = np.zeros(3), self._grasps[index]
+        force, torque, grasp = np.zeros(3), np.zeros(3), self._grasps[index]
         active = grasp is not None and bool(self._data.eq_active[grasp[0]])
         if active:
             # The force the solver applied to the handle during the latest physics step (mj_step leaves its
@@ -283,12 +306,28 @@ class Simulation:
             # instead would read low by about m*v*dt/timeconst**2, a spurious velocity-proportional force (-10 N s/m on
             # a 0.4 kg stick at the default grasp softness). Reading the arrays changes no state, time or ticks.
             rows = np.flatnonzero((self._data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY) & (self._data.efc_id == grasp[0]))
-            if len(rows) != 3:
-                raise RuntimeError("active point grasp must supply three constraint-force rows")
-            force = -self._data.efc_force[rows]
-        return {"force": force.tolist(), "torque": [0.0, 0.0, 0.0],
+            if len(rows) != (6 if self.grasp_type == "weld" else 3):
+                raise RuntimeError("an active grasp must supply its 3 (connect) or 6 (weld) constraint-force rows")
+            force = -self._data.efc_force[rows[:3]]
+            if self.grasp_type == "weld":
+                torque = -self._weld_torque_map(grasp[0]).T @ self._data.efc_force[rows[3:]]
+        return {"force": force.tolist(), "torque": torque.tolist(),
                 "frame": "world", "reference": "grasp_point", "sign": "object_on_handle",
                 "active": active, "force_unit": "N", "torque_unit": "N m"}
+
+    def _weld_torque_map(self, eq):
+        """3x3 M with weld rotation rows = M (omega_object - omega_handle), as MuJoCo builds them (engine_core_constraint.c,
+        mjEQ_WELD: 0.5 torquescale imag(neg(q_handle) (0, omega) q_object relpose)), so a row multiplier f is the world couple
+        M^T f on the object. Uses the kinematics (xquat) the constraint rows were built from."""
+        model, data = self._model, self._data
+        quat, handle, column, result = np.zeros(4), np.zeros(4), np.zeros(4), np.zeros((3, 3))
+        mujoco.mju_mulQuat(quat, data.xquat[model.eq_obj1id[eq]], model.eq_data[eq, 6:10])
+        mujoco.mju_negQuat(handle, data.xquat[model.eq_obj2id[eq]])
+        for k in range(3):
+            mujoco.mju_mulQuatAxis(column, handle, np.eye(3)[k])
+            mujoco.mju_mulQuat(column, column.copy(), quat)
+            result[:, k] = .5 * model.eq_data[eq, 10] * column[1:]
+        return result
 
     def _ids(self, kind, names):
         result = np.array([mujoco.mj_name2id(self._model, kind, name) for name in names])
@@ -473,15 +512,25 @@ class Simulation:
             return None
         return body, origin + distance * direction
 
-    def _push(self, ticks, displacement=None, index=0):
-        """Validated (ticks, apply) that moves point grasp index, if active, by displacement in equal per-tick steps."""
+    def _push(self, ticks, displacement=None, index=0, rotation=None):
+        """Validated (ticks, apply) that moves point grasp index, if active, by displacement and (weld only) turns it by a
+        world rotation vector about the grasp point, both in equal per-tick steps."""
         if isinstance(ticks, bool) or int(ticks) != ticks or not 1 <= int(ticks) <= 100000:
             raise ValueError("ticks must be an integer between 1 and 100000")
         ticks = int(ticks)
         delta = np.zeros(3) if displacement is None else np.asarray(displacement, dtype=float)
         if delta.shape != (3,) or not np.isfinite(delta).all():
             raise ValueError("displacement must contain three finite numbers")
-        return ticks, lambda i: self._grasp_controller.move(delta / ticks, index)
+        if rotation is None:
+            return ticks, lambda i: self._grasp_controller.move(delta / ticks, index)
+        turn = np.asarray(rotation, dtype=float)
+        if self.grasp_type != "weld" or turn.shape != (3,) or not np.isfinite(turn).all():
+            raise ValueError('rotation needs grasp = "weld" and must contain three finite numbers (radians)')
+
+        def apply(i):
+            self._grasp_controller.move(delta / ticks, index)
+            self._grasp_controller.rotate(turn / ticks, index)
+        return ticks, apply
 
     def _advance(self, ticks, displacement=None):
         self._run(*self._push(ticks, displacement))
@@ -491,15 +540,29 @@ class Simulation:
         the body pose is that of the state the step started from."""
         if self._grasps[index] is None:
             return None
+        return float(np.linalg.norm(self.grasp_anchor(self._grasps[index]) - self._data.mocap_pos[self._grasps[index][1]]))
+
+    def grasp_anchor(self, grasp):
+        """World position of a grasp's (eq, mocap) pinned body point (connect: anchor in eq_data[:3]; weld: eq_data[3:6])."""
+        eq = grasp[0]
+        body, offset = self._model.eq_obj1id[eq], 3 * (self.grasp_type == "weld")
+        return self._data.xpos[body] + self._data.xmat[body].reshape(3, 3) @ self._model.eq_data[eq, offset:offset + 3]
+
+    def grasp_twist(self, index=0):
+        """Angle (rad) between weld grasp index's held body orientation and its handle's target orientation (attach sets
+        the weld's relative orientation to the identity). Like grasp_stretch, the body pose is the step's starting state."""
         eq, mocap = self._grasps[index]
-        body = self._model.eq_obj1id[eq]
-        point = self._data.xpos[body] + self._data.xmat[body].reshape(3, 3) @ self._model.eq_data[eq, :3]
-        return float(np.linalg.norm(point - self._data.mocap_pos[mocap]))
+        error, target = np.zeros(4), np.zeros(4)
+        mujoco.mju_negQuat(target, self._data.mocap_quat[mocap])
+        mujoco.mju_mulQuat(error, target, self._data.xquat[self._model.eq_obj1id[eq]])
+        return float(2 * np.arctan2(np.linalg.norm(error[1:]), abs(error[0])))
 
     def slip(self):
-        """After each physics step: with grasp_slip_m set, release every point grasp stretched farther."""
+        """After each physics step: release every grasp stretched farther than grasp_slip_m or (weld) twisted farther than
+        grasp_slip_rad."""
         for index in range(self.point_grasps):
-            if self._slip is not None and self._grasps[index] is not None and self.grasp_stretch(index) > self._slip:
+            if self._grasps[index] is not None and (self._slip is not None and self.grasp_stretch(index) > self._slip
+                                                    or self._slip_rad is not None and self.grasp_twist(index) > self._slip_rad):
                 self._grasp_controller.release(index)
 
     def _run(self, ticks, apply):
@@ -522,7 +585,7 @@ class Simulation:
             index = self._grasp_index(action)
             if self._grasps[index] is None:
                 raise ValueError("move requires an active grasp")
-            return self._push(action.get("ticks", self.default_ticks), action["displacement"], index)
+            return self._push(action.get("ticks", self.default_ticks), action["displacement"], index, action.get("rotation"))
         if op not in ("arm_target", "hand_target"):
             raise ValueError(f"{op} is not a timed action")
         ids, end, ticks = (self._arm_target if op == "arm_target" else self._hand_target)(action)

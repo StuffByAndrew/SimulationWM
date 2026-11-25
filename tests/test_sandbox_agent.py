@@ -386,3 +386,13 @@ def test_harness_two_point_grasps_tools_require_grasp_index():
     for op in ("grasp", "move", "release"):
         assert two[op]["properties"]["grasp_index"] == {"type": "integer", "minimum": 0, "maximum": 1} and "grasp_index" in two[op]["required"]
     assert two["observe"] == single["observe"]
+
+
+def test_harness_weld_move_tool_offers_optional_rotation():
+    task = Controller([], now=lambda: 1000.).task
+    connect = {tool["name"]: tool["parameters"] for tool in agent.tool_schemas(task)}
+    assert "rotation" not in connect["move"]["properties"]
+    task["action_schema"]["move"]["rotation"] = "optional [rx,ry,rz] world rotation vector"
+    weld = {tool["name"]: tool["parameters"] for tool in agent.tool_schemas(task)}
+    assert weld["move"]["properties"]["rotation"] == agent.NUMBERS(3) and "rotation" not in weld["move"]["required"]
+    assert {op: weld[op] for op in weld if op != "move"} == {op: connect[op] for op in connect if op != "move"}
