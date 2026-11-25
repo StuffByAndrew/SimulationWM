@@ -49,4 +49,10 @@ for id in "$@"; do
     env -u INFERENCE_API_KEY -u INFERENCE_BASE_URL -u GEMINI_API_KEY -u GEMINI_API_KEY_BYCOST "${SIM2SIM_PYTHON:-.venv/bin/python}" experiments/validation/run-video.py \
         "${SIM2SIM_EXPERIMENTS_ROOT:-experiments}/runs/$id" >> "experiments/validation/experiment-strict-$SLURM_JOB_ID-$id.log" 2>&1 || status=1
 done
+# Then pack each run's audit blobs into one file per stream (src/sim2sim/compact.py; user, 2026-11-25): a run leaves ~100 files
+# instead of 40K-250K (the lab's file quotas). compact verifies the packed audit before removing loose blobs, and refuses live runs.
+for id in "$@"; do
+    env -u INFERENCE_API_KEY -u INFERENCE_BASE_URL -u GEMINI_API_KEY -u GEMINI_API_KEY_BYCOST "${SIM2SIM_PYTHON:-.venv/bin/python}" -m sim2sim.compact \
+        "${SIM2SIM_EXPERIMENTS_ROOT:-experiments}/runs/$id" >> "experiments/validation/experiment-strict-$SLURM_JOB_ID-$id.log" 2>&1 || status=1
+done
 exit "$status"
