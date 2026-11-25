@@ -422,3 +422,12 @@ def test_environment_base_prompts_are_the_base_task_without_experiment_additions
         assert ('Panda robot fixture' in prompt['task']) == (path.split('/')[0] in ('panda', 'panda_small'))
         assert not any(addition in prompt['task'] for addition in additions), path
         assert prompt['level'] == '' or prompt['task'].startswith(g['TASK_CONVERGE'] + ' ' + prompt['level'])
+
+
+def test_live_server_threads_write_one_shared_asset_concurrently(tmp_path):
+    # Replicate runs share frames: concurrent snapshots replaced each other's per-process temp file (ENOENT).
+    from concurrent.futures import ThreadPoolExecutor
+    from sim2sim.audit import _atomic
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda _: _atomic(tmp_path/'asset.png', PNG), range(200)))
+    assert (tmp_path/'asset.png').read_bytes()==PNG and [p.name for p in tmp_path.iterdir()]==['asset.png']

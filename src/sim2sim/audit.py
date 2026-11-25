@@ -39,7 +39,7 @@ def _safe_file(root, relative):
 
 
 def _atomic(path,data):
-    temp=path.with_name(f'{path.name}.{os.getpid()}.tmp')  # per process: parallel dashboard workers share assets
+    temp=path.with_name(f'{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # per process and thread: dashboard workers and live-server threads share assets
     if path.is_symlink() or temp.is_symlink(): raise AuditFailure('atomic output symlinks forbidden')
     with temp.open('wb') as handle:
         handle.write(data);handle.flush();os.fsync(handle.fileno())
