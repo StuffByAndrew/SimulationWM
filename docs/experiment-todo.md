@@ -36,6 +36,12 @@ Keep this list current: strike items when a log entry covers them.
 3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
+## Childproof bottle (user, 2026-11-25): designed, to build and queue
+- [ ] Build and queue per [level-designs/childproof-bottle-20261125.md](level-designs/childproof-bottle-20261125.md): free
+  neutral-look bottle with a hidden push-and-turn bayonet cap; {empty, unpredictable contents} × {1, 2 point grasps} = 4
+  runs, wrench, RGB-D movable camera, usual task, MJCF answer, Neon, n=1, 4 h. Needs the cable branch's two-grasp
+  capability. Settings are user-approved; do not re-ask.
+
 ## Inkling 2 Mini on the five hard levels (user, 2026-11-24): configs ready, not launched
 - `experiments/configs/inkling-20261124/*.toml`, zero cost, self-hosted (AGENTS.md "Inkling 2 Mini, self-hosted").
 - **Launch:**
