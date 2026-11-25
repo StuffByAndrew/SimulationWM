@@ -46,6 +46,19 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 21:40 UTC — Audit compaction: strict jobs now compact their runs at the end
+- The maintenance session merged audit compaction (9b16820; `sim2sim.compact`, `scripts/compact-runs.slurm`). It packs
+  each run's one-file-per-blob audit into one file per stream and verifies it before removing loose blobs, e.g. 39,329
+  files became 72. The FILE quotas were the real cause of the "Disk quota exceeded" deaths: lab 9.86M/10M, netscratch
+  99.3M/100M.
+- **Per the user:** `scripts/experiment-strict.slurm` compacts each run after its recording step (54864bc). Jobs submitted
+  earlier use their old script copy. For the six wave 31 runs, `experiments/validation/compact-when-done.sh` submits
+  `compact-runs.slurm` on `test` as each job ends.
+- `my_storage.sh` at 21:35 UTC: lab 92% bytes, 99% files; netscratch 88% bytes, 99% files. The maintenance bulk
+  compaction (`63719982`) is pending on sapphire.
+- The 22 other queued jobs stay held until the file quotas have headroom. They will then be re-submitted so they carry
+  the compaction step.
+
 ## 2026-11-25 21:20 UTC — Wave 31 on kempner_cpu (QoS now 32 CPUs / 128 GB per user = 4 strict runs)
 - Latch-out and cloth-holes started on kempner_cpu at about 20:20 UTC (`63706221`, `63706223`). At 51 and 50 run-minutes
   their calls had all succeeded; cloth-holes had 1 submission.
