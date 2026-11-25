@@ -103,3 +103,10 @@ cable ranges. Wave 30 (`experiments/configs/wave30-20261124/`, pool `gemini-2026
 - **Weld grasp (user, 2026-11-25)**: the point grasps are weld grasps (AGENTS.md): the agent rotates the grasped segment
   about the grasp point and the wrench reports full force and torque. Because the agent can now twist the cable, **twist
   stiffness (N·m²) is added to the per-piece answer** and to the `cable` metric; stretch stays excluded.
+- **Hidden-loop criterion (designer, 2026-11-25; supersedes "≤ ~30% visible")**: with EI 1e-5 N·m², μ 1.2–2.0 and
+  anti-creep settings the tangle is compact (10–14 cm) and at rest, but the loop stays 43–85% visible on average: ~0.9 m
+  of 8 mm cable cannot cover the outside of a 0.6 m loop. What reveals a second piece is a traceable closed path, so the
+  loop counts as hidden when, in **every** sampled view, its longest contiguous visible run is **≤ 50% of its length**,
+  the mean visible fraction over views is ≤ ~0.6, and no view shows the whole closed path. If no seed passes at 0.6 m,
+  the loop becomes **0.4 m with a 1.2 m main cable** (total still 1.6 m; same diameter, material and colour). A thinner
+  loop is not allowed (it breaks the same-diameter control).
