@@ -1039,6 +1039,10 @@ class InspectorApp:
         shutil.rmtree(self.workspace, ignore_errors=True)
 
 
+def _run_error(identifier, message):
+    return ('window.__dashboardRunError(' + json.dumps({'id': identifier, 'error': message}).replace('<', '\\u003c') + ');').encode()
+
+
 def _handler(app, directory, live=None):
     from .dashboard_view import HTML, SCRIPT
     # Current view code is served from memory so the physics tab needs no
@@ -1080,12 +1084,20 @@ def _handler(app, directory, live=None):
                     traceback.print_exc()
                     body = ('window.__dashboardCatalogError=' + json.dumps(f'{type(exc).__name__}: {exc}') + ';').encode()
                 return self._send(200, body, 'text/javascript; charset=utf-8')
-            match = re.fullmatch(r'/runs/([0-9a-f]{16})\.js', route)
+            match = re.fullmatch(r'/runs/([0-9a-f]{16})\.(js|progress\.json)', route)
+            if live is not None and match and match.group(2) != 'js':
+                return self._send(200, json.dumps(live.progress(match.group(1))).encode(), 'application/json')
             if live is not None and match:
+                # A <script> cannot read an error response's body, so failures are a 200 script that reports them.
+                from .dashboard import UnknownRun
                 try:
-                    return self._send(200, live.run_script(match.group(1)), 'text/javascript; charset=utf-8')
-                except KeyError:
-                    return self.send_error(404)
+                    body = live.run_script(match.group(1))
+                except UnknownRun:
+                    body = _run_error(match.group(1), 'This run is no longer in any experiment root (moved, renamed or removed). Refresh the run list.')
+                except Exception as exc:  # e.g. a full cache quota or a run directory present in two roots
+                    traceback.print_exc()
+                    body = _run_error(match.group(1), f'{type(exc).__name__}: {exc}')
+                return self._send(200, body, 'text/javascript; charset=utf-8')
             return super().do_GET()
 
         def do_POST(self):
