@@ -1,0 +1,290 @@
+<mujoco model="bottle_contents">
+  <!-- Researcher-only. Childproof bottle level (experiments/validation/bottle-scenes.py): a free grey bottle (diameter 45 mm,
+       87 mm to the collar) with a push-and-turn bayonet cap (diameter 51 mm): the visible shell spins freely on the hidden inner cap
+       and is held up by a 400 N/m spring preloaded to 7.6 N; pushed down past the preload its hidden teeth mesh with the
+       inner cap's, so turning it turns the inner cap. The inner cap's two hooks sit in notches under two lugs on the neck, pressed
+       up by a 4 N spring washer; pushed down and turned by about 50 degrees or more, the cap lifts off.
+       Contents: a 12 mm aluminium cube, an 8 x 20 mm steel rod and a 10 mm glass ball, loose inside. -->
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.001" integrator="implicitfast"><flag multiccd="enable"/></option>
+  <visual><map znear="0.01" zfar="12"/></visual>
+  <default><geom solref=".002 1" solimp=".95 .99 .001 .5 2"/><joint solreflimit=".002 1" solimplimit=".95 .99 .001 .5 2"/></default>
+  <worldbody>
+    <light name="key" directional="true" pos="-2 -3 4" dir="1 1 -2" diffuse=".85 .82 .76"/>
+    <light name="fill" directional="true" pos="2 1 3" dir="-1 -1 -2" diffuse=".3 .36 .45" castshadow="false"/>
+    <camera name="fixed" pos="0.170000 -0.240000 0.600000" xyaxes="0.816024 0.578017 -0.000000 -0.262615 0.370750 0.890830" fovy="45"/>
+    <geom name="ground" type="plane" size="3 3 .1" rgba=".70 .72 .73 1"/>
+    <geom name="table" type="box" pos="0 0 0.350000" size=".3 .3 .05" friction=".8 .005 .0001" rgba=".65 .52 .37 1"/>
+    <body name="bottle" pos="0 0 0.400000">
+      <freejoint name="bottle_free"/>
+      <geom name="base" type="cylinder" pos="0 0 0.001500" size="0.022500 0.001500" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_0" type="box" pos="0.021396 0.002107 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 0.098174770" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_1" type="box" pos="0.020574 0.006241 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 0.294524311" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_2" type="box" pos="0.018961 0.010135 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 0.490873852" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_3" type="box" pos="0.016620 0.013639 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 0.687223393" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_4" type="box" pos="0.013639 0.016620 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 0.883572934" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_5" type="box" pos="0.010135 0.018961 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 1.079922475" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_6" type="box" pos="0.006241 0.020574 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 1.276272016" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_7" type="box" pos="0.002107 0.021396 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 1.472621556" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_8" type="box" pos="-0.002107 0.021396 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 1.668971097" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_9" type="box" pos="-0.006241 0.020574 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 1.865320638" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_10" type="box" pos="-0.010135 0.018961 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 2.061670179" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_11" type="box" pos="-0.013639 0.016620 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 2.258019720" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_12" type="box" pos="-0.016620 0.013639 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 2.454369261" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_13" type="box" pos="-0.018961 0.010135 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 2.650718801" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_14" type="box" pos="-0.020574 0.006241 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 2.847068342" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_15" type="box" pos="-0.021396 0.002107 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 3.043417883" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_16" type="box" pos="-0.021396 -0.002107 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 3.239767424" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_17" type="box" pos="-0.020574 -0.006241 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 3.436116965" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_18" type="box" pos="-0.018961 -0.010135 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 3.632466506" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_19" type="box" pos="-0.016620 -0.013639 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 3.828816047" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_20" type="box" pos="-0.013639 -0.016620 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 4.025165587" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_21" type="box" pos="-0.010135 -0.018961 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 4.221515128" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_22" type="box" pos="-0.006241 -0.020574 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 4.417864669" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_23" type="box" pos="-0.002107 -0.021396 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 4.614214210" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_24" type="box" pos="0.002107 -0.021396 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 4.810563751" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_25" type="box" pos="0.006241 -0.020574 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.006913292" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_26" type="box" pos="0.010135 -0.018961 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.203262833" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_27" type="box" pos="0.013639 -0.016620 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.399612373" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_28" type="box" pos="0.016620 -0.013639 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.595961914" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_29" type="box" pos="0.018961 -0.010135 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.792311455" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_30" type="box" pos="0.020574 -0.006241 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 5.988660996" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="wall_31" type="box" pos="0.021396 -0.002107 0.037500" size="0.001000 0.002260 0.034500" euler="0 0 6.185010537" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_0" type="box" pos="0.017167 0.001691 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 0.098174770" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_1" type="box" pos="0.016507 0.005007 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 0.294524311" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_2" type="box" pos="0.015213 0.008132 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 0.490873852" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_3" type="box" pos="0.013334 0.010943 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 0.687223393" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_4" type="box" pos="0.010943 0.013334 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 0.883572934" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_5" type="box" pos="0.008132 0.015213 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 1.079922475" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_6" type="box" pos="0.005007 0.016507 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 1.276272016" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_7" type="box" pos="0.001691 0.017167 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 1.472621556" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_8" type="box" pos="-0.001691 0.017167 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 1.668971097" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_9" type="box" pos="-0.005007 0.016507 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 1.865320638" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_10" type="box" pos="-0.008132 0.015213 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 2.061670179" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_11" type="box" pos="-0.010943 0.013334 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 2.258019720" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_12" type="box" pos="-0.013334 0.010943 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 2.454369261" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_13" type="box" pos="-0.015213 0.008132 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 2.650718801" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_14" type="box" pos="-0.016507 0.005007 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 2.847068342" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_15" type="box" pos="-0.017167 0.001691 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 3.043417883" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_16" type="box" pos="-0.017167 -0.001691 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 3.239767424" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_17" type="box" pos="-0.016507 -0.005007 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 3.436116965" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_18" type="box" pos="-0.015213 -0.008132 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 3.632466506" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_19" type="box" pos="-0.013334 -0.010943 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 3.828816047" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_20" type="box" pos="-0.010943 -0.013334 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 4.025165587" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_21" type="box" pos="-0.008132 -0.015213 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 4.221515128" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_22" type="box" pos="-0.005007 -0.016507 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 4.417864669" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_23" type="box" pos="-0.001691 -0.017167 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 4.614214210" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_24" type="box" pos="0.001691 -0.017167 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 4.810563751" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_25" type="box" pos="0.005007 -0.016507 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.006913292" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_26" type="box" pos="0.008132 -0.015213 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.203262833" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_27" type="box" pos="0.010943 -0.013334 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.399612373" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_28" type="box" pos="0.013334 -0.010943 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.595961914" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_29" type="box" pos="0.015213 -0.008132 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.792311455" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_30" type="box" pos="0.016507 -0.005007 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 5.988660996" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="shoulder_31" type="box" pos="0.017167 -0.001691 0.074000" size="0.005250 0.002260 0.002000" euler="0 0 6.185010537" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_0" type="box" pos="0.020899 0.002058 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 0.098174770" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_1" type="box" pos="0.020096 0.006096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 0.294524311" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_2" type="box" pos="0.018520 0.009899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 0.490873852" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_3" type="box" pos="0.016233 0.013322 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 0.687223393" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_4" type="box" pos="0.013322 0.016233 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 0.883572934" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_5" type="box" pos="0.009899 0.018520 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 1.079922475" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_6" type="box" pos="0.006096 0.020096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 1.276272016" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_7" type="box" pos="0.002058 0.020899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 1.472621556" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_8" type="box" pos="-0.002058 0.020899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 1.668971097" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_9" type="box" pos="-0.006096 0.020096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 1.865320638" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_10" type="box" pos="-0.009899 0.018520 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 2.061670179" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_11" type="box" pos="-0.013322 0.016233 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 2.258019720" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_12" type="box" pos="-0.016233 0.013322 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 2.454369261" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_13" type="box" pos="-0.018520 0.009899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 2.650718801" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_14" type="box" pos="-0.020096 0.006096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 2.847068342" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_15" type="box" pos="-0.020899 0.002058 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 3.043417883" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_16" type="box" pos="-0.020899 -0.002058 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 3.239767424" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_17" type="box" pos="-0.020096 -0.006096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 3.436116965" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_18" type="box" pos="-0.018520 -0.009899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 3.632466506" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_19" type="box" pos="-0.016233 -0.013322 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 3.828816047" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_20" type="box" pos="-0.013322 -0.016233 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 4.025165587" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_21" type="box" pos="-0.009899 -0.018520 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 4.221515128" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_22" type="box" pos="-0.006096 -0.020096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 4.417864669" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_23" type="box" pos="-0.002058 -0.020899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 4.614214210" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_24" type="box" pos="0.002058 -0.020899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 4.810563751" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_25" type="box" pos="0.006096 -0.020096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.006913292" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_26" type="box" pos="0.009899 -0.018520 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.203262833" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_27" type="box" pos="0.013322 -0.016233 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.399612373" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_28" type="box" pos="0.016233 -0.013322 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.595961914" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_29" type="box" pos="0.018520 -0.009899 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.792311455" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_30" type="box" pos="0.020096 -0.006096 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 5.988660996" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="collar_31" type="box" pos="0.020899 -0.002058 0.081500" size="0.001500 0.002260 0.005500" euler="0 0 6.185010537" density="1100" friction=".5 .005 .0001" rgba=".62 .63 .64 1"/>
+      <geom name="neck_0" type="box" pos="0.013137 0.001729 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 0.130899694" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_1" type="box" pos="0.012241 0.005071 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 0.392699082" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_2" type="box" pos="0.010512 0.008066 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 0.654498469" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_3" type="box" pos="0.008066 0.010512 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 0.916297857" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_4" type="box" pos="0.005071 0.012241 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 1.178097245" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_5" type="box" pos="0.001729 0.013137 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 1.439896633" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_6" type="box" pos="-0.001729 0.013137 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 1.701696021" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_7" type="box" pos="-0.005071 0.012241 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 1.963495408" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_8" type="box" pos="-0.008066 0.010512 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 2.225294796" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_9" type="box" pos="-0.010512 0.008066 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 2.487094184" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_10" type="box" pos="-0.012241 0.005071 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 2.748893572" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_11" type="box" pos="-0.013137 0.001729 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 3.010692960" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_12" type="box" pos="-0.013137 -0.001729 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 3.272492347" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_13" type="box" pos="-0.012241 -0.005071 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 3.534291735" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_14" type="box" pos="-0.010512 -0.008066 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 3.796091123" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_15" type="box" pos="-0.008066 -0.010512 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 4.057890511" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_16" type="box" pos="-0.005071 -0.012241 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 4.319689899" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_17" type="box" pos="-0.001729 -0.013137 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 4.581489286" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_18" type="box" pos="0.001729 -0.013137 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 4.843288674" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_19" type="box" pos="0.005071 -0.012241 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 5.105088062" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_20" type="box" pos="0.008066 -0.010512 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 5.366887450" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_21" type="box" pos="0.010512 -0.008066 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 5.628686838" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_22" type="box" pos="0.012241 -0.005071 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 5.890486225" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="neck_23" type="box" pos="0.013137 -0.001729 0.085000" size="0.001250 0.001947 0.009000" euler="0 0 6.152285613" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_a_0" type="box" pos="0.013053 -0.008077 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 -0.554142038" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_a_1" type="box" pos="0.014103 -0.006059 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 -0.405789051" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_n_0" type="box" pos="0.015139 -0.002533 0.088000" size="0.001350 0.002851 0.002000" euler="0 0 -0.165806279" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_n_1" type="box" pos="0.015139 0.002533 0.088000" size="0.001350 0.002851 0.002000" euler="0 0 0.165806279" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_b_0" type="box" pos="0.014103 0.006059 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 0.405789051" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug0_b_1" type="box" pos="0.013053 0.008077 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 0.554142038" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_a_0" type="box" pos="-0.013053 0.008077 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 2.587450616" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_a_1" type="box" pos="-0.014103 0.006059 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 2.735803603" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_n_0" type="box" pos="-0.015139 0.002533 0.088000" size="0.001350 0.002851 0.002000" euler="0 0 2.975786375" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_n_1" type="box" pos="-0.015139 -0.002533 0.088000" size="0.001350 0.002851 0.002000" euler="0 0 3.307398933" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_b_0" type="box" pos="-0.014103 -0.006059 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 3.547381705" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="lug1_b_1" type="box" pos="-0.013053 -0.008077 0.087500" size="0.001350 0.001266 0.002500" euler="0 0 3.695734691" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+    </body>
+    <body name="cap" pos="0 0 0.494000">
+      <freejoint name="cap_free"/>
+      <geom name="cap_disc" type="cylinder" pos="0 0 0.003500" size="0.018700 0.001500" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_0" type="box" pos="0.017796 0.002343 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 0.130899694" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_1" type="box" pos="0.016584 0.006869 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 0.392699082" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_2" type="box" pos="0.014241 0.010927 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 0.654498469" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_3" type="box" pos="0.010927 0.014241 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 0.916297857" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_4" type="box" pos="0.006869 0.016584 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 1.178097245" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_5" type="box" pos="0.002343 0.017796 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 1.439896633" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_6" type="box" pos="-0.002343 0.017796 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 1.701696021" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_7" type="box" pos="-0.006869 0.016584 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 1.963495408" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_8" type="box" pos="-0.010927 0.014241 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 2.225294796" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_9" type="box" pos="-0.014241 0.010927 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 2.487094184" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_10" type="box" pos="-0.016584 0.006869 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 2.748893572" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_11" type="box" pos="-0.017796 0.002343 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 3.010692960" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_12" type="box" pos="-0.017796 -0.002343 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 3.272492347" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_13" type="box" pos="-0.016584 -0.006869 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 3.534291735" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_14" type="box" pos="-0.014241 -0.010927 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 3.796091123" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_15" type="box" pos="-0.010927 -0.014241 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 4.057890511" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_16" type="box" pos="-0.006869 -0.016584 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 4.319689899" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_17" type="box" pos="-0.002343 -0.017796 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 4.581489286" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_18" type="box" pos="0.002343 -0.017796 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 4.843288674" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_19" type="box" pos="0.006869 -0.016584 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 5.105088062" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_20" type="box" pos="0.010927 -0.014241 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 5.366887450" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_21" type="box" pos="0.014241 -0.010927 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 5.628686838" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_22" type="box" pos="0.016584 -0.006869 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 5.890486225" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_skirt_23" type="box" pos="0.017796 -0.002343 -0.004500" size="0.000750 0.002511 0.006500" euler="0 0 6.152285613" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="hook0_0" type="box" pos="0.016129 -0.001980 -0.008970" size="0.001250 0.002192 0.001000" euler="0 0 -0.122173048" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="hook0_1" type="box" pos="0.016129 0.001980 -0.008970" size="0.001250 0.002192 0.001000" euler="0 0 0.122173048" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="hook1_0" type="box" pos="-0.016129 0.001980 -0.008970" size="0.001250 0.002192 0.001000" euler="0 0 3.019419606" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="hook1_1" type="box" pos="-0.016129 -0.001980 -0.008970" size="0.001250 0.002192 0.001000" euler="0 0 3.263765701" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth0_0" type="box" pos="0.011000 0.000000 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 0.000000000" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth1_0" type="box" pos="0.005500 0.009526 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 1.047197551" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth2_0" type="box" pos="-0.005500 0.009526 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 2.094395102" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth3_0" type="box" pos="-0.011000 0.000000 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 3.141592654" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth4_0" type="box" pos="-0.005500 -0.009526 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 4.188790205" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <geom name="cap_tooth5_0" type="box" pos="0.005500 -0.009526 0.006000" size="0.003000 0.001753 0.001000" euler="0 0 5.235987756" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      <body name="liner" pos="0 0 0.000470">
+        <joint name="liner" type="slide" axis="0 0 1" range="-.0005 0.001800" stiffness="500" springref="-0.008000" damping="0.5"/>
+        <geom name="liner" type="cylinder" size="0.014000 0.000500" density="7800" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      </body>
+      <body name="cap_shell">
+        <joint name="shell_turn" type="hinge" axis="0 0 1"/>
+        <joint name="shell_push" type="slide" axis="0 0 1" range="-0.002800 -0.000030" stiffness="400" springref="0.019000" damping="0.2"/>
+        <geom name="shell_top" type="cylinder" pos="0 0 0.011500" size="0.025500 .001" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_0" type="box" pos="0.024382 0.002401 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 0.098174770" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_1" type="box" pos="0.023445 0.007112 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 0.294524311" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_2" type="box" pos="0.021607 0.011549 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 0.490873852" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_3" type="box" pos="0.018939 0.015543 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 0.687223393" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_4" type="box" pos="0.015543 0.018939 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 0.883572934" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_5" type="box" pos="0.011549 0.021607 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 1.079922475" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_6" type="box" pos="0.007112 0.023445 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 1.276272016" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_7" type="box" pos="0.002401 0.024382 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 1.472621556" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_8" type="box" pos="-0.002401 0.024382 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 1.668971097" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_9" type="box" pos="-0.007112 0.023445 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 1.865320638" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_10" type="box" pos="-0.011549 0.021607 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 2.061670179" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_11" type="box" pos="-0.015543 0.018939 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 2.258019720" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_12" type="box" pos="-0.018939 0.015543 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 2.454369261" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_13" type="box" pos="-0.021607 0.011549 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 2.650718801" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_14" type="box" pos="-0.023445 0.007112 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 2.847068342" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_15" type="box" pos="-0.024382 0.002401 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 3.043417883" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_16" type="box" pos="-0.024382 -0.002401 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 3.239767424" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_17" type="box" pos="-0.023445 -0.007112 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 3.436116965" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_18" type="box" pos="-0.021607 -0.011549 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 3.632466506" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_19" type="box" pos="-0.018939 -0.015543 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 3.828816047" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_20" type="box" pos="-0.015543 -0.018939 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 4.025165587" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_21" type="box" pos="-0.011549 -0.021607 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 4.221515128" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_22" type="box" pos="-0.007112 -0.023445 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 4.417864669" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_23" type="box" pos="-0.002401 -0.024382 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 4.614214210" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_24" type="box" pos="0.002401 -0.024382 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 4.810563751" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_25" type="box" pos="0.007112 -0.023445 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.006913292" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_26" type="box" pos="0.011549 -0.021607 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.203262833" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_27" type="box" pos="0.015543 -0.018939 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.399612373" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_28" type="box" pos="0.018939 -0.015543 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.595961914" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_29" type="box" pos="0.021607 -0.011549 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.792311455" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_30" type="box" pos="0.023445 -0.007112 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 5.988660996" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_skirt_31" type="box" pos="0.024382 -0.002401 -0.000250" size="0.001000 0.002562 0.010750" euler="0 0 6.185010537" density="1100" friction=".5 .005 .0001" rgba=".50 .51 .52 1"/>
+        <geom name="shell_tooth0_0" type="box" pos="0.009526 0.005500 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 0.523598776" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+        <geom name="shell_tooth1_0" type="box" pos="0.000000 0.011000 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 1.570796327" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+        <geom name="shell_tooth2_0" type="box" pos="-0.009526 0.005500 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 2.617993878" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+        <geom name="shell_tooth3_0" type="box" pos="-0.009526 -0.005500 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 3.665191429" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+        <geom name="shell_tooth4_0" type="box" pos="-0.000000 -0.011000 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 4.712388980" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+        <geom name="shell_tooth5_0" type="box" pos="0.009526 -0.005500 0.009250" size="0.003000 0.001753 0.001250" euler="0 0 5.759586532" contype="0" conaffinity="0" density="1100" friction=".5 .005 .0001" rgba=".35 .36 .37 1"/>
+      </body>
+    </body>
+    <body name="cube" pos="0.007000 0.007000 0.409000">
+      <freejoint name="cube_free"/>
+      <geom name="cube" type="box" size="0.006000 0.006000 0.006000" density="2700" friction=".5 .005 .0001" rgba=".80 .18 .15 1"/>
+    </body>
+    <body name="rod" pos="-0.009000 0.000000 0.413000">
+      <freejoint name="rod_free"/>
+      <geom name="rod" type="cylinder" size="0.004000 0.010000" density="7800" friction=".5 .005 .0001" rgba=".18 .32 .78 1"/>
+    </body>
+    <body name="ball" pos="0.008000 -0.010000 0.408000">
+      <freejoint name="ball_free"/>
+      <geom name="ball" type="sphere" size="0.005000" density="2500" friction=".5 .005 .0001" rgba=".90 .78 .15 1"/>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth0_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth1_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth2_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth3_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth4_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth0_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth1_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth2_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth3_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth4_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+    <pair geom1="shell_tooth5_0" geom2="cap_tooth5_0" condim="3" solref=".002 1" solimp=".95 .99 .001 .5 2" friction=".5 .5 .005 .0001 .0001"/>
+  </contact>
+</mujoco>
