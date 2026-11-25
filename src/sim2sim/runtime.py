@@ -421,7 +421,23 @@ def _set_paused(name, paused, backend):
                 return
             time.sleep(.05)
         if time.monotonic() > deadline:
-            raise SandboxFailure("Slurm step %s freezer did not reach frozen=%d" % (step, paused))
+            raise SandboxFailure("Slurm step %s freezer did not reach frozen=%d: %s" % (step, paused, json.dumps(_freezer_evidence(leaf))))
+
+
+def _freezer_evidence(leaf):
+    """Why a step cgroup did not freeze, for the failure record: freezer and memory state of the leaf and its ancestors up
+    to the step, and each task's state and kernel wait channel (a task in D state, e.g. memory reclaim at memory.max or
+    blocked I/O, cannot be frozen until it leaves the kernel)."""
+    read = lambda path: path.read_text().strip() if path.exists() else None  # noqa: E731
+    evidence = {"cgroups": {}, "tasks": {}}
+    for directory in [leaf, *leaf.parents][:4]:
+        evidence["cgroups"][str(directory)] = {name: read(directory / name) for name in
+                                               ("cgroup.events", "cgroup.freeze", "memory.events", "memory.pressure", "memory.current", "memory.max")}
+    for pid in (read(leaf / "cgroup.procs") or "").split()[:64]:
+        stat = read(Path("/proc") / pid / "stat")
+        evidence["tasks"][pid] = {"state": stat.rsplit(")", 1)[1].split()[0] if stat else None, "wchan": read(Path("/proc") / pid / "wchan"),
+                                  "comm": read(Path("/proc") / pid / "comm")}
+    return evidence
 
 
 @contextmanager
