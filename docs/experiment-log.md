@@ -46,6 +46,16 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 21:20 UTC — Wave 31 on kempner_cpu (QoS now 32 CPUs / 128 GB per user = 4 strict runs)
+- Latch-out and cloth-holes started on kempner_cpu at about 20:20 UTC (`63706221`, `63706223`). At 51 and 50 run-minutes
+  their calls had all succeeded; cloth-holes had 1 submission.
+- The kempner_cpu QoS is now 32 CPUs / 128 GB per user. The two remaining sapphire pairs (`63694746`, `63694747`,
+  pending 15 h) were cancelled before starting and resubmitted as single kempner_cpu runs:
+  - hand `63717613`, running;
+  - cube-spring-block-mjcf `63717614`, running;
+  - marble `63717620` and tetra-spring-k `63717640`, which start as slots free.
+- All runs are on home; home has 50 GB free.
+
 ## 2026-11-25 20:20 UTC — Fixture-bimodal completed; wave 31 still unstarted on sapphire, two runs moved to kempner_cpu
 - `w23-fixture-bimodal-neon-20261125-001` (home) **completed**: the agent called finish at 320 run-minutes, after the
   checkpoint was resumed. 179 calls, all succeeded; 3 submissions, all scored `ok`. It is the first complete stochasticity
