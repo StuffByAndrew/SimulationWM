@@ -46,6 +46,30 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 05:40 UTC — Netscratch file quota nearly exhausted: queue held; wave 31 on home; Inkling merged, not launched
+- **Storage:**
+  - Netscratch qianqian_lab is at about 99.35M of its 100M **file** quota (builder's measurement); lab is full by bytes;
+    home has about 50 GB.
+  - A strict run writes **134K–240K files**, almost all `audit/blobs` (one file per content-addressed blob): gear-deep 134K,
+    fixture-bimodal 240K. So netscratch fits only 3–4 more runs, and its file quota is shared with the whole lab.
+- **All 25 queued strict jobs were held** (05:30 UTC).
+- **User decision:** run a few on home now; the rest stay held until storage is fixed.
+  - Wave 31 (no resets) re-prepared on home as `-20261125-002`, sources identical; the netscratch `-001` jobs were cancelled.
+  - New jobs at the top: `63694745`, `63694746`, `63694747`.
+- **Inkling 2 Mini (builder; user request):** merged (2d7d7ad).
+  - New `api = "local_openai"` route to a self-hosted llama.cpp service on Kempner A100s (`scripts/inkling-service.slurm`,
+    2× A100-40GB, never H100/H200).
+  - Configs `experiments/configs/inkling-20261124/`: the hard five, each equal to its Carbon twin except the route, the pool,
+    no reasoning_summary and `timeout_seconds = 1800`.
+  - **Not launched:** no storage. Launch the service only when the runs can start.
+  - For analysis (builder):
+    - Precision: BF16 GGUF from the official weights (MXFP8 experts exact; NVFP4 experts rounded at most 2^-8 relative;
+      BF16 activations), close to but not bit-identical with the official numerics.
+    - Throughput: about 26 tokens/s for a single stream, about 14 per run with 5 runs; a cold 140K prefill takes about
+      13 min. Report at matched tokens as well as matched minutes.
+    - The 1800 s call timeout grants no extra budget.
+    - reasoningTokens is null.
+
 ## 2026-11-25 04:55 UTC — First new-image runs: gear-deep completed; fixture-bimodal extended to 6 h
 - `w28-gear-deep-20261125-001` (home, job `63530252`) **completed**: 235 run-minutes of 240, 264 real minutes, 133
   calls, all succeeded, 3 submissions, all scored `ok` by the gear-train metric. It is the first complete gear-train run.

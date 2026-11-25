@@ -24,3 +24,4 @@ sim2sim-experiment-*.out
 /oom
 /*.log
 /experiments/images/*.tar
+experiments/recordings/
