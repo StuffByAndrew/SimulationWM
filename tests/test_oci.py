@@ -645,6 +645,69 @@ class TouchHarnessOCITests(unittest.TestCase):
         print("no-reset harness: " + report[-1]["text"])
 
 
+    def test_weld_grasp_rotates_and_senses_torque_in_agent_container(self):
+        """grasp = "weld": inside the agent image, the harness offers move's rotation; a welded block lifted and turned in
+        the reference and the reconstruction world reads a wrench with the weld's couple; refreshing it costs no ticks."""
+        from sim2sim.runtime import run
+        root = Path(__file__).resolve().parents[1]
+        output = root / "experiments/validation/touch-harness" / ("oci-weld-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(root / "environments/blocks/scene.xml")},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
+                              "command": ["python", "-c", WELD_AGENT], "memory": "3g", "cpus": 2, "pids": 128, "workspace": "1g",
+                              "worker": {"memory": "2g", "cpus": 1}},
+                  "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 300, "physics_ticks": 3000, "submissions": 1},
+                  "simulation": {"camera": "fixed", "width": 160, "height": 120, "wrench": True, "grasp": "weld", "grasp_slip_rad": 1.0},
+                  "evaluation": {"source_dir": str(root / "environments"), "source_entrypoint": "blocks/scene.xml",
+                                 "manifest": "blocks/manifest.toml", "camera": "fixed", "width": 160, "height": 120, "timeout_seconds": 120}}
+        try:
+            run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual(json.loads((output / "termination.json").read_text())["status"], "finished")
+        report = [json.loads(line) for line in (output / "progress.jsonl").read_text().splitlines() if '"origin": "agent"' in line]
+        self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
+        print("weld harness: " + report[-1]["text"])
+
+
+WELD_AGENT = r'''
+import base64, io, json, sys
+from pathlib import Path
+import numpy as np
+from PIL import Image
+sys.path[:0] = ["/opt/agent"]
+import sandbox_agent
+from sim2sim.client import Client
+client = Client()
+tools = {tool["name"]: tool["parameters"] for tool in sandbox_agent.tool_schemas(client.task)}
+assert client.task["public_tool_config"]["grasp"] == "weld" and "rotation" in tools["move"]["properties"], tools["move"]
+project = Path("/workspace/project")
+project.mkdir(parents=True, exist_ok=True)
+(project / "scene.xml").write_text("""<mujoco><option timestep="0.002"/>
+<worldbody><camera name="fixed" pos="1.4 -1.8 1.5" xyaxes="0.789 0.614 0 -0.330 0.424 0.843" fovy="45"/>
+<geom type="plane" size="3 3 .1"/><geom type="box" pos="0 0 .35" size=".65 .5 .05"/>
+<body name="red" pos="-.15 0 .46"><freejoint/><geom type="box" size=".06 .06 .06" mass=".25" rgba=".85 .15 .12 1"/></body>
+</worldbody></mujoco>""")
+client.load_reconstruction(project)
+readings = {}
+for world in ("reference", "reconstruction"):
+    rgb = np.asarray(Image.open(io.BytesIO(base64.b64decode(client.observe(world=world)["rgb"]))).convert("RGB")).astype(int)
+    vs, us = np.nonzero((rgb[..., 0] > 60) & (rgb[..., 0] > 2 * rgb[..., 1]) & (rgb[..., 0] > 2 * rgb[..., 2]))
+    assert len(us), world
+    assert client.grasp([int(np.median(us)), int(np.median(vs))], world=world)["grasped"], world
+    client.move([0, 0, .15], ticks=300, rotation=[.8, 0, 0], world=world)
+    held = client.observe(ticks=200, world=world)
+    again = client.observe(world=world)
+    assert held["grasped"] and again["total_ticks"] == held["total_ticks"] and again["wrench"] == held["wrench"], world
+    wrench = held["wrench"]
+    assert wrench["active"] and -2.6 < wrench["force"][2] < -2.3 and np.linalg.norm(wrench["torque"]) > .02, (world, wrench)
+    readings[world] = wrench
+client.progress(json.dumps({"move_tool": tools["move"]["properties"]["rotation"], "readings": readings}), origin="agent")
+client.finish()
+'''
+
+
 NO_RESET_AGENT = r'''
 import json, sys
 sys.path[:0] = ["/opt/agent"]
