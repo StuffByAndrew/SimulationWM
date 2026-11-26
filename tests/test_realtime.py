@@ -83,6 +83,27 @@ def test_generic_world_without_launcher_resets_to_the_initial_state():
         assert world.close()["error"] is None
 
 
+def test_realtime_weld_move_turns_the_held_body():
+    """grasp = "weld" in the real-time world: a timed move's rotation turns the welded die about the grasp point."""
+    config = {**CONFIG, "grasp": "weld"}
+    world = RealtimeWorld(Simulation(DIE, config), Simulation(DIE, config), 25, Launcher(MANIFEST["launcher"]))
+    try:
+        deadline = time.monotonic() + 10
+        with world.lock:
+            pixel, body = die_pixel(world.sim), world.sim._model.body("die").id
+        assert world.command({"op": "grasp", "pixel": pixel}, deadline)[0]["grasp"] is not None
+        with world.lock:
+            start = world.sim._data.xquat[body].copy()
+        world.command({"op": "move", "displacement": [0, 0, .1], "rotation": [0, 0, 1.5], "ticks": 300}, deadline)
+        time.sleep(1)  # the reply arrives when the move takes effect; it then runs 300 ticks (0.6 s) and the die settles
+        with world.lock:
+            now, grasped = world.sim._data.xquat[body].copy(), world.sim._grasp is not None
+        turned = 2 * np.arccos(min(1, abs(float(np.dot(now, start)))))
+        assert grasped and abs(turned - 1.5) < .05, turned
+    finally:
+        assert world.close()["error"] is None
+
+
 def test_launches_are_reproducible_and_streams_differ():
     launcher = Launcher(MANIFEST["launcher"])
     a, b = launcher.state("toss", 1, 3), launcher.state("toss", 1, 3)

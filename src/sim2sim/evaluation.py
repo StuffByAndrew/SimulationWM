@@ -352,8 +352,10 @@ def _probe_actions(source, probe):
     if not 4 <= ticks <= 100000:
         raise ValueError('probe ticks outside limits')
     delta = (np.asarray(probe.get('displacement', [0, 0, .1]), dtype=float)/4).tolist()
+    # A weld source level's probe may declare a world rotation vector (radians), split over the four moves like the displacement.
+    turn = {'rotation': (np.asarray(probe['rotation'], dtype=float)/4).tolist()} if 'rotation' in probe else {}
     return [{'op': 'reset'}, {'op': 'grasp', 'pixel': pixel}] + [
-        {'op': 'move', 'ticks': ticks//4, 'displacement': delta} for _ in range(4)] + [
+        {'op': 'move', 'ticks': ticks//4, 'displacement': delta, **turn} for _ in range(4)] + [
         {'op': 'release', 'ticks': ticks//4}] + [{'op': 'wait', 'ticks': ticks//4} for _ in range(3)]
 
 
@@ -632,7 +634,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
                 staging.rename(target)
         report['project_path'] = f'versions/{version}/project'
         simconfig = dict(config.get('source_config', {}))
-        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'grasp_slip_m', 'default_ticks', 'graspable_bodies'):
+        for key in ('camera', 'width', 'height', 'timestep', 'grasp_solref', 'grasp_solimp', 'grasp_slip_m', 'grasp', 'grasp_slip_rad', 'default_ticks', 'graspable_bodies'):
             if key in config:
                 simconfig[key] = config[key]
         source = Simulation(Path(config['source_dir']) / config.get('source_entrypoint', config.get('entrypoint', 'scene.xml')), simconfig)

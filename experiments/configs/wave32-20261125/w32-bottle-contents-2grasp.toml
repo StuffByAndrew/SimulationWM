@@ -48,12 +48,12 @@ depth = true
 calibration = true
 wrench = true
 point_grasps = 2
-grasp = "weld"
 movable_camera = true
 width = 320
 height = 240
 camera = "fixed"
 default_ticks = 20
+grasp = "weld"
 
 [evaluation]
 manifest = "manifest.toml"

@@ -46,6 +46,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-25 23:30 UTC — Gear-train held for the weld grasp (user decision)
+- User (2026-11-25, AGENTS.md 1820e44 "Weld grasp"): new point-grasp levels, gear-train included, use a weld grasp.
+- `w28-gear-cheap`/`-recon-20261125-002` (kempner_cpu `63730955`, `63730958`) were cancelled before starting. They will
+  be re-prepared from the builder's weld configs and image record.
+- `w28-gear-deep-20261125-001` already completed on the connect grasp (3 submissions, all depth class deep). For a matched
+  set, deep should also be rerun on the weld grasp with the other two.
+- Cable (wave 30) and the childproof bottle are not launchable yet.
+
 ## 2026-11-25 23:10 UTC — All held jobs released (file headroom from compaction)
 - Maintenance snapshot at 17:50 ET: netscratch files 92.55M/100M (about 7.5M free); lab 9.26M/10M (about 736K free,
   still compacting). New runs avoid lab.

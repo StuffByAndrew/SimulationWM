@@ -43,8 +43,10 @@ class Client:
     def grasp(self, pixel, *, world="reference", **fields):
         return self.request("grasp", pixel=list(pixel), world=world, **fields)["observation"]
 
-    def move(self, displacement, ticks=20, *, world="reference", **fields):
-        return self.request("move", displacement=list(displacement), ticks=ticks, world=world, **fields)["observation"]
+    # rotation: [rx, ry, rz] world rotation vector (radians) about the grasp point, only with public_tool_config grasp = "weld".
+    def move(self, displacement, ticks=20, *, world="reference", rotation=None, **fields):
+        turn = {} if rotation is None else {"rotation": list(rotation)}
+        return self.request("move", displacement=list(displacement), ticks=ticks, world=world, **turn, **fields)["observation"]
 
     def release(self, ticks=0, *, world="reference", **fields):
         return self.request("release", ticks=ticks, world=world, **fields)["observation"]

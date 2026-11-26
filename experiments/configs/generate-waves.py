@@ -612,11 +612,11 @@ event_log_bytes = 67108864
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}
-{"point_grasps = 2" + chr(10) if o.get("grasps") == 2 else ""}{'grasp = "weld"' + chr(10) if o.get("weld") else ""}{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
+{"point_grasps = 2" + chr(10) if o.get("grasps") == 2 else ""}{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}{'resets = false' + chr(10) if o.get("noreset") else ""}default_ticks = 20
-{f"grasp_slip_m = {o['slip']}{chr(10)}" if o.get("slip") else ""}
+{f"grasp_slip_m = {o['slip']}{chr(10)}" if o.get("slip") else ""}{'grasp = "weld"' + chr(10) if o.get("weld") else ""}{f"grasp_slip_rad = {o['slip_rad']}{chr(10)}" if o.get("slip_rad") else ""}
 [evaluation]
 manifest = "{entry}manifest.toml"
 source_dir = "{source_dir}"

@@ -89,3 +89,11 @@ A model that omits the contents leaves the contents metrics as misses (counted, 
 
 Needs the two-grasp capability (cable branch) merged first. Image rebuild (isolated agent/evaluator images). Record the
 batch in `docs/experiment-log.md`.
+
+## Revisions (user, 2026-11-25; supersede the text above where they conflict)
+
+- **Weld grasps**: both point grasps are weld grasps (AGENTS.md): the agent translates each grasp and rotates the grasped
+  part about its grasp point; each wrench reports full force and torque. Twisting the cap is a rotation of the cap grasp
+  about the bottle axis (no longer only a tangential translation). Two welds plus the cap's own joints form a closed
+  loop, so pose mismatch appears as constraint force in the wrenches: the check must show the scripted opening is
+  stable (no jitter or blow-up) with welds, and redo the one-grasp feasibility test with a weld.
