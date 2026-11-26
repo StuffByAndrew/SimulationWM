@@ -46,6 +46,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 08:50 UTC — Gemini Neon 503 outage, held by provider holds
+- Since about 06:15 UTC Neon has returned HTTP 503 "high demand". The provider holds keep it off the run clocks:
+  gear-recon `-002` shows 16 consecutive held failures and has not advanced since about 26 run-minutes. All Neon runs
+  show the same.
+- Risk: the three wave 27 pairs on test (12 h job limit, 4 h wall) have used about 5 h real for about 2.5 h of run
+  clock. A further outage of more than about 5 h would truncate them at the job limit. kempner_cpu (3 days) and sapphire
+  (14 h) jobs have more slack.
+
 ## 2026-11-26 06:50 UTC — Marble no-reset completed; gear weld set running
 - `w31-marble-heavy-hint-noreset-20261125-003` **completed**: the agent called finish at 267 run-minutes, 3 submissions.
   Wave 31 now has 5 of 6 levels finished; cloth-holes `-003` is running (about 3 h of job time).
