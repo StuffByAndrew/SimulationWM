@@ -58,9 +58,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     - msd (all 9 w20 runs): 24%, max 9.5e3 N.
     - Agents' own jointed reconstructions showed the same garbage. Lever-base agents still converged exactly on mass,
       inertia, damping and friction.
-  - **Ambiguous** (free stick; likely the stiff ideal grasp driven into a stop, not the bug): w16/w17 tunnels 7% (mostly
-    2e3–7e3 N; outliers 4.5e5 and 6.5e4), w20 spring-out 12%, w20 latch-out 4%. The builder is asked to check them
-    against contacts.
+  - **Tunnels: genuine jam forces, not the bug** (builder repro `63781112`). The ideal grasp acts as a stiff spring of
+    about 76 kN/m, and the grip force tracks the contact reaction when the grip is driven past a stop or into the wall:
+    2 cm past gives about 1.1 kN; 14 cm gives about 7.3 kN. tunnel_curved binds mid-travel at about 0.5 kN.
+    - The w16/w17/w20 readings of 2–8 kN mean the agent drove the grip several cm past a stop.
+    - The 4.5e5 N (w16-nonlinear-grasp) and 6.5e4 N (w17-curved-grasp-seq-hint) outliers imply huge commanded moves;
+      still to be confirmed in their audits.
+    - Reporting note: in tunnels the force magnitude signals a stop, not the stick's spring or latch force.
+      force_profile is unaffected.
   - **Clean:** cloth (max 6.4 N). The no-interaction variants never grasp the lever.
   - Whether to flag affected results in reports is the user's call.
 
