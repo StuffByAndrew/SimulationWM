@@ -403,7 +403,8 @@ evaluation fails with that error. It combines with other scene metrics but the l
 - `accuracy`: each probe (manifest `body`, `local_point`, `moves` = `[dx, dy, dz, ticks]` list, with a weld optionally `[dx, dy, dz, ticks, rx, ry, rz]` adding a world rotation vector in rad, `settle_ticks`) grasps the
   body point's pixel through the source camera, runs its moves, releases and waits, from reset, in the fresh source and the
   candidate, both with the run's public grasp settings including `grasp`, `grasp_slip_m` and `grasp_slip_rad`. The level's moves follow the crank handle's
-  or hand tip's circle in 5° chords, within reach and below the slip threshold; a source grip that misses or slips fails the
+  or hand tip's circle in 5° chords, each turning the weld grasp by the chord's angle (moves `[dx, dy, dz, ticks, rx, ry,
+  rz]`), within reach and below both slip thresholds; a source grip that misses or slips fails the
   evaluation, a candidate's is kept as `candidate_grasp_held = false` and its remaining moves become waits. Unlike the
   other scene metrics the candidate keeps **its own submitted timestep**: each action lasts the same time (rounded to its
   steps) and its samples are interpolated to the source's. Every step records the **world** rotation of `crank` and `hand` about the panel normal (the source crank's hinge axis) relative to

@@ -241,9 +241,10 @@ larger than `grasp_slip_rad`, the grasp is released exactly as above. Either thr
 (lock-step and real-time), the agent's reconstruction world (candidate worker) and the evaluator's source and candidate
 worlds all use them, so the grasp behaves the same everywhere. `Simulation` rejects malformed values (lists of finite
 numbers of those lengths; a slip that is not a number in range), so they fail the run on the host at start. MuJoCo clamps
-a `solref` time constant below two timesteps. The gear-train level (`environments/gear_train`) sets `grasp_slip_m`: a
-hard over-pull of the crank would otherwise stretch the soft grasp far enough that MuJoCo's inertia-scaled constraint
-softness tells its equality-coupled gear train from the lumped equivalent; within the handle's reach the grip holds.
+a `solref` time constant below two timesteps. The gear-train level (`environments/gear_train`) uses the weld grasp with `grasp_slip_m` and `grasp_slip_rad`: a
+hard over-pull or over-twist of the crank would otherwise strain the grasp far enough that MuJoCo's inertia-scaled
+constraint softness tells its equality-coupled gear train from the lumped equivalent; within the handle's reach,
+rotating with it, the grasp holds.
 
 ## Internal Python interface
 
