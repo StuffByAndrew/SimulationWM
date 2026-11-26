@@ -2358,10 +2358,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                         evaluation.setdefault("source_config", dict(sim_config))
                         evaluation["entrypoint"] = resolved["entrypoint"]
                         change_output = output / ("candidate-change-%04d" % candidate_changes)
-                        with frozen():
-                            pause = time.monotonic()
-                            timing["pause_start"] = pause
-                            try:
+                        # The pause runs from before the STOP RPC to after the CONT RPC: freeze and thaw are infrastructure time.
+                        pause = time.monotonic()
+                        timing["pause_start"] = pause
+                        try:
+                            with frozen():
                                 try:
                                     evaluator = evaluate_in_container if backend is None else backend.evaluate
                                     report = evaluator(project, evaluation, sandbox, change_output, source_bundle, supervisor)
@@ -2375,11 +2376,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                                               "wall_elapsed": candidate_change_wall,
                                               "evaluated_at": datetime.now(timezone.utc).isoformat(),
                                               "action_id": context["action_id"], "world": "researcher", "report": report}, reservation=token)
-                            finally:
-                                duration = time.monotonic() - pause
-                                deadline += duration
-                                timing["paused_total"] += duration
-                                timing["pause_start"] = None
+                        finally:
+                            duration = time.monotonic() - pause
+                            deadline += duration
+                            timing["paused_total"] += duration
+                            timing["pause_start"] = None
                     response = {"ok": True, "world": world, "version": candidate_version,
                                 "observation": public_observation(packet["observation"], public_config), "remaining_ticks": None if max_ticks is None else max_ticks - sum(charged.values())}
                 elif op == "inference":
@@ -2449,10 +2450,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     for key in ("camera", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "grasp", "grasp_slip_rad"):
                         if key in sim_config:
                             evaluation.setdefault(key, sim_config[key])
-                    with frozen():
-                        pause = time.monotonic()
-                        timing["pause_start"] = pause
-                        try:
+                    # The pause runs from before the STOP RPC to after the CONT RPC: freeze and thaw are infrastructure time.
+                    pause = time.monotonic()
+                    timing["pause_start"] = pause
+                    try:
+                        with frozen():
                             try:
                                 scene_evaluator = evaluate_in_container if backend is None else backend.evaluate
                                 if predictor_metric:
@@ -2475,11 +2477,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                             audit.record({"kind": "evaluation", "action_id": context["action_id"], "world": "researcher",
                                           "submission": submissions, "report": report}, reservation=token)
                             evaluated = submissions
-                        finally:
-                            duration = time.monotonic() - pause
-                            deadline += duration
-                            timing["paused_total"] += duration
-                            timing["pause_start"] = None
+                    finally:
+                        duration = time.monotonic() - pause
+                        deadline += duration
+                        timing["paused_total"] += duration
+                        timing["pause_start"] = None
                     response = {"ok": True, "submission": submissions, "status": report.get("status", "failed")}
                 elif op == "finish":
                     response = {"ok": True, "status": "finished"}
