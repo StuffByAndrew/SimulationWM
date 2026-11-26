@@ -293,41 +293,37 @@ class Simulation:
     def _wrench(self, index=0):
         """Object reaction on grasp index's ideal handle, expressed about its point anchor.
 
-        Connect and weld translation equations are world Cartesian anchor1-anchor2 coordinates.
-        Body1 is the object, so the handle reaction is minus their multiplier.
-        A connect transmits no couple; a weld's three rotation rows add the couple _weld_torque_map gives.
-        Body-COM moments are not exposed. Only this grasp's own rows count, never another grasp's or a contact.
+        The reading is the grasp-point wrench of least magnitude that applies the same generalized force to the held body
+        as the grasp's own constraint rows (J^T efc_force; never another grasp's or a contact): a force for a connect (which
+        transmits no couple), a force and couple for a weld. For a free body that wrench is unique, so it is exactly the
+        constraint's force and couple. For a jointed body (hinge, slide), the rows along directions the joints block carry
+        no generalized force, yet MuJoCo's soft constraints divide by their near-zero effective inverse mass there, so a
+        sub-millimetre misalignment showed as up to 10^11 N (gear-train hand, wave 28); those components are excluded.
+        Body-COM moments, lever arms and masses are not exposed. Reading the arrays changes no state, time or ticks.
         """
         force, torque, grasp = np.zeros(3), np.zeros(3), self._grasps[index]
         active = grasp is not None and bool(self._data.eq_active[grasp[0]])
         if active:
-            # The force the solver applied to the handle during the latest physics step (mj_step leaves its
-            # constraint solution in efc_force; grasp attach and reset run mj_forward). Re-solving the integrated state
-            # instead would read low by about m*v*dt/timeconst**2, a spurious velocity-proportional force (-10 N s/m on
-            # a 0.4 kg stick at the default grasp softness). Reading the arrays changes no state, time or ticks.
-            rows = np.flatnonzero((self._data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY) & (self._data.efc_id == grasp[0]))
+            # The force the solver applied during the latest physics step (mj_step leaves its constraint solution in
+            # efc_force; grasp attach and reset run mj_forward). Re-solving the integrated state instead would read low
+            # by about m*v*dt/timeconst**2, a spurious velocity-proportional force.
+            model, data = self._model, self._data
+            rows = np.flatnonzero((data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY) & (data.efc_id == grasp[0]))
             if len(rows) != (6 if self.grasp_type == "weld" else 3):
                 raise RuntimeError("an active grasp must supply its 3 (connect) or 6 (weld) constraint-force rows")
-            force = -self._data.efc_force[rows[:3]]
+            vector, qfrc = np.zeros(data.nefc), np.zeros(model.nv)
+            vector[rows] = data.efc_force[rows]
+            mujoco.mj_mulJacTVec(model, data, qfrc, vector)
+            jacp, jacr = np.zeros((3, model.nv)), np.zeros((3, model.nv))
+            mujoco.mj_jac(model, data, jacp, jacr, self.grasp_anchor(grasp), model.eq_obj1id[grasp[0]])
             if self.grasp_type == "weld":
-                torque = -self._weld_torque_map(grasp[0]).T @ self._data.efc_force[rows[3:]]
+                wrench = np.linalg.lstsq(np.vstack([jacp, jacr]).T, qfrc, rcond=None)[0]
+                force, torque = -wrench[:3], -wrench[3:]
+            else:
+                force = -np.linalg.lstsq(jacp.T, qfrc, rcond=None)[0]
         return {"force": force.tolist(), "torque": torque.tolist(),
                 "frame": "world", "reference": "grasp_point", "sign": "object_on_handle",
                 "active": active, "force_unit": "N", "torque_unit": "N m"}
-
-    def _weld_torque_map(self, eq):
-        """3x3 M with weld rotation rows = M (omega_object - omega_handle), as MuJoCo builds them (engine_core_constraint.c,
-        mjEQ_WELD: 0.5 torquescale imag(neg(q_handle) (0, omega) q_object relpose)), so a row multiplier f is the world couple
-        M^T f on the object. Uses the kinematics (xquat) the constraint rows were built from."""
-        model, data = self._model, self._data
-        quat, handle, column, result = np.zeros(4), np.zeros(4), np.zeros(4), np.zeros((3, 3))
-        mujoco.mju_mulQuat(quat, data.xquat[model.eq_obj1id[eq]], model.eq_data[eq, 6:10])
-        mujoco.mju_negQuat(handle, data.xquat[model.eq_obj2id[eq]])
-        for k in range(3):
-            mujoco.mju_mulQuatAxis(column, handle, np.eye(3)[k])
-            mujoco.mju_mulQuat(column, column.copy(), quat)
-            result[:, k] = .5 * model.eq_data[eq, 10] * column[1:]
-        return result
 
     def _ids(self, kind, names):
         result = np.array([mujoco.mj_name2id(self._model, kind, name) for name in names])
