@@ -46,6 +46,15 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 03:00 UTC — Bulk audit compaction finished (maintenance)
+- 310 of 318 runs compacted: 27.7M files removed; 158 GB of blobs became 61 GB of packs.
+- Quotas at 21:00 ET: lab 7.13M/10M files (2.87M free); netscratch 74.5M/100M (25.5M free).
+- Not compacted:
+  - the live wave 31 runs, which the compact-when-done watcher covers;
+  - 4 killed or cancelled runs whose audit index is one event ahead of the manifest, left loose with nothing removed:
+    `w1-assembly-depth-20261102-002`, `w23-fixture-bimodal-neon-20261123-003`, `w3-panda-lever-hard-20261104-001` and
+    `w1-blocks-base-20261102-001`. Expected for a run killed between the index write and the manifest update.
+
 ## 2026-11-26 02:50 UTC — Wave 32 childproof bottle queued (4 runs); pause-timer change merged
 - **Merged the bottle level** (50a3b46, builder 5066d05).
   - Record `trusted-image-isolated-bottle.json`: agent `2e7cd4413663`, evaluator `053bb9233a8a`. OCI `63755828`, 12
