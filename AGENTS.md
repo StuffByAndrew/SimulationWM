@@ -121,7 +121,11 @@ coordinates. It is selected by `[simulation] grasp = "weld"` (default `"connect"
 existing configs and recorded runs are unchanged); `move` then takes an optional world `rotation` vector (radians, about the
 grasp point, spread over its ticks), and optional `grasp_slip_rad` adds an angular slip beside `grasp_slip_m`
 (docs/protocol.md "Weld grasp"). The wrench torque is `-Mᵀ f` from the weld's own three rotation rows
-(`Simulation._weld_torque_map`, MuJoCo's weld row map); keep it reproducing the rows' `Jᵀ efc_force` exactly. The other wrench rules (only the active grasp's own
+(`Simulation._weld_torque_map`, MuJoCo's weld row map); keep it reproducing the rows' `Jᵀ efc_force` exactly.
+Validated 2026-11-25: focused job `63739277` (117 passed), full non-OCI `63748805` (361 passed; only the known
+test_tools weights and test_inspector 600 s failures), image record `experiments/images/trusted-image-isolated-weld.json`
+(job `63739907`), OCI with it: `63741152` (weld end-to-end and 6 others passed; 4 hit the known freezer failure), reruns
+`63745716` and `63747936` passed those 4. The other wrench rules (only the active grasp's own
 constraint, nothing from unrelated contacts, no grasp coordinates, lever arms or mass, no time/ticks on refresh) still
 apply. Applies to the childproof bottle, gear-train and cable levels (`docs/level-designs/`).
 
