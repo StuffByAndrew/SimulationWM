@@ -46,6 +46,17 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 02:30 UTC — Freezer failures: root cause found and fixed
+- Builder probes (`63754726`, `63755982`, test partition) found the cause.
+  - The `scancel --signal=STOP/CONT` RPCs take 6–76 s under slurmctld load; the freeze itself follows within ms.
+  - `_set_paused` killed each scancel after 30 s and resent within 180 s, so slow RPCs never completed. That blocked
+    `63706221` (latch-out) and `63706223` (cloth-holes), and an OCI case on holy8a24402.
+  - The step cgroups are root-owned, so a direct `cgroup.freeze` write is impossible; scancel stays the only mechanism.
+- **Fix merged** (builder e45481a; tests `63756870`): each scancel runs to completion, requests never overlap, a resend
+  happens only after a completed request left the freezer short, and there is one 900 s deadline, failing loudly with
+  diagnostics. Applies to jobs launched after the merge.
+- Requested next: count freeze/thaw RPC time as paused time, so the agent isn't charged.
+
 ## 2026-11-26 01:40 UTC — Wave 28 gear-train on the weld grasp queued at the top (matched set of 3)
 - Merged builder commit 56d2403 (b566379): the wave 28 configs now have `grasp = "weld"`, `grasp_slip_m = 0.002` and
   `grasp_slip_rad = 0.05`.
