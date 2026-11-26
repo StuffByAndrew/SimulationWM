@@ -51,7 +51,7 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - Keep freeze/thaw time counting toward the hard wall (no change).
   - Keep the bottle as built (one grasp can open it).
   - Run Inkling 2 with its service on kempner_gpu_priority.
-- **Service:** `scripts/inkling-service.slurm`, job `63770834` (kempner_gpu_priority, QoS kempner_qianqian_priority,
+- **Service:** healthy at 03:03 UTC on holygpu8a19504 (A100-SXM4-40GB ×2, llama.cpp b12706, 5 slots, 262144 context). `scripts/inkling-service.slurm`, job `63770834` (kempner_gpu_priority, QoS kempner_qianqian_priority,
   2× A100-40GB, 3-day limit; log `experiments/validation/inkling-service-63770834.log`; record
   `INKLING_ROOT/service/service.json`).
 - **Runs** `w{22-cloth-holes,11-tetra-spring-k,21-hand-smooth-mesh,19-marble-heavy-hint,20-latch-out}-inkling-20261126-001`
