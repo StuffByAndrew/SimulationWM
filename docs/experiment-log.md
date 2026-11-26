@@ -46,6 +46,24 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 04:20 UTC — Wrench-bug scan of past runs; hand no-reset completed
+- `w31-hand-smooth-mesh-noreset-20261125-002` **completed**: the agent called finish at 354 run-minutes, 2 submissions.
+  All six wave-31 `-002` runs are now compacted (the watcher ended cleanly).
+- **Wrench scan** (results explorer, job `63779902`, `experiments/validation/wrench-scan-20261126/wrench-scan.jsonl`;
+  140 of 141 runs). The figures count distinct reference-world readings above 1e3 N.
+  - **Clearly affected**, from the first grasp:
+    - lever (w1, w2, w8 interactive): 12 of 12 runs, 79% of readings, max 2.5e5 N;
+    - spring lever (w1, w3, w6): 7 of 7 runs, 90%, max 7.1e4 N;
+    - gear (both w28 runs): 98%, max 1.6e16 N;
+    - msd (all 9 w20 runs): 24%, max 9.5e3 N.
+    - Agents' own jointed reconstructions showed the same garbage. Lever-base agents still converged exactly on mass,
+      inertia, damping and friction.
+  - **Ambiguous** (free stick; likely the stiff ideal grasp driven into a stop, not the bug): w16/w17 tunnels 7% (mostly
+    2e3–7e3 N; outliers 4.5e5 and 6.5e4), w20 spring-out 12%, w20 latch-out 4%. The builder is asked to check them
+    against contacts.
+  - **Clean:** cloth (max 6.4 N). The no-interaction variants never grasp the lever.
+  - Whether to flag affected results in reports is the user's call.
+
 ## 2026-11-26 04:10 UTC — Killed runs that were rerun are discarded (user decision, via maintenance)
 - User (2026-11-25): incomplete runs that were killed or cancelled and then rerun are discarded, not kept or compacted.
 - The maintenance session deleted the 4 runs compaction had refused, all killed or cancelled and all rerun
