@@ -57,6 +57,8 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 - **Bottle:** the 4 prepared `-20261126-001` runs re-submitted on the wrench record: `63783568`, `63783569`, `63783571`,
   `63783574`.
 - Discard: the gear `-20261126-001` runs. Recon was cancelled after its agent saw the bug; cheap and deep never started.
+- Parallelism, 04:50 UTC: wave 27 objects-stated pair moved to test (`63791638`, 30 CPUs, 12 h) next to the two test
+  pairs already running. kempner_cpu is full (4); Inkling's dependency is met and its runs queue after fixture/die.
 
 ## 2026-11-26 04:20 UTC — Wrench-bug scan of past runs; hand no-reset completed
 - `w31-hand-smooth-mesh-noreset-20261125-002` **completed**: the agent called finish at 354 run-minutes, 2 submissions.
