@@ -46,6 +46,19 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 01:40 UTC — Wave 28 gear-train on the weld grasp queued at the top (matched set of 3)
+- Merged builder commit 56d2403 (b566379): the wave 28 configs now have `grasp = "weld"`, `grasp_slip_m = 0.002` and
+  `grasp_slip_rad = 0.05`.
+  - Premise check `63754037`: deep vs shallow 6% of the gate; cost 51× per simulated second; slips only on over-pull or
+    over-twist.
+  - The fastest evaluation probe is now 120° in 2.4 s.
+  - Image record `trusted-image-isolated-weld.json`.
+- Runs `w28-gear-{recon,cheap,deep}-20261126-001` (netscratch; sources identical across conditions; grasp weld); jobs
+  `63755324`, `63755329`, `63755333` at the top of kempner_cpu.
+- The connect-grasp `w28-gear-deep-20261125-001` stays out of the comparison.
+- Watch: with a weld the agent must rotate the grasp together with the crank (`move.rotation`). A plain drag slips the
+  grip; check whether agents stall on it.
+
 ## 2026-11-26 01:10 UTC — Second freezer failure (cloth-holes no-reset); tetra no-reset completed; weld grasp merged
 - `w31-tetra-spring-k-noreset-20261125-002` **completed**: the agent called finish at 141 run-minutes, 3 submissions.
 - `w31-cloth-holes-noreset-20261125-002` (kempner_cpu `63706223`, holygpu8a11202) failed at its 4th evaluation, at 221
