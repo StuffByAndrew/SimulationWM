@@ -13,7 +13,7 @@ from sim2sim.simulation import Simulation
 ROOT = Path(__file__).resolve().parents[1]
 LEVEL = ROOT / 'environments/gear_train'
 _SIM = tomllib.loads((ROOT / 'experiments/configs/wave28-20261124/w28-gear-recon.toml').read_text())['simulation']
-GRASP = {'grasp_slip_m': _SIM['grasp_slip_m']}  # the level's public grip slip
+GRASP = {key: value for key, value in _SIM.items() if key.startswith('grasp')}  # the level's public weld grasp and slips
 
 PAIR = '''<mujoco><worldbody><camera name="fixed" pos="0 -1 0" xyaxes="1 0 0 0 0 1"/>
   <body name="a"><joint name="ja" axis="0 1 0"/><geom size=".02"/></body>

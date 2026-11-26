@@ -5,7 +5,7 @@ plot_checkpoints = false
 task = "Build a MuJoCo model of this mechanism. Name the crank body `crank` and the dial hand body `hand`. Submit it as a self-contained scene.xml project, using the permitted observations and interactions; resubmit whenever your model improves, and call finish when you are done."
 
 [experiment]
-name = "Wave 28 · gear_train · gear train, stated use: recon; point grasp with wrench, RGBD, movable camera, sequence tool; gemini-4-neon"
+name = "Wave 28 · gear_train · gear train, stated use: recon; weld grasp with wrench, RGBD, movable camera, sequence tool; gemini-4-neon"
 environment = "gear_train"
 execution_mode = "strict_oci"
 model = "gemini-4-neon"
@@ -14,7 +14,7 @@ evaluation_metrics = ["gear_train"]
 
 [experiment.physical_parameters]
 scene = "Original authored MJCF physical parameters of gear_train."
-factor = "gear train, stated use: recon; point grasp with wrench, RGBD, movable camera, sequence tool; gemini-4-neon"
+factor = "gear train, stated use: recon; weld grasp with wrench, RGBD, movable camera, sequence tool; gemini-4-neon"
 
 [source]
 scene = "environments/gear_train/scene.xml"
@@ -53,6 +53,8 @@ height = 240
 camera = "fixed"
 default_ticks = 20
 grasp_slip_m = 0.002
+grasp = "weld"
+grasp_slip_rad = 0.05
 
 [evaluation]
 manifest = "manifest.toml"
