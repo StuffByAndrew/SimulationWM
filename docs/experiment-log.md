@@ -46,6 +46,24 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 03:30 UTC — Inkling 2 Mini launched on the hard five; user decisions on freeze/thaw and the bottle
+- **User decisions:**
+  - Keep freeze/thaw time counting toward the hard wall (no change).
+  - Keep the bottle as built (one grasp can open it).
+  - Run Inkling 2 with its service on kempner_gpu_priority.
+- **Service:** `scripts/inkling-service.slurm`, job `63770834` (kempner_gpu_priority, QoS kempner_qianqian_priority,
+  2× A100-40GB, 3-day limit; log `experiments/validation/inkling-service-63770834.log`; record
+  `INKLING_ROOT/service/service.json`).
+- **Runs** `w{22-cloth-holes,11-tetra-spring-k,21-hand-smooth-mesh,19-marble-heavy-hint,20-latch-out}-inkling-20261126-001`
+  (netscratch; sources identical to their Carbon twins):
+  - kempner_cpu jobs `63770847`, `63770851`, `63770853`, `63770856`, `63770858`;
+  - `--dependency=after:63770834+20`, so they start 20 min after the service, once the weights are loaded;
+  - image `trusted-image-isolated-bottle.json` (same agent sources as the isolated records).
+- **kempner_cpu order:** gear (cheap, deep), the cloth-holes no-reset rerun, fixture rigid and rubber, die ×4, Inkling ×5,
+  then wave 27 and the bottle.
+- **Analysis notes:** report Inkling at matched tokens as well as matched minutes (about 14 tokens/s per run with 5 runs);
+  1800 s call timeout; reasoningTokens null; BF16 GGUF numerics (see the 2026-11-25 05:40 entry).
+
 ## 2026-11-26 03:00 UTC — Bulk audit compaction finished (maintenance)
 - 310 of 318 runs compacted: 27.7M files removed; 158 GB of blobs became 61 GB of packs.
 - Quotas at 21:00 ET: lab 7.13M/10M files (2.87M free); netscratch 74.5M/100M (25.5M free).
