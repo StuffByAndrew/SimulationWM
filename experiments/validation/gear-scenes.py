@@ -35,6 +35,7 @@ TOOTH_PITCH, TOOTH = .008, (.0015, .0018)  # tooth spacing along the pitch circl
 B = 1.0e-4                        # viscous damping of every axle, N m s/rad: crank coast time constant about 0.12 s
 SOLREF, SOLIMP = ".001 1", ".9999 .9999 .001 .5 2"  # near-ideal gear couplings (time constant at the 2-step minimum)
 SLIP_M = .002                     # public [simulation] grasp_slip_m: the grip lets go when stretched farther (m)
+SLIP_RAD = .05                    # public [simulation] grasp_slip_rad: the weld lets go when twisted farther (rad)
 SHALLOW_TIMESTEPS = (.0005, .001, .002, .004, .005, .008, .01)  # s: shallow.xml takes the largest that passes the gate
 SOLVER = ' tolerance="1e-12"'     # <option> extra: Newton runs to convergence (the default 1e-8 stops a stiff train early)
 PHI = np.deg2rad(50)              # mesh directions alternate +PHI, -PHI from +x: a zigzag train
@@ -50,18 +51,22 @@ GATE_P = .1                                   # G-cheap gate perturbation of the
 EYE, LOOK, FOVY = np.array([0., -.95, .70]), np.array([0., 0., Z0]), 45
 PROBES = [  # private, within the handle's reach: the grasped point follows its circle about the axle in CHORD_DEG chords;
     # (name, body, local point, radius m, start angle deg in the panel's x-z plane, sweep deg, grasped seconds, settle seconds)
-    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 3.0, .8),
-    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 1.8, .8),
+    ("crank_turn_slow", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 4.0, .8),
+    ("crank_turn_fast", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, 120, 2.4, .8),
     ("crank_turn_back", "crank", (0, -.051, -HANDLE_R), HANDLE_R, -90, -60, .9, .8),
     ("hand_push", "hand", (0, FRONT_Y - T, .06), .06, 90, 30, .8, .8),
     ("hand_push_fast", "hand", (0, FRONT_Y - T, .06), .06, 90, -40, .8, .8),
 ]
 CHORD_DEG = 5
-OVERPULLS = [  # check only: straight pulls ending 1 cm (crank) or 2 cm (hand) beyond reach, which the slip must end first;
-    # (name, body, local point, displacement m, grasped seconds, settle seconds)
-    ("crank_overpull_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), 2.0, .5),
-    ("crank_overpull_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), .32, .8),
-    ("hand_overpull", "hand", (0, FRONT_Y - T, .06), (.08, 0, 0), .4, .8),
+OVERPULLS = [  # check only: straight pulls ending 1 cm (crank) or 2 cm (hand) beyond reach, without the matching rotation,
+    # and twists of the grasp about axes the hinges block, which the slip must end first;
+    # (name, body, local point, displacement m, rotation rad, grasped seconds, settle seconds)
+    ("crank_overpull_slow", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), (0, 0, 0), 2.0, .5),
+    ("crank_overpull_fast", "crank", (0, -.051, -HANDLE_R), (.05, 0, 0), (0, 0, 0), .32, .8),
+    ("hand_overpull", "hand", (0, FRONT_Y - T, .06), (.08, 0, 0), (0, 0, 0), .4, .8),
+    ("crank_overtwist_x", "crank", (0, -.051, -HANDLE_R), (0, 0, 0), (.5, 0, 0), .5, .5),
+    ("crank_overtwist_y", "crank", (0, -.051, -HANDLE_R), (0, 0, 0), (0, -1., 0), .5, .5),
+    ("hand_overtwist_z", "hand", (0, FRONT_Y - T, .06), (0, 0, 0), (0, 0, .5), .5, .5),
 ]
 WORLD = 'contype="0" conaffinity="0"'
 
@@ -223,25 +228,29 @@ def calibrate():
     return gate_rad, max(passing), errors
 
 
-SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"], "grasp_slip_m": SLIP_M}
-CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "grasp_slip_m": SLIP_M}  # own timestep, graspable bodies inferred
+GRASP = {"grasp": "weld", "grasp_slip_m": SLIP_M, "grasp_slip_rad": SLIP_RAD}  # the level's public weld grasp and slips
+SOURCE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", "graspable_bodies": ["crank", "hand"], **GRASP}
+CANDIDATE_CONFIG = {"width": 320, "height": 240, "camera": "fixed", **GRASP}  # own timestep, graspable bodies inferred
 
 
 def probe_tables():
-    """Manifest probes: chords along each probe's circle, equal time each."""
+    """Manifest probes: chords along each probe's circle, equal time each, each turning the weld by the chord's angle about
+    the axle (+a in the panel's x-z plane is a rotation about -y)."""
     out = []
     for name, body, point, radius, start, sweep, seconds, settle in PROBES:
         n = round(abs(sweep) / CHORD_DEG)
         angles = np.deg2rad(start + sweep * np.arange(n + 1) / n)
         path = radius * np.column_stack([np.cos(angles), np.zeros(n + 1), np.sin(angles)])
         out.append({"name": name, "body": body, "local_point": list(point), "settle_ticks": round(settle / TIMESTEP),
-                    "moves": [[*np.round(d, 6).tolist(), round(seconds / n / TIMESTEP)] for d in np.diff(path, axis=0)]})
+                    "moves": [[*np.round(d, 6).tolist(), round(seconds / n / TIMESTEP), 0, round(-np.deg2rad(sweep / n), 6), 0]
+                              for d in np.diff(path, axis=0)]})
     return out
 
 
 def overpull_tables():
     return [{"name": n, "body": b, "local_point": list(p), "settle_ticks": round(s / TIMESTEP),
-             "moves": [[*(np.asarray(d) / 4).tolist(), round(t / 4 / TIMESTEP)] for _ in range(4)]} for n, b, p, d, t, s in OVERPULLS]
+             "moves": [[*(np.asarray(d) / 4).tolist(), round(t / 4 / TIMESTEP), *(np.asarray(r) / 4).tolist()] for _ in range(4)]}
+            for n, b, p, d, r, t, s in OVERPULLS]
 
 
 def axle_tolerance():

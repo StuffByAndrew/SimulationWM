@@ -4,11 +4,12 @@ PYTHONPATH=src .venv/bin/python experiments/validation/gear-check.py OUTDIR
 Files equal the generator output (including the physics-computed gate); nothing has a gravity torque and the scene rests;
 no moving geom can collide; the shallow reference's lumped crank inertia equals the deep train's effective inertia; source
 probes are deterministic; every gear renders in RGB and depth from the fixed camera and refuses the grasp while crank and hand
-accept it; the wave 28 configs carry the generator's public grip slip (grasp_slip_m) and the default grasp softness.
-Grip slip: in-reach sweeps (every manifest probe path at 0.5x, 1x and 1.5x its speed, deep and shallow) never slip, and
-at the probes' own speed the peak stretch stays below SLIP_M / IN_REACH_MARGIN; every over-pull slips in both models, and after the slip deep and shallow agree
-(error < OVERPULL_SHARE of the gate) where without the slip they diverge by more than the gate (springback).
-Through the real evaluator (evaluate_submission, metric gear_train, the level's grip slip): the deep reference (a copy of the
+accept it; the wave 28 configs carry the generator's public weld grasp and slips (grasp, grasp_slip_m, grasp_slip_rad) and
+the default grasp softness. Slips: in-reach sweeps (every manifest probe path, which turns the weld with the crank or hand,
+at 0.5x, 1x and 1.5x its speed, deep and shallow) never slip, and at the probes' own speed the peak stretch and twist stay
+below SLIP_M and SLIP_RAD over IN_REACH_MARGIN; every over-pull and over-twist slips in both models, and after the slip deep and
+shallow agree (error < OVERPULL_SHARE of the gate) where without the slips the over-pulls diverge by more than the gate
+(springback). Through the real evaluator (evaluate_submission, metric gear_train, the level's grasp): the deep reference (a copy of the
 source) and the shallow reference at the source timestep score within noise (each probe's crank and hand RMS error
 < GATE_SHARE of the gate); shallow.xml at its own larger timestep passes the gate, and the deep reference costs >= 10x it per
 simulated second; the classes are deep / shallow, G-cheap passes both, removals answer for deep and are cannot_answer for
@@ -40,7 +41,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 GATE_SHARE = .1      # "within noise": the shallow reference's probe error is below this share of the G-cheap gate
 COST_RATIO = 10.     # the deep reference costs at least this many times the shallow one
 IN_REACH_MARGIN = 1.5  # in-reach peak stretch stays below the slip threshold by this factor
-OVERPULL_SHARE = .25   # after an over-pull slips, deep and shallow agree within this share of the gate
+OVERPULL_SHARE = .1    # after an over-pull or over-twist slips, deep and shallow agree within this share of the gate
 MIN_PIXELS = 15      # each gear's visible pixels from the fixed camera (320 x 240)
 result = {}
 for path, text in S.outputs().items():
@@ -48,9 +49,9 @@ for path, text in S.outputs().items():
 SCENE, SHALLOW = S.ROOT / "scene.xml", S.ROOT / "shallow.xml"
 table = __import__("tomllib").loads((S.ROOT / "manifest.toml").read_text())
 gears = [b["name"] for b in S.train()[1:-1]]
-GRASP = {"grasp_slip_m": S.SLIP_M}
+GRASP = S.GRASP
 for path in sorted(Path("experiments/configs/wave28-20261124").glob("*.toml")):
-    assert {k: v for k, v in __import__("tomllib").loads(path.read_text())["simulation"].items() if k.startswith("grasp_")} == GRASP, path
+    assert {k: v for k, v in __import__("tomllib").loads(path.read_text())["simulation"].items() if k.startswith("grasp")} == GRASP, path
 
 # Statics: balanced bodies, rest, no collisions.
 model, data = compile_plain(SCENE)
@@ -162,12 +163,12 @@ assert shallow["removal"]["cannot_answer"] == len(table["gear_train"]["removals"
 
 # Grip slip: in-reach sweeps hold, over-pulls slip before the deep train's springback.
 def peak_stretch(sim):
-    """Record the peak grasp stretch (m) after every step in record["m"]."""
-    record, slip = {"m": 0.}, sim.slip
+    """Record the peak grasp stretch (m) and twist (rad) after every step in record["m"] and record["rad"]."""
+    record, slip = {"m": 0., "rad": 0.}, sim.slip
 
     def check():
         if sim._grasp is not None:
-            record["m"] = max(record["m"], sim.grasp_stretch())
+            record["m"], record["rad"] = max(record["m"], sim.grasp_stretch()), max(record["rad"], sim.grasp_twist())
         slip()
     sim.slip = check
     return record
@@ -180,20 +181,21 @@ worlds = {"deep": Simulation(SCENE, S.SOURCE_CONFIG), "shallow": Simulation(shal
 result["in_reach"] = {}
 for factor in (.5, 1., 1.5):
     for probe in table["probes"]:
-        fast = {**probe, "moves": [[*m[:3], max(1, round(m[3] / factor))] for m in probe["moves"]]}
+        fast = {**probe, "moves": [[*m[:3], max(1, round(m[3] / factor)), *m[4:]] for m in probe["moves"]]}
         actions = probe_actions(worlds["deep"], fast)
         for name, sim in worlds.items():
             record = peak_stretch(sim)
             _, _, held = rollout(sim, actions, S.TIMESTEP, normal)
             del sim.slip
-            result["in_reach"][f"{probe['name']} x{factor:g} {name}"] = {"held": held, "peak_stretch_m": record["m"]}
-            assert held and (factor > 1 or record["m"] < S.SLIP_M / IN_REACH_MARGIN), (probe["name"], factor, name, record["m"])
+            result["in_reach"][f"{probe['name']} x{factor:g} {name}"] = {"held": held, "peak_stretch_m": record["m"], "peak_twist_rad": record["rad"]}
+            assert held and (factor > 1 or record["m"] < S.SLIP_M / IN_REACH_MARGIN and record["rad"] < S.SLIP_RAD / IN_REACH_MARGIN), \
+                (probe["name"], factor, name, record)
 result["overpull"] = {}
 for probe in S.overpull_tables():
     actions = probe_actions(worlds["deep"], probe)
     record = {}
     for slips, configs in ((True, (S.SOURCE_CONFIG, S.CANDIDATE_CONFIG)),
-                           (False, [{k: v for k, v in c.items() if k != "grasp_slip_m"} for c in (S.SOURCE_CONFIG, S.CANDIDATE_CONFIG)])):
+                           (False, [{k: v for k, v in c.items() if not k.startswith("grasp_slip")} for c in (S.SOURCE_CONFIG, S.CANDIDATE_CONFIG)])):
         deep_sim, shallow_sim = Simulation(SCENE, configs[0]), Simulation(shallow_scene, configs[1])
         (ta, a, held_a), (tb, b, held_b) = (rollout(sim, actions, S.TIMESTEP, normal) for sim in (deep_sim, shallow_sim))
         rms = np.sqrt(np.mean((a - b) ** 2, axis=0))
@@ -216,5 +218,6 @@ for name in table["gear_train"]["removals"]:
 (OUT / "check.json").write_text(json.dumps(result, indent=1))
 print(json.dumps({k: result[k] for k in ("gate_rad", "cost_ratio_deep_over_shallow", "shallow_vs_removed_source_rad", "overpull",
                                          "overpull_springback_without_slip")}, indent=1))
-print("in-reach peak stretch (m):", max(r["peak_stretch_m"] for r in result["in_reach"].values()), "slip threshold:", S.SLIP_M)
+print("in-reach peak stretch (m):", max(r["peak_stretch_m"] for r in result["in_reach"].values()), "slip threshold:", S.SLIP_M,
+      "twist (rad):", max(r["peak_twist_rad"] for r in result["in_reach"].values()), "slip threshold:", S.SLIP_RAD)
 print("gear-check passed")
