@@ -191,6 +191,35 @@ def test_optional_wrench_hanging_load_sign_and_release(tmp_path):
         sim.close()
 
 
+@pytest.mark.parametrize('grasp', ['connect', 'weld'])
+def test_wrench_on_a_jointed_body_excludes_blocked_directions(tmp_path, grasp):
+    """A hinged lever held at its tip, the grip pushed 1 mm outward along the blocked radial direction: the reading is the
+    force that balances the lever (0.5 m g down at the tip), not the 10^11 N the soft constraint showed along the blocked
+    direction (gear-train hand, wave 28)."""
+    scene = tmp_path / 'lever.xml'
+    scene.write_text('''<mujoco><option timestep=".001"/>
+      <worldbody><camera name="fixed" pos="0 -3 1" xyaxes="1 0 0 0 0 1"/>
+      <body name="lever" pos="0 0 1"><joint type="hinge" axis="0 1 0" damping="1"/>
+        <geom type="box" size=".2 .01 .01" pos=".2 0 0" mass="1"/></body>
+      </worldbody></mujoco>''')
+    sim = Simulation(scene, {'width': 80, 'height': 60, 'wrench': True, 'grasp': grasp})
+    try:
+        lever = mujoco.mj_name2id(sim._model, mujoco.mjtObj.mjOBJ_BODY, 'lever')
+        sim._grasp_controller.attach(lever, sim._data.xpos[lever] + [.4, 0, 0])
+        sim.action({'op': 'move', 'displacement': [.001, 0, 0], 'ticks': 50})
+        sim._advance(2000)
+        wrench = sim.observe()['wrench']
+        assert wrench['active']
+        if grasp == 'connect':
+            np.testing.assert_allclose(wrench['force'], [0, 0, -.5 * 9.81], atol=.05)
+            assert wrench['torque'] == [0, 0, 0]
+        else:
+            assert np.linalg.norm(wrench['force']) + np.linalg.norm(wrench['torque']) < 10
+            assert_wrench_is_the_weld_rows(sim)
+    finally:
+        sim.close()
+
+
 def test_wrench_toggle_does_not_change_dynamics():
     disabled = Simulation(ROOT / 'environments/blocks/scene.xml', {'width': 80, 'height': 60})
     enabled = Simulation(ROOT / 'environments/blocks/scene.xml', {'width': 80, 'height': 60, 'wrench': True})
