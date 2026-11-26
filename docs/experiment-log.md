@@ -46,6 +46,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 05:50 UTC — Latch-out no-reset completed; status
+- `w31-latch-out-noreset-20261125-003` **completed**: the agent called finish at 264 run-minutes, 5 submissions.
+- Wave 31 complete so far: tetra-spring-k (141 min, 3 submissions), hand (354, 2), latch-out (264, 5), and
+  cube-spring-block-mjcf (stopped at its 4 h checkpoint, 4). Running: marble `-003` (254 min, 3) and cloth-holes `-003`
+  (106 min, 1).
+- Gear recon `-20261126-002` (weld, fixed wrench) started. Fixture-rigid and the three wave 27 pairs on test are running
+  normally; all calls so far succeeded.
+
 ## 2026-11-26 05:00 UTC — Wrench fix merged; gear (fresh matched set) and bottle relaunched
 - Merged builder 870431b (f550e3a): the least-magnitude wrench fix (4e6aa03) and record
   `trusted-image-isolated-wrench.json` (agent `cb9630a42084`, evaluator `2f4d35428188`; a superset of the bottle and weld
