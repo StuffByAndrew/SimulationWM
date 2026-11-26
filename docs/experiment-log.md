@@ -46,6 +46,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 21:50 UTC — Sapphire batch progress; Carbon w11 completed
+- `w11-tetra-spring-k-carbon-20261125-001` **completed**: 235 run-minutes, 1 submission. Carbon marble, latch and hand
+  are at 226–240 min.
+- Waves 25, 26 and 29 on sapphire are at 76–148 run-minutes after about 4.7 h real; the outage held their clocks.
+  - Their jobs have a 14 h limit, which cannot be raised while running (permission denied).
+  - The wave 25 controls (76–105 min) need about 4.5 h more run clock, so a long new outage could truncate them.
+- Gear weld set: recon and cheap 1 submission each, deep running. Fixture-rubber running on kempner_cpu.
+
 ## 2026-11-26 19:50 UTC — Wave 31 (resets vs no resets) complete
 - `w31-cloth-holes-noreset-20261125-003` **completed**: the agent called finish at 306 run-minutes, 4 submissions.
 - **All six no-reset levels are done** (n=1 each), against their Neon baselines with resets:
