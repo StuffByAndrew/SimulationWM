@@ -553,6 +553,24 @@ input()
             self.assertLess(self.host_operations.index("pause"), self.host_operations.index("plot"))
             self.assertLess(self.host_operations.index("plot"), self.host_operations.index("unpause"))
 
+    def test_freeze_and_thaw_time_is_not_charged_to_the_active_budget(self):
+        """Slow freeze/thaw RPCs (up to 76 s, probe job 63755982) are infrastructure: the evaluation pause starts before the
+        STOP and ends after the CONT, so 0.5 s of freezing does not exhaust a 0.3 s active budget."""
+        script = '''
+print('{"op":"submit","project_b64":"eA=="}',flush=True)
+r=json.loads(input())
+assert r["ok"], r
+print('{"op":"finish"}',flush=True)
+input()
+'''
+        with tempfile.TemporaryDirectory() as directory, patch("sim2sim.runtime._set_paused", side_effect=lambda *a: time.sleep(.25)):
+            result = self.run_agent(directory, script, {"physics_ticks": 3, "active_seconds": .3},
+                                    lambda *args: {"status": "failed", "scores": None})
+            self.assertEqual(result["submissions"], 1)
+            termination = json.loads((Path(directory) / "run/termination.json").read_text())
+            self.assertEqual(termination["status"], "finished")
+            self.assertGreater(termination["remaining_active_seconds"], 0)
+
     def test_wrench_default_is_independent_and_absent_from_observation(self):
         script = """assert task['observation_contract']['modalities']['wrench'] is False
 assert task['observation_contract']['modalities']['rgb'] is True
