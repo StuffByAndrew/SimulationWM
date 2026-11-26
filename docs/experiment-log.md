@@ -46,6 +46,19 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 01:10 UTC — Second freezer failure (cloth-holes no-reset); tetra no-reset completed; weld grasp merged
+- `w31-tetra-spring-k-noreset-20261125-002` **completed**: the agent called finish at 141 run-minutes, 3 submissions.
+- `w31-cloth-holes-noreset-20261125-002` (kempner_cpu `63706223`, holygpu8a11202) failed at its 4th evaluation, at 221
+  run-minutes with 3 submissions: "step freezer did not reach frozen=1". This is the second production occurrence, on a
+  different node from the first. The builder also saw it in OCI on holy8a24402, so it is not specific to kempner_cpu.
+  - The run predates the diagnostics merge, so it has no details.
+  - Rerun as `-003` (`63753049`, moved to the top of kempner_cpu).
+- Latch-out `-003` and marble `-003` are running. Hand (1 submission) and cube-spring-block-mjcf (2) are near 4 h.
+- **Weld grasp merged** (b172d76, builder d5d9a15): `grasp = "weld"`, move `rotation`, weld wrench torque,
+  `grasp_slip_rad`, `point_grasps`. Defaults are unchanged and configs regenerate byte-identically.
+  - Record `trusted-image-isolated-weld.json` (agent `1f002e6d2cc9`, evaluator `b00bf0195b72`).
+  - Gear-train waits for the builder's weld configs.
+
 ## 2026-11-25 23:30 UTC — Gear-train held for the weld grasp (user decision)
 - User (2026-11-25, AGENTS.md 1820e44 "Weld grasp"): new point-grasp levels, gear-train included, use a weld grasp.
 - `w28-gear-cheap`/`-recon-20261125-002` (kempner_cpu `63730955`, `63730958`) were cancelled before starting. They will
