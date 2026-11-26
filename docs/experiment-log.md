@@ -46,6 +46,16 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 18:50 UTC — Fixture-rigid completed; Inkling running (one run looping)
+- `w23-fixture-rigid-neon-20261125-002` **completed**: the agent called finish at 255 run-minutes after the checkpoint
+  resume; 3 submissions.
+- **Inkling, first hour on test:** all calls succeeded and the clocks keep pace with real time (tetra 68 calls, cloth 34,
+  latch 21, hand 12).
+  - `w19-marble-heavy-hint-inkling` made 357 calls but only 17 camera actions. Its last ~330 turns only say "I'll call
+    the camera tool now" with no tool call.
+  - The builder is asked to check the raw replies: a route or parse bug (run invalid) or model behaviour (a finding).
+- Gear recon and cheap (weld) are at about 110 run-minutes on kempner_cpu.
+
 ## 2026-11-26 18:00 UTC — Outage truncated the test pairs; sapphire started; queue rebalanced
 - **Neon 503 outage**, about 06:15 to the afternoon UTC; provider holds kept it off the run clocks.
   - The three wave 27 pairs on test hit their 12 h job limit (TIMEOUT `63779546`, `63779635`, `63791638`). Their 6 runs
