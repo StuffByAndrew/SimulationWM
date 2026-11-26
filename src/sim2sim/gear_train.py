@@ -73,11 +73,14 @@ def panel_normal(model, data):
 
 def probe_actions(source, probe):
     """Reset, grasp the probe's `body` at `local_point` (its pixel through the source camera at reset), its `moves`
-    ([dx, dy, dz, ticks] each, world m), release and `settle_ticks` of waiting."""
+    ([dx, dy, dz, ticks] each, world m, or with grasp = "weld" optionally [dx, dy, dz, ticks, rx, ry, rz] adding a world
+    rotation vector in rad), release and `settle_ticks` of waiting."""
     from .evaluation import _probe_pixel
+    assert all(len(m) in (4, 7) for m in probe['moves']), 'a gear-train probe move is [dx, dy, dz, ticks] or [dx, dy, dz, ticks, rx, ry, rz]'
     source.action({'op': 'reset'}, render=False)
     return ([{'op': 'reset'}, {'op': 'grasp', 'pixel': [float(v) for v in _probe_pixel(source, probe)]}]
-            + [{'op': 'move', 'displacement': [float(v) for v in m[:3]], 'ticks': int(m[3])} for m in probe['moves']]
+            + [{'op': 'move', 'displacement': [float(v) for v in m[:3]], 'ticks': int(m[3]),
+                **({'rotation': [float(v) for v in m[4:]]} if len(m) == 7 else {})} for m in probe['moves']]
             + [{'op': 'release'}, {'op': 'wait', 'ticks': int(probe['settle_ticks'])}])
 
 

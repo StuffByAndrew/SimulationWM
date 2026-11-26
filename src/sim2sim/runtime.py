@@ -1651,6 +1651,11 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         raise RuntimeFailure("simulation.resets must be a boolean")
     if sim_config.get("movable_camera", False) not in (True, False):
         raise RuntimeFailure("simulation.movable_camera must be a boolean")
+    two_grasps = sim_config.get("point_grasps", 1) == 2  # two simultaneous independent point grasps (Simulation.point_grasps)
+    if type(sim_config.get("point_grasps", 1)) is not int or sim_config.get("point_grasps", 1) not in (1, 2) or two_grasps and (
+            sim_config.get("robot") or sim_config.get("realtime")):
+        raise RuntimeFailure("simulation.point_grasps is 1 or 2; 2 needs the point-grasp embodiment in a lock-step world")
+    weld = sim_config.get("grasp") == "weld"  # weld grasp (Simulation.grasp_type; Simulation validates grasp and grasp_slip_rad)
     if sim_config.get("effort", True) is not True and (sim_config["effort"] is not False or not sim_config.get("robot")):
         raise RuntimeFailure("simulation.effort is a boolean for a robot (false hides actuator_effort_nm: no force sensing)")
     source_manifest = Path(scene).resolve().parent / config["source"].get("manifest", "manifest.toml")
@@ -1687,7 +1692,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
         from .realtime import RealtimeWorld, WorldFailure
         launcher = Launcher(private_manifest["launcher"]) if "launcher" in private_manifest else None
     supervisor.check()
-    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "realtime", "frame_rate", "default_ticks", "grasp_solref", "grasp_solimp", "grasp_slip_m") if k in sim_config}
+    public_config = {k: sim_config[k] for k in ("width", "height", "robot", "wrist_camera", "rgb", "depth", "calibration", "wrench", "tactile", "effort", "movable_camera", "realtime", "frame_rate", "default_ticks", "grasp_solref", "grasp_solimp", "grasp_slip_m", "point_grasps", "grasp", "grasp_slip_rad") if k in sim_config}
     public_config.setdefault("width", getattr(sim, "width", 640))
     public_config.setdefault("height", getattr(sim, "height", 480))
     public_config["timestep"] = float(sim._model.opt.timestep) if hasattr(sim, "_model") else float(sim_config.get("timestep", .002))
@@ -2004,6 +2009,24 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                                                "effect": "re-aims the selected world's observation camera and returns an observation; "
                                                          "no physics time passes; the pose persists across resets",
                                                "limits": "each coordinate within +-4 m; pos and lookat at least 0.05 m apart"}
+        if two_grasps:
+            for op in ("grasp", "move", "release"):
+                task["action_schema"][op]["grasp_index"] = "0 or 1 (default 0): which of the two independent point grasps"
+            task["observation_contract"]["point_grasps"] = (
+                "two simultaneous independent point grasps, each its own point constraint (both may hold at once, also on the same "
+                "object); grasped is [grasp 0, grasp 1] and wrench is a list of one reading per grasp in the same order, each only "
+                "that grasp's own handle force")
+        if weld:
+            task["action_schema"]["grasp"]["pixel"] = ("[u,v] from top left; weld the first visible movable point to the handle, "
+                                                       "holding the object's current orientation")
+            task["action_schema"]["move"]["displacement"] = "[dx,dy,dz] world meters; translate the welded grasp point"
+            task["action_schema"]["move"]["rotation"] = ("optional [rx,ry,rz] world-frame rotation vector (unit axis times angle, "
+                                                         "radians): turn the held object about the grasp point, applied in equal "
+                                                         "steps over the ticks together with the displacement")
+            task["observation_contract"]["wrench"] = ("optional world object-on-handle force (N) and couple (N m) of the weld at "
+                                                      "the grasp point")
+            task["observation_contract"]["grasp"] = ("weld: the grasp fixes the object's position and orientation to the handle at "
+                                                     "the grasp point; it rotates only as move's rotation turns it")
         if "sequence" in tools:
             task["actions"].insert(task["actions"].index("reset"), "sequence")
             task["action_schema"]["sequence"] = {
@@ -2194,7 +2217,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                 if realtime and op in ("observe", "release") and ticks:
                     raise RuntimeFailure("The real-time world advances on its own: ticks only set the duration of a timed action")
                 resolved = {k: request[k] for k in ("pixel", "displacement", "joint_targets", "gripper_width_m", "actuator_targets", "pos", "lookat",
-                                                    "protocol", "since", "limit") if k in request}
+                                                    "protocol", "since", "limit") + ("grasp_index",) * two_grasps + ("rotation",) * weld if k in request}
                 resolved.update(op=op, world=world, ticks=ticks)
                 if op == "load_reconstruction":
                     resolved.update(entrypoint=request.get("entrypoint", "scene.xml"), camera=request.get("camera", "fixed"))
@@ -2416,7 +2439,7 @@ def _run(config, supervisor, *, prepared_output=False, backend=None):
                     evaluation.setdefault("source_dir", str(Path(scene).resolve().parent))
                     evaluation.setdefault("source_entrypoint", Path(scene).resolve().relative_to(source_root).as_posix())
                     evaluation.setdefault("source_config", dict(sim_config))
-                    for key in ("camera", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m"):
+                    for key in ("camera", "timestep", "grasp_solref", "grasp_solimp", "grasp_slip_m", "grasp", "grasp_slip_rad"):
                         if key in sim_config:
                             evaluation.setdefault(key, sim_config[key])
                     with frozen():
