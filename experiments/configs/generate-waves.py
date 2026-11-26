@@ -746,11 +746,12 @@ GEAR_USES = {"recon": "",
              "deep": (" Your model will be used to predict how the crank and hand move after individual gears are taken out of the "
                       "train; we remove gears from your model by their axle position, and it is scored on those predictions.")}
 ENVS["gear_train"] = (["gear_train"], "")
-# The level's public grip slip (simulation.grasp_slip_m = gear-scenes.py SLIP_M; gear-check.py asserts they agree): an over-pull
-# would otherwise stretch the grasp until MuJoCo's inertia-scaled constraint softness tells the gear train from its lumped equivalent.
+# The level's public weld grasp and slips (simulation.grasp = "weld", grasp_slip_m and grasp_slip_rad = gear-scenes.py GRASP;
+# gear-check.py asserts they agree; user 2026-11-25: new point-grasp levels use the weld): an over-pull or over-twist would
+# otherwise strain the grasp until MuJoCo's inertia-scaled constraint softness tells the gear train from its lumped equivalent.
 GEAR_W28 = {**NEON, "wall": 14400, "hold": 129600, "audit": 17179869184, "vision": True, "depth": True, "movecam": True, "tools": ("sequence",),
-            "metrics": ["gear_train"], "eval_timeout": 600, "pool": "gemini-20261124", "slip": 0.002}
-RUNS_W28 = {f"w28-gear-{name}": ("gear_train", f"gear train, stated use: {name}; point grasp with wrench, RGBD, movable camera, sequence tool; "
+            "metrics": ["gear_train"], "eval_timeout": 600, "pool": "gemini-20261124", "weld": True, "slip": 0.002, "slip_rad": 0.05}
+RUNS_W28 = {f"w28-gear-{name}": ("gear_train", f"gear train, stated use: {name}; weld grasp with wrench, RGBD, movable camera, sequence tool; "
                                                "gemini-4-neon", {**GEAR_W28, "task": TASK_GEAR + use})
           for name, use in GEAR_USES.items()}
 WAVES["wave28-20261124"] = ("Wave 28", "gemini-20261124", 1e6, RUNS_W28)
