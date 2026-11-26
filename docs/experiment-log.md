@@ -62,8 +62,10 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     about 76 kN/m, and the grip force tracks the contact reaction when the grip is driven past a stop or into the wall:
     2 cm past gives about 1.1 kN; 14 cm gives about 7.3 kN. tunnel_curved binds mid-travel at about 0.5 kN.
     - The w16/w17/w20 readings of 2–8 kN mean the agent drove the grip several cm past a stop.
-    - The 4.5e5 N (w16-nonlinear-grasp) and 6.5e4 N (w17-curved-grasp-seq-hint) outliers imply huge commanded moves;
-      still to be confirmed in their audits.
+    - The two outliers are confirmed in their audits as agent over-drive (results explorer, job `63781415`):
+      - w16-nonlinear-grasp-20261109-001 (4.49e5 N, minute 133.2): a move of [4, -3, 8], about 9.4 m in 2 ticks, likely
+        cm meant as m;
+      - w17-curved-grasp-seq-hint-20261110-001 (6.5e4 N, minute 128.1): a move of 0.33 m or more into the curve.
     - Reporting note: in tunnels the force magnitude signals a stop, not the stick's spring or latch force.
       force_profile is unaffected.
   - **Clean:** cloth (max 6.4 N). The no-interaction variants never grasp the lever.
