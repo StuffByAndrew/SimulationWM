@@ -618,3 +618,11 @@ Tuning history: raw-MuJoCo weld exploration jobs `63737259` (default 20 ms const
 stops), `63738174` (stiff contacts at exactly touching starts: springs fired into inactive constraints), `63739635`
 (mechanism works; a 90° bottle spin in 40 ms leaves it closed), rest jobs `63739180`–`63740690` (lying steel cylinder rolled:
 upright rod, `multiccd`); check job `63742170` before the weld (static sections passed).
+
+Image and integration: `experiments/images/trusted-image-isolated-bottle.json` (build job `63754732`; agent `2e7cd4413663`
+from the same agent-side sources as the weld record, evaluator `053bb9233a8a` adding `bottle.py`). OCI suite with it, job
+`63755828`: 12 passed, 1 skipped (tools image), including `BottleOCITests`: through the strict controller the agent holds
+the bottle with weld 1, pushes the cap 8 mm with weld 0 (wrench 12.25 N), turns it a quarter turn, lifts it off and looks
+in; `python -m sim2sim.bottle` on the run finds the first opening at action 7 and the contents seen, and the evaluator
+container scores the submission with `bottle` and `objects`. Smoke: `--prepare-only` of `w32-bottle-contents-2grasp`
+(job `63760019`); the dashboard lists `bottle_empty` and `bottle_contents`.

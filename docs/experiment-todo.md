@@ -43,11 +43,25 @@ Keep this list current: strike items when a log entry covers them.
 3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
 4. Carbon evaluation last: its reruns carry `Nice=200000`.
 
-## Childproof bottle (user, 2026-11-25): designed, to build and queue
-- [ ] Build and queue per [level-designs/childproof-bottle-20261125.md](level-designs/childproof-bottle-20261125.md): free
-  neutral-look bottle with a hidden push-and-turn bayonet cap; {empty, unpredictable contents} × {1, 2 point grasps} = 4
-  runs, wrench, RGB-D movable camera, usual task, MJCF answer, Neon, n=1, 4 h. Needs the cable branch's two-grasp
-  capability. Settings are user-approved; do not re-ask.
+## Childproof bottle (user, 2026-11-25): built, ready to launch (wave 32)
+- [ ] **Launch wave 32** ([design](level-designs/childproof-bottle-20261125.md), [level](environments.md#childproof-bottle-bottle_empty-bottle_contents)):
+  `experiments/configs/wave32-20261125/w32-bottle-{empty,contents}-{1,2}grasp.toml`, 4 runs, n = 1. Weld grasp(s)
+  (`grasp = "weld"`; `point_grasps = 2` in the 2-grasp runs) with wrench, RGB-D, movable camera, `sequence` tool,
+  `TASK_CONVERGE`, MJCF answer, gemini-4-neon, 4 h wall (`wall_only`), budget hold 36 h, provider hold 36 h,
+  accounting-only caps, pool `gemini-20261125-bottle`, evaluation timeout 900 s.
+  - **Image:** `experiments/images/trusted-image-isolated-bottle.json` (agent `2e7cd4413663`, evaluator `053bb9233a8a`;
+    build job `63754732`). The agent image's sources equal the weld record's (`trusted-image-isolated-weld.json`); the
+    evaluator adds `bottle.py`, the `objects` wiring and the rollout generalization. No baseline needs a rerun (new level).
+  - **Validation:** check `63752922` passed (hidden mechanism and contents; twist only and pushes ≤ 7.7 N stay closed,
+    8.05 N + quarter turn opens; stable two-weld opening; **one weld grasp can open it** with table friction holding the
+    bottle); full suite `63753627` (364 passed, known `test_tools` failure); OCI suite with this record `63755828`: 12 passed,
+    1 skipped (tools image), including the two-weld end-to-end bottle run (opened at action 7, contents seen, bottle and
+    objects metrics ok in the evaluator container). Smoke: `--prepare-only` of `w32-bottle-contents-2grasp` (job
+    `63760019`); the dashboard lists both bottle environments.
+  - **Watch in the first run:** the bottle metric runs ~22 probe rollouts per world (2 min 47 s for the whole check on a test
+    node; budget 900 s per evaluation); a submission without a body under either probe pixel scores `cannot_answer`.
+    Post-run: `python -m sim2sim.bottle RUN_DIR` on a test node for opening, its time and contents seen/tipped out.
+  - **Premise note:** one grasp suffices physically (H2 then measures help, not necessity).
 
 ## Inkling 2 Mini on the five hard levels (user, 2026-11-24): configs ready, not launched
 - `experiments/configs/inkling-20261124/*.toml`, zero cost, self-hosted (AGENTS.md "Inkling 2 Mini, self-hosted").
