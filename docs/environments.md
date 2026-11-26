@@ -549,3 +549,39 @@ Tests: same job, 49 passed (`test_gear_train`, `test_simulation`, `test_metric_s
 grasps), `63454396`–`63455903` (0.5 ms with stiffer grasps: still diverged under over-pulls), `63460340`–`63461841` (slip
 threshold, probe speeds, solver tolerance; `gear-explore.py`, `gear-diag.py`). Smoke: `--prepare-only` of `w28-gear-cheap`
 (public `grasp_slip_m = 0.002`, neutral task plus the G-cheap sentence) and the dashboard lists the level.
+
+## Childproof bottle (`bottle_empty`, `bottle_contents`)
+
+Design: [level-designs/childproof-bottle-20261125.md](level-designs/childproof-bottle-20261125.md). Hypotheses: agents discover
+a force-gated hidden mechanism (push to engage, then turn) by interaction without a semantic cue (H1); a second simultaneous
+grasp helps or is needed (H2: 1 vs 2 weld grasps); with unpredictable contents agents open the bottle to complete their model
+(H3: contents vs empty). Wave 32: {empty, contents} × {1, 2 weld grasps}, n = 1. Metrics `bottle` ([evaluation](evaluation.md#childproof-bottle-bottle)),
+`objects`, `chamfer`, `center_of_mass`.
+
+`experiments/validation/bottle-scenes.py` writes `environments/bottle_{empty,contents}/{scene.xml, manifest.toml}` (all
+values in the generator); bottle and cap compile identically in both variants:
+
+- A free hollow bottle (Ø 45 mm, 87 mm to its collar; base, wall, shoulder, 24 mm neck and a collar under the cap, all box
+  rings) with a Ø 51 mm cap, plain neutral grey, on a table. Plastic 1100 kg/m³: bottle 44 g, cap 24 g.
+- Push-and-turn bayonet, plain-MJCF primitive contacts and joint springs, all inside the opaque cap shell. The visible
+  `cap_shell` sits on the hidden inner `cap` on a frictionless hinge and a slide whose 400 N/m spring holds it up with a
+  7.6 N preload. Pushed past the preload (3 mm stroke), six hidden teeth under the shell mesh with six on the inner cap
+  (explicit contact pairs), so turning the shell turns the inner cap; unengaged, the shell spins and turns nothing. The
+  inner cap's two hooks sit in 1 mm notches under two neck lugs, pressed up by a 4 N spring washer (`liner`): the cap
+  cannot turn until pushed down out of the notches (a detent: without it a quick spin of the bottle turned the light inner
+  cap by inertia), and lifts off once turned about 50° or more (a quarter turn opens it).
+- Contents variant: a 12 mm aluminium cube (red), an upright Ø 8 × 20 mm steel rod (blue) and a Ø 10 mm glass ball (yellow),
+  13.8 g, loose inside; visible only once the cap is off. Graspable: `bottle` and `cap_shell` only.
+- 1 ms timestep, contact and stop time constant 2 ms (the 20 ms default let gram-scale parts sink ~10 mm under a few
+  N), `multiccd`; preloaded contacts and the shell's stop start 0.03 mm engaged so the springs act from the first step.
+- Configs: weld grasp(s) (`grasp = "weld"`, `point_grasps = 2` in the two-grasp runs) with wrench, RGB-D, movable camera,
+  `sequence` tool, `TASK_CONVERGE` (never mentions a cap, contents or opening), MJCF answer, gemini-4-neon, 4 h wall.
+
+Evals card: primary, mechanism-probe outcome agreement (`bottle.outcome_agreement`); secondary, engage-force and opening-angle
+errors, contents found and per-object Chamfer (contents variant; omitted contents are unassigned gaps), opening in the
+reference world and its time (`python -m sim2sim.bottle RUN_DIR`), at matched wall minutes and tokens. Qualitative: pushing at
+all or only twisting, reading the wrench to find the threshold, holding the bottle with one grasp, opening to look inside,
+what the agent does with contents it cannot see (guess, omit, state uncertainty); failure modes twisting forever and tipping
+the bottle. Run check: dashboard video with both grasp overlays, action timeline, physics inspector on submitted versions.
+Report: probe-outcome table (truth vs model) by condition, push force vs cap rotation, a clip of the first opening, contents
+overlay. No new dashboard view.

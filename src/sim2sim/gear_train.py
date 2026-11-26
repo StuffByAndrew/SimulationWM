@@ -81,17 +81,21 @@ def probe_actions(source, probe):
             + [{'op': 'release'}, {'op': 'wait', 'ticks': int(probe['settle_ticks'])}])
 
 
-def rollout(sim, actions, seconds_per_tick, normal):
+def rollout(sim, actions, seconds_per_tick, normal, ids=None, points=None):
     """Run probe actions from reset at the simulation's own timestep: an action of n ticks of `seconds_per_tick` lasts
-    max(1, round(n seconds_per_tick / timestep)) steps (a missed or slipped grasp's moves advance as waits). Returns the
-    times (s) and unwrapped world rotations (rad) of crank and hand about `normal` relative to reset, at reset and after every
-    step, and whether every grasp caught and held (no grasp_slip_m slip) until its release."""
-    ids = _ids(sim._model)
+    max(1, round(n seconds_per_tick / timestep)) steps (a missed or slipped grasp's moves advance as waits; actions may name a
+    grasp_index). Returns the times (s) and unwrapped world rotations (rad) of the bodies `ids` (default crank and hand) about
+    `normal` relative to reset, at reset and after every step, and whether every grasp caught and held (no slip) until its
+    release. With `points` (one body-frame point per body), each row also holds those points' displacements along `normal`
+    since reset (m), after the rotations. A callback already set on sim still runs at every sample."""
+    ids = _ids(sim._model) if ids is None else list(ids)
     u = np.cross(normal, np.eye(3)[np.argmin(np.abs(normal))])
     u /= np.linalg.norm(u)
     assert actions[0] == {'op': 'reset'}
     sim.action({'op': 'reset'}, render=False)
     start = [sim._data.xmat[b].reshape(3, 3).copy() for b in ids]
+    height = lambda current: [normal @ (current._data.xpos[b] + current._data.xmat[b].reshape(3, 3) @ p) for b, p in zip(ids, points)]  # noqa: E731
+    base = height(sim) if points is not None else []
     scale = seconds_per_tick / float(sim._model.opt.timestep)
     times, samples, grasped = [], [], []
 
@@ -101,26 +105,32 @@ def rollout(sim, actions, seconds_per_tick, normal):
             v = current._data.xmat[b].reshape(3, 3) @ rotation.T @ u
             row.append(np.arctan2(normal @ np.cross(u, v), u @ v))
         times.append(float(current._data.time))
-        samples.append(row)
+        samples.append(row + ([h - h0 for h, h0 in zip(height(current), base)] if points is not None else []))
+        if old:
+            old(current)
+    old = sim._callback
     record(sim)
-    old, sim._callback = sim._callback, record
+    sim._callback = record
     try:
         for action in actions[1:]:
             if 'ticks' in action:
                 action = {**action, 'ticks': max(1, round(action['ticks'] * scale))}
+            held = sim._grasps[action.get('grasp_index', 0)] is not None
             if action['op'] == 'release':
-                grasped.append(sim._grasp is not None)
-            if action['op'] == 'move' and sim._grasp is None:
+                grasped.append(held)
+            if action['op'] == 'move' and not held:
                 sim.action({'op': 'wait', 'ticks': action['ticks']}, render=False)
             else:
                 sim.action(action, render=False)
             if action['op'] == 'grasp':
-                grasped.append(sim._grasp is not None)
+                grasped.append(sim._grasps[action.get('grasp_index', 0)] is not None)
             if not np.isfinite(sim._data.qpos).all() or not np.isfinite(sim._data.qvel).all():
                 raise ValueError('nonfinite simulation state')
     finally:
         sim._callback = old
-    return np.asarray(times), np.unwrap(np.asarray(samples), axis=0), all(grasped)
+    samples = np.asarray(samples)
+    samples[:, :len(ids)] = np.unwrap(samples[:, :len(ids)], axis=0)
+    return np.asarray(times), samples, all(grasped)
 
 
 def reference_runs(source, probes, normal):

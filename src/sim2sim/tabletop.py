@@ -1,8 +1,8 @@
 """Private metrics and researcher view of the touch-only tabletop levels (environments/panda_shadow; manifest [tabletop]).
 
-Metric `objects` (fresh reset state, both worlds): every source object body (manifest object_bodies) is assigned at most one
-candidate object, i.e. a top-level non-robot candidate body with its descendants, by geometry only: a one-to-one assignment
-minimising the symmetric Chamfer distance between the two objects' exposed primitive-union surfaces (never names, color,
+Metric `objects` (fresh reset state, both worlds; also on point-grasp levels, e.g. the bottle contents): every source
+object body (manifest object_bodies) is assigned at most one candidate object, i.e. a top-level non-robot candidate body
+with its descendants, by geometry only: a one-to-one assignment minimising the symmetric Chamfer distance between the two objects' exposed primitive-union surfaces (never names, color,
 density or mass). Per source object: the assigned candidate body, its Chamfer distance, the distance between the two
 surface-sample centroids, found (assigned with the centroid error within the source object's bounding radius about its own
 centroid), the label check (candidate body name contains a private synonym of [tabletop.labels], only where a list exists)
@@ -78,7 +78,7 @@ def objects(source, candidate, config):
     truth = _objects(source, _primitives(source, geom_names=config['object_geoms']))
     assert sorted(truth) == sorted(config['object_bodies']), 'object_geoms must cover exactly the top-level object_bodies'
     try:
-        found = _objects(candidate, _primitives(candidate, exclude_robot=True))
+        found = _objects(candidate, _primitives(candidate, exclude_robot=candidate.robot is not None))
     except ValueError as exc:
         return {'status': 'unavailable', 'reason': f'candidate objects: {exc}'}
     names, others = list(truth), list(found)

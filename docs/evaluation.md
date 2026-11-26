@@ -236,7 +236,8 @@ interaction with any flex is described in `docs/environments.md` (Cloth levels).
 ## Touch tabletop objects (`objects`, `identification`)
 
 Selectors for the touch-only `panda_shadow` levels (`src/sim2sim/tabletop.py`; private manifest `[tabletop]`), on fresh
-reset states of both worlds.
+reset states of both worlds. `objects` also runs on point-grasp levels (the childproof bottle's per-object contents
+breakdown), where every non-world candidate body counts.
 
 - `objects`: each source object (a top-level `object_bodies` body with its descendants) is assigned at most one candidate
   object (a top-level non-robot candidate body) by geometry only: a one-to-one assignment minimising the symmetric
@@ -433,3 +434,38 @@ evaluation fails with that error. It combines with other scene metrics but the l
 Artifacts under `artifacts/<digest>/gear_train/`: `probes.json` (actions and both worlds' rotations every 5 ticks) and
 `scores.json`. Not yet built: the design's H4 trace classifier (did the agent build and time models of two depths) and a
 dashboard per-version structure summary; read `scores.gear_train.structure` and `sim_cost` from the private reports.
+
+## Childproof bottle (`bottle`)
+
+`bottle` (selector; needs a private manifest `[bottle]` table; `src/sim2sim/bottle.py`) scores a scene submission for the
+childproof bottle levels `environments/bottle_{empty,contents}` ([design](level-designs/childproof-bottle-20261125.md)). Both
+worlds run fresh with **two weld grasps** whatever the run's grasp count, so every condition gets the same probes, at the
+evaluator's timestep. The probe pixels come from the source camera at reset (`shell_point` on the cap top, `bottle_point` on
+the bottle wall); in each world "cap" and "bottle" are the bodies those pixels' grasp rays hit (geometry only, never names).
+A world whose ray misses, or hits one body for both, cannot answer: a gap, never an error value.
+
+- `probes`: for each push depth in `push_m` (0 = twist only; below and above the source's engage threshold) with both grasps,
+  and once with the cap grasp only at `one_grasp_push_m`: grasp, push the cap down by the depth, turn it by `turn_deg` about
+  the vertical through the grasp point, unpush, release the bottle, lift the cap by `lift_m`, release, settle. Recorded
+  through `gear_train.rollout` at reset and every step: the world rotation of cap and bottle about the vertical and the lift
+  of their grasped points. Per probe: RMS rotation (rad) and lift (m) differences per body and the outcome `opened` (the cap
+  point rose more than `open_lift_m` above the bottle point at some time). `outcome_agreement` (primary) is the share of
+  answered probes whose outcome matches the source's; means of the RMS differences over answered probes.
+- `engage`: per world its smallest two-grasp depth that opens and the cap grasp's vertical wrench force at the end of that
+  push (`engage_force_n`), with `closed_force_n` at the deepest push that did not open: the push force the model implies,
+  bracketed by the depth grid. `engage_force_error_n` = |candidate − source|; a model that never opens has none
+  (`reason = never_opens`).
+- `angle`: per world at its own engage depth, the smallest turn in `angles_deg` that opens; `opening_angle_error_deg`, or a
+  reason (never opens, or no tested angle opens).
+
+Contents use the existing selectors: `objects` (per source object, i.e. bottle, cap and each content, the geometry-only
+assigned candidate body, Chamfer, centroid error and `found`; an omitted content is unassigned with a reason) and
+`chamfer`/`center_of_mass` on the whole scene. Artifacts under `artifacts/<digest>/bottle/`: `probes.json` (both worlds'
+samples every 10 ms per answered probe) and `scores.json`.
+
+Post-run, researcher-only: `python -m sim2sim.bottle RUN_DIR` (Slurm `test`) reads the verified audit and source snapshot and
+writes `RUN/bottle.json`: at every recorded reference-world state whether the cap is off (inner cap more than
+`open_separation_m` from its closed pose in the bottle frame) and which contents are outside the bottle (`interior`), and at
+open states whether contents show in the agent's own recorded camera view (≥ 4 segmentation pixels; the pose from the
+observation's calibration). Reported: `opened`, `first_opening` (action id, reference episode and ticks, and the latest audited
+wall time at or before it), `states_open`, `contents_seen`, `contents_tipped_out`.

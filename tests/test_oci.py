@@ -771,3 +771,88 @@ class DieRealtimeOCITests(unittest.TestCase):
         self.assertEqual((isolation["uid"], isolation["hits"], isolation["network"], isolation["controller"]), (65532, [], False, False))
         self.assertTrue((output / "die-view.html").is_file())
         self.assertIsNone(json.loads((output / "termination.json").read_text())["realtime_world"]["error"])
+
+
+# Runs as the agent on the childproof bottle level with two weld grasps (environments/bottle_contents): both grasps take
+# grasp_index and the harness requires it; it holds the bottle with grasp 1, pushes the cap past its preload with grasp 0,
+# turns it a quarter turn, lifts it off, sets it aside and looks into the open bottle, then submits a crude closed model.
+BOTTLE_AGENT = r'''
+import json, sys
+from pathlib import Path
+sys.path[:0] = ["/opt/agent"]
+import sandbox_agent
+from sim2sim.client import Client
+SHELL, BOTTLE = __PIXELS__
+client = Client()
+task = client.task
+assert task["public_tool_config"]["point_grasps"] == 2 and "point_grasps" in task["observation_contract"]
+tools = {tool["name"]: json.dumps(tool) for tool in sandbox_agent.tool_schemas(task)}
+assert all("grasp_index" in tools[op] for op in ("grasp", "move", "release")), tools["grasp"]
+assert client.grasp(BOTTLE, grasp_index=1)["grasped"] == [False, True]
+observation = client.grasp(SHELL, grasp_index=0)
+assert observation["grasped"] == [True, True] and len(observation["wrench"]) == 2
+push = client.move([0, 0, -.008], ticks=300, grasp_index=0)
+client.move([0, 0, 0], ticks=500, grasp_index=0, rotation=[0, 0, 1.5707963])
+client.move([0, 0, .008], ticks=300, grasp_index=0)
+client.release(grasp_index=1)
+client.move([0, 0, .06], ticks=400, grasp_index=0)
+client.move([.08, 0, 0], ticks=400, grasp_index=0)
+client.release(ticks=200, grasp_index=0)
+client.request("camera", pos=[0.0, -0.03, 0.62], lookat=[0.0, 0.0, 0.42])
+project = Path("/workspace/project")
+project.mkdir()
+(project / "scene.xml").write_text("""<mujoco model="guess"><worldbody><light pos="0 0 3"/>
+<camera name="fixed" pos="0.17 -0.24 0.6" xyaxes="0.82 0.58 0 -0.3 0.42 0.86"/><geom name="table" type="box" pos="0 0 .35" size=".3 .3 .05"/>
+<body name="bottle" pos="0 0 .44"><freejoint/><geom type="cylinder" size=".0225 .04" density="300"/></body>
+<body name="cap" pos="0 0 .495"><freejoint/><geom type="cylinder" size=".0255 .012" density="300"/></body>
+</worldbody></mujoco>""")
+assert client.submit(project)["status"] == "ok"
+client.progress(json.dumps({"push_wrench": push["wrench"], "grasped": push["grasped"]}), origin="agent")
+client.finish()
+'''
+
+
+@unittest.skipUnless(os.environ.get("SIM2SIM_OCI_TEST") == "1", "requires explicit rootless OCI integration opt-in")
+class BottleOCITests(unittest.TestCase):
+    def test_two_weld_grasps_open_the_bottle_end_to_end(self):
+        """Two weld grasps through the strict controller open the childproof bottle; the private bottle metric and the
+        post-run behaviour pass see the opening and the contents."""
+        import tomllib
+        from sim2sim import bottle
+        from sim2sim.audit import read_audit
+        from sim2sim.runtime import run
+        from sim2sim.simulation import Simulation
+        root = Path(__file__).resolve().parents[1]
+        level = root / "environments/bottle_contents"
+        table = tomllib.loads((level / "manifest.toml").read_text())["bottle"]
+        simulation = {"camera": "fixed", "width": 320, "height": 240, "rgb": True, "depth": True, "calibration": True, "wrench": True,
+                      "movable_camera": True, "point_grasps": 2, "grasp": "weld"}
+        source = Simulation(level / "scene.xml", simulation)
+        pixels = bottle.pixels(source, table)
+        source.close()
+        output = root / "experiments/validation/bottle-oci" / ("oci-" + os.environ.get("SLURM_JOB_ID", "local") + "-" + uuid.uuid4().hex[:8])
+        config = {"source": {"scene": str(level / "scene.xml")}, "tools": {"sequence": True},
+                  "sandbox": {"process_limit_backend": BACKEND, "image": IMAGE, "evaluator_image": EVALUATOR_IMAGE,
+                              "command": ["python", "-c", BOTTLE_AGENT.replace("__PIXELS__", repr(pixels))], "memory": "3g", "cpus": 2,
+                              "pids": 128, "workspace": "1g", "worker": {"memory": "2g", "cpus": 1}},
+                  "output_dir": str(output), "record_video": False, "budget": {"active_seconds": 900, "physics_ticks": 5000, "submissions": 1},
+                  "simulation": simulation,
+                  "evaluation": {"source_dir": str(level), "metrics": ["bottle", "objects"], "camera": "fixed", "width": 320, "height": 240,
+                                 "timeout_seconds": 900}}
+        try:
+            run(config)
+        except Exception:
+            for log in output.rglob("*.log"):
+                print(str(log.relative_to(output)) + ":\n" + log.read_text(errors="replace"))
+            raise
+        self.assertEqual(json.loads((output / "termination.json").read_text())["status"], "finished")
+        report = [json.loads(line) for line in (output / "progress.jsonl").read_text().splitlines() if '"origin": "agent"' in line]
+        self.assertTrue(report, "agent script did not reach its report; see agent.stderr.log")
+        behaviour = bottle.analyse(output)
+        self.assertTrue(behaviour["opened"] and behaviour["contents_seen"], behaviour)
+        reports = [event["report"] for _, event in read_audit(output) if event.get("kind") == "evaluation" and event.get("report")]
+        self.assertTrue(reports and reports[-1]["status"] == "ok", reports[-1:])
+        scores = reports[-1]["scores"]
+        self.assertIsNotNone(scores["bottle"]["outcome_agreement"])
+        self.assertEqual({r["name"] for r in scores["objects"]["per_object"] if r["candidate_body"] is None}, {"cube", "rod", "ball"})
+        print("bottle: " + report[-1]["text"] + " " + json.dumps(behaviour))
