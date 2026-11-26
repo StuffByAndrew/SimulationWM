@@ -46,6 +46,18 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 05:00 UTC — Wrench fix merged; gear (fresh matched set) and bottle relaunched
+- Merged builder 870431b (f550e3a): the least-magnitude wrench fix (4e6aa03) and record
+  `trusted-image-isolated-wrench.json` (agent `cb9630a42084`, evaluator `2f4d35428188`; a superset of the bottle and weld
+  records).
+  - OCI `63779900`: 12 passed, with every pause and thaw succeeding on holy8a24402 under the freezer fix.
+  - Bottle check `63773220` passed with the same thresholds; the gear premise is unaffected (no wrench in its metric).
+- **Gear-train:** fresh matched set `w28-gear-{recon,cheap,deep}-20261126-002` (netscratch, sources identical to the
+  `-001` preparations), kempner_cpu `63783543`, `63783544`, `63783566`, at the top.
+- **Bottle:** the 4 prepared `-20261126-001` runs re-submitted on the wrench record: `63783568`, `63783569`, `63783571`,
+  `63783574`.
+- Discard: the gear `-20261126-001` runs. Recon was cancelled after its agent saw the bug; cheap and deep never started.
+
 ## 2026-11-26 04:20 UTC — Wrench-bug scan of past runs; hand no-reset completed
 - `w31-hand-smooth-mesh-noreset-20261125-002` **completed**: the agent called finish at 354 run-minutes, 2 submissions.
   All six wave-31 `-002` runs are now compacted (the watcher ended cleanly).
