@@ -46,6 +46,13 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 04:10 UTC — Killed runs that were rerun are discarded (user decision, via maintenance)
+- User (2026-11-25): incomplete runs that were killed or cancelled and then rerun are discarded, not kept or compacted.
+- The maintenance session deleted the 4 runs compaction had refused, all killed or cancelled and all rerun
+  (log `~/sim2sim-maintenance/discard-killed-runs-20261125.log`): `w23-fixture-bimodal-neon-20261123-003`,
+  `w3-panda-lever-hard-20261104-001`, `w1-assembly-depth-20261102-002` and `w1-blocks-base-20261102-001`. Earlier
+  entries that mention them now refer to discarded runs.
+
 ## 2026-11-26 04:00 UTC — Wrench bug on jointed bodies; gear relaunch pending; more parallelism
 - **Wrench bug (builder; repro jobs `63771115`, `63771547`):** with a point grasp on a JOINTED body (hinge or slide), the
   public wrench reported the grip's constraint rows along directions the joint blocks.
