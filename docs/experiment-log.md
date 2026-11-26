@@ -46,6 +46,24 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 00:30 UTC — Main Gemini key's Neon quota exhausted; 34 runs moved to the second key (BYCOST)
+- From about 21:45 UTC on 11-26, every Neon call on `GEMINI_API_KEY` returned HTTP 429 "You exceeded your current
+  quota" (likely the daily request quota: about 40 concurrent Neon runs plus the outage retries). Provider holds kept the
+  runs alive without charging their clocks. Carbon (another model) and Inkling (self-hosted) were unaffected.
+- The kempner_cpu runs (gear weld set, fixture-rubber; 3-day limit) wait for the daily reset (about 08:00 UTC).
+- The 14 h sapphire jobs would time out before the reset, and the 20 h jobs had made no call yet, so 19 jobs (34 runs)
+  were cancelled and **re-run on `GEMINI_API_KEY_BYCOST`**, as the user set it up for extra capacity.
+  - Configs `experiments/configs/bycost-20261127/`: each original config with only `api_key_env` and the cost lines
+    changed (lifetime pool `gemini-bycost`, $15000; $1000 per run). Same model, route, harness and settings.
+  - Runs `<stem>-20261127-001` (netscratch, image `trusted-image-isolated-wrench.json`), sapphire 20 h jobs
+    `63988704`–`63988746`:
+    - die ×4 (20 CPUs each);
+    - w25 pairs ×4; w26 pair; w29 ×4 jobs;
+    - w27 pairs ×4 (shapes, objects-unstated, objects-stated, bin-spiky);
+    - bottle pairs ×2.
+  - The cancelled runs were at up to about 150 run-minutes (w25, w26, w29) or 0 (die, bottle, w27). Per the user's rule,
+    killed runs that are rerun are discarded.
+
 ## 2026-11-26 21:50 UTC — Sapphire batch progress; Carbon w11 completed
 - `w11-tetra-spring-k-carbon-20261125-001` **completed**: 235 run-minutes, 1 submission. Carbon marble, latch and hand
   are at 226–240 min.

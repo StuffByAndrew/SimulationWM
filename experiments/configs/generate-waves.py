@@ -801,3 +801,26 @@ out.mkdir(exist_ok=True)
 for run_id, (env, factor, overrides) in RUNS_W32.items():
     (out / f"{run_id}.toml").write_text(config("Wave 32", "gemini-20261125-bottle", 1e6, env, factor, overrides))
 print(out.name, sorted(p.name for p in out.glob("*.toml")))
+
+# 2026-11-27 (Neon quota): from 21:45 UTC 2026-11-26 every Neon call on GEMINI_API_KEY returned HTTP 429 "exceeded your
+# current quota" (daily request quota: about 40 concurrent runs plus outage retries). Runs that would otherwise be truncated
+# before the quota resets, or had not made a call yet, rerun on the second key (BYCOST: same model and route; only the key and
+# the cost lines differ, the lifetime pool gemini-bycost). Each config is its original's text with those lines replaced.
+import re
+def bycost(text):
+    assert text.count('api_key_env = "GEMINI_API_KEY"\n') == 1, "not a GEMINI_API_KEY config"
+    text = text.replace('api_key_env = "GEMINI_API_KEY"\n', f'api_key_env = "{BYCOST["key_env"][0]}"\n')
+    for key, value in (("max_cost_usd", BYCOST["cost"]), ("cost_pool", f'"{BYCOST["pool"]}"'), ("cost_pool_usd", BYCOST["pool_usd"])):
+        text, n = re.subn(rf"^{key} = .*$", f"{key} = {value}", text, flags=re.M)
+        assert n == 1, key
+    return text
+out = Path(__file__).parent / "bycost-20261127"
+out.mkdir(exist_ok=True)
+for source in ([f"wave25-20261123/w25-{l}{s}.toml" for l in ("hand-prism", "hand-prism-offset-com", "hand-smooth-mesh", "hand-spiky") for s in ("", "-control")]
+               + [f"wave26-20261124/w26-cube-spring-block-{c}.toml" for c in ("lowrank", "mjcf")]
+               + [f"wave29-20261124/{p.name}" for p in sorted((Path(__file__).parent / "wave29-20261124").glob("*.toml"))]
+               + [f"wave24-20261123/w24-die-{a}-neon{f}.toml" for a in ("grasp", "franka") for f in ("", "-fps100")]
+               + [f"wave27-20261124/{p.name}" for p in sorted((Path(__file__).parent / "wave27-20261124").glob("*.toml"))]
+               + [f"wave32-20261125/{p.name}" for p in sorted((Path(__file__).parent / "wave32-20261125").glob("*.toml"))]):
+    (out / Path(source).name).write_text(bycost((Path(__file__).parent / source).read_text()))
+print(out.name, len(list(out.glob("*.toml"))))
