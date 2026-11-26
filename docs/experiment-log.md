@@ -79,6 +79,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     - For the report: the loop's share of calls and of wall time, as a tool-use reliability finding for Inkling 2 Mini
       (its model card warns it is "less reliable than larger models" with tools).
   - The other 4 Inkling runs have no trailing intention-only streak (checked 19:00 UTC).
+  - 20:46 UTC (about 170 run-minutes): marble now has 473 consecutive intention-only turns, and tetra-spring-k has
+    entered the same pattern (24 trailing turns, e.g. "I'll emit the arm_target call now."; 616 calls). Latch, hand and
+    cloth are normal (27–99 calls). No submissions yet from any Inkling run.
 - Gear recon and cheap (weld) are at about 110 run-minutes on kempner_cpu.
 
 ## 2026-11-26 18:00 UTC — Outage truncated the test pairs; sapphire started; queue rebalanced
