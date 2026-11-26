@@ -46,6 +46,22 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 02:50 UTC — Wave 32 childproof bottle queued (4 runs); pause-timer change merged
+- **Merged the bottle level** (50a3b46, builder 5066d05).
+  - Record `trusted-image-isolated-bottle.json`: agent `2e7cd4413663`, evaluator `053bb9233a8a`. OCI `63755828`, 12
+    passed, including a two-weld opening end to end.
+  - Premise check `63752922`: twisting alone, and pushes up to 7.7 N, keep it closed; it opens from 8.05 N plus a quarter
+    turn. The mechanism is hidden; empty and contents render identically.
+  - **Finding:** a single weld grasp can also open it (table friction holds the bottle). So 1 vs 2 grasps measures whether
+    a second grasp helps, not whether it is needed. The builder told the user; nothing is changed unless asked.
+- Runs `w32-bottle-{empty,contents}-{1,2}grasp-20261126-001` (netscratch) on kempner_cpu: `63762032`, `63762036`,
+  `63762040`, `63762043`.
+  - After each run, run `python -m sim2sim.bottle RUN_DIR` on a test node to get the first opening and whether the
+    contents were seen.
+- **Pause timer** (37532f8, builder cd407c8): freeze/thaw RPC time is now paused time for the *active* budget only.
+  wall_only runs still count evaluation, including freeze/thaw, toward the hard wall. That keeps runs comparable across
+  waves; changing it is the user's policy call.
+
 ## 2026-11-26 01:40 UTC — Hold review: cube-spring-block no-reset stopped at 4 h
 - `w31-cube-spring-block-mjcf-noreset-20261125-002` reached its 4 h checkpoint with 3 submissions. The agent was fitting
   lighting and table-edge appearance (sun direction, fill light, surface colours), not physics or the mechanism, so per
