@@ -46,6 +46,14 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 06:50 UTC — Marble no-reset completed; gear weld set running
+- `w31-marble-heavy-hint-noreset-20261125-003` **completed**: the agent called finish at 267 run-minutes, 3 submissions.
+  Wave 31 now has 5 of 6 levels finished; cloth-holes `-003` is running (about 3 h of job time).
+- Gear recon and cheap `-20261126-002` are running (weld grasp, fixed wrench). The recon agent turns the crank with the
+  weld (it measured a 10° turn and the hand's direction) and is counting teeth. There is no stall and its notes report
+  no force anomalies.
+- Three wave 27 pairs run on test (110 CPUs); kempner_cpu is full; 13 sapphire jobs are still pending.
+
 ## 2026-11-26 05:50 UTC — Latch-out no-reset completed; status
 - `w31-latch-out-noreset-20261125-003` **completed**: the agent called finish at 264 run-minutes, 5 submissions.
 - Wave 31 complete so far: tetra-spring-k (141 min, 3 submissions), hand (354, 2), latch-out (264, 5), and
