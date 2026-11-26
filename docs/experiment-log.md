@@ -46,6 +46,25 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 18:00 UTC — Outage truncated the test pairs; sapphire started; queue rebalanced
+- **Neon 503 outage**, about 06:15 to the afternoon UTC; provider holds kept it off the run clocks.
+  - The three wave 27 pairs on test hit their 12 h job limit (TIMEOUT `63779546`, `63779635`, `63791638`). Their 6 runs
+    were truncated at 104–208 of 240 run-minutes: an infrastructure truncation. They were re-prepared as
+    `-20261126-001`, sources identical.
+- **Sapphire:** all 11 re-sized 14 h jobs (waves 25, 26, 29 and Carbon) started at about 17:00 UTC.
+- **Fixture-rigid** `-002` reached its 4 h checkpoint while refitting its 3-regime physical model and checking residuals
+  (damping or pad deflection): resumed to 6 h.
+- **Rebalanced** onto the wrench record (`trusted-image-isolated-wrench.json`):
+  - Inkling's 5 runs moved to **test**, where Google outages cannot stall them (the service had been idle 14 h):
+    `63926127` (cloth + w11), `63926128` (hand + marble + latch). Both running.
+  - The Neon runs waiting on kempner moved to **sapphire with 20 h** limits:
+    - fixture-rubber `63926215`;
+    - die ×4 `63926221`, `63926233`, `63926237`, `63926252` (20 CPUs each);
+    - w27 bin-spiky pair `63926256`;
+    - bottle pairs `63926259` and `63926260`;
+    - w27 reruns `63926261`, `63926262`, `63926275`.
+  - kempner_cpu keeps gear (recon and cheap running, deep next).
+
 ## 2026-11-26 08:50 UTC — Gemini Neon 503 outage, held by provider holds
 - Since about 06:15 UTC Neon has returned HTTP 503 "high demand". The provider holds keep it off the run clocks:
   gear-recon `-002` shows 16 consecutive held failures and has not advanced since about 26 run-minutes. All Neon runs
