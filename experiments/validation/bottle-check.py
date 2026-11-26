@@ -39,7 +39,8 @@ VIEWS = 64                  # viewpoints per pose (Fibonacci sphere, radius VIEW
 VIEW_R = .25
 REST_M, REST_SPEED = 5e-4, 1e-2   # after REST_S: every body within this of its start, every speed below (m, rad; per s)
 REST_S = 2.
-MAX_VIOLATION_M, MAX_SPEED = .02, 5.  # stability bounds for the scripted opening (weld translation residual m; any |qvel|)
+MAX_VIOLATION_M, MAX_SPEED = .02, 30.  # stability of the scripted probes: weld translation residual (m); bottle and cap
+# |qvel| (m/s, rad/s): a cap popping off the neck spins at ~20 rad/s, a blow-up is orders of magnitude faster
 CONFIG = {"width": 320, "height": 240, "camera": "fixed", "rgb": True, "depth": True, **B.PROBE_CONFIG}
 result = {}
 for path, text in S.outputs().items():
@@ -170,14 +171,17 @@ def procedure(path, push, turn, two=True, table=None):
     shell_px, bottle_px = B.pixels(sim, table)
     aim = B.targets(sim, shell_px, bottle_px)
     assert aim is not None
-    peak = {"violation_m": 0., "speed": 0.}
+    peak = {"violation_m": 0., "violation_rad": 0., "speed": 0., "bottle_cap_speed": 0.}
+    mechanism = np.flatnonzero(np.isin(sim._model.dof_bodyid, [sim._model.body(n).id for n in shared]))
 
     def watch(current):
         rows = weld_rows(current)
-        translation = [r for k, r in enumerate(rows) if k % 6 < 3]
-        if translation:
-            peak["violation_m"] = max(peak["violation_m"], float(np.abs(current._data.efc_pos[translation]).max()))
+        for key, part in (("violation_m", [r for k, r in enumerate(rows) if k % 6 < 3]),
+                          ("violation_rad", [r for k, r in enumerate(rows) if k % 6 >= 3])):
+            if part:
+                peak[key] = max(peak[key], float(np.abs(current._data.efc_pos[part]).max()))
         peak["speed"] = max(peak["speed"], float(np.abs(current._data.qvel).max()))
+        peak["bottle_cap_speed"] = max(peak["bottle_cap_speed"], float(np.abs(current._data.qvel[mechanism]).max()))
     sim._callback = watch
     times, samples, opened, force, held = B.run(sim, B.actions(table, shell_px, bottle_px, push, turn, two), aim, table["open_lift_m"])
     sim.close()
@@ -189,16 +193,21 @@ def procedure(path, push, turn, two=True, table=None):
 table = tables["bottle_contents"]["bottle"]
 path = scenes["bottle_contents"]
 mech = result["mechanism"] = {}
-mech["twist_only"], _ = procedure(path, 0., table["turn_deg"])
-mech["push_below"], _ = procedure(path, table["push_m"][1], table["turn_deg"])
-mech["push_above"], first = procedure(path, table["push_m"][-1], table["turn_deg"])
-mech["push_above_repeat"], second = procedure(path, table["push_m"][-1], table["turn_deg"])
-mech["deterministic"] = bool(np.array_equal(first, second))
-assert not mech["twist_only"]["opened"] and not mech["push_below"]["opened"], mech
-assert mech["push_above"]["opened"] and mech["deterministic"], mech
-for key in ("twist_only", "push_below", "push_above"):
-    assert mech[key]["grasps_held"] and mech[key]["violation_m"] < MAX_VIOLATION_M and mech[key]["speed"] < MAX_SPEED, (key, mech[key])
-mech["force_sweep"] = {f"{1000 * d:.1f}mm": procedure(path, d, table["turn_deg"])[0] for d in table["push_m"]}
+# Force gate (two welds, push, quarter turn, lift): twist only (0 mm) and every push whose force stays below the shell's
+# preload leave it closed; every push past the preload plus the tooth stroke opens it.
+sweep = {d: procedure(path, d, table["turn_deg"]) for d in table["push_m"]}
+mech["force_sweep"] = {f"{1000 * d:.1f}mm": r for d, (r, _) in sweep.items()}
+(OUT / "check.json").write_text(json.dumps(result, indent=2))
+below = [r for r in mech["force_sweep"].values() if r["push_force_n"] < S.SHELL_PRELOAD_N]
+above = [r for r in mech["force_sweep"].values() if r["push_force_n"] > S.SHELL_PRELOAD_N + S.SHELL_K * S.SHELL_TRAVEL]
+assert not mech["force_sweep"]["0.0mm"]["opened"], "twist only opened it"
+assert len(below) >= 2 and above and not any(r["opened"] for r in below) and all(r["opened"] for r in above), mech["force_sweep"]
+deepest = table["push_m"][-1]
+mech["repeat_deepest"], second = procedure(path, deepest, table["turn_deg"])
+mech["deterministic"] = bool(np.array_equal(sweep[deepest][1], second))
+assert mech["deterministic"], "the scripted opening is not deterministic"
+for key, r in mech["force_sweep"].items():  # stable: grasps hold, small weld residuals, no blow-up of bottle or cap
+    assert r["grasps_held"] and r["violation_m"] < MAX_VIOLATION_M and r["bottle_cap_speed"] < MAX_SPEED, (key, r)
 mech["one_grasp"] = {f"{1000 * d:.1f}mm": procedure(path, d, table["turn_deg"], two=False)[0]
                      for d in sorted({*table["push_m"], table["one_grasp_push_m"]})}
 mech["angle_sweep"] = {f"{a}deg": procedure(path, table["push_m"][-1], a)[0]["opened"] for a in table["angles_deg"]}
