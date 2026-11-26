@@ -1,0 +1,33 @@
+name = "bottle_empty"
+scene = "scene.xml"
+camera = "fixed"
+graspable_bodies = ["bottle", "cap_shell"]
+
+# Top-level objects (the cap object holds the hidden inner cap, its spring washer and the visible shell).
+object_bodies = ["bottle", "cap"]
+object_geoms = ["base", "wall_0", "wall_1", "wall_2", "wall_3", "wall_4", "wall_5", "wall_6", "wall_7", "wall_8", "wall_9", "wall_10", "wall_11", "wall_12", "wall_13", "wall_14", "wall_15", "wall_16", "wall_17", "wall_18", "wall_19", "wall_20", "wall_21", "wall_22", "wall_23", "wall_24", "wall_25", "wall_26", "wall_27", "wall_28", "wall_29", "wall_30", "wall_31", "shoulder_0", "shoulder_1", "shoulder_2", "shoulder_3", "shoulder_4", "shoulder_5", "shoulder_6", "shoulder_7", "shoulder_8", "shoulder_9", "shoulder_10", "shoulder_11", "shoulder_12", "shoulder_13", "shoulder_14", "shoulder_15", "shoulder_16", "shoulder_17", "shoulder_18", "shoulder_19", "shoulder_20", "shoulder_21", "shoulder_22", "shoulder_23", "shoulder_24", "shoulder_25", "shoulder_26", "shoulder_27", "shoulder_28", "shoulder_29", "shoulder_30", "shoulder_31", "collar_0", "collar_1", "collar_2", "collar_3", "collar_4", "collar_5", "collar_6", "collar_7", "collar_8", "collar_9", "collar_10", "collar_11", "collar_12", "collar_13", "collar_14", "collar_15", "collar_16", "collar_17", "collar_18", "collar_19", "collar_20", "collar_21", "collar_22", "collar_23", "collar_24", "collar_25", "collar_26", "collar_27", "collar_28", "collar_29", "collar_30", "collar_31", "neck_0", "neck_1", "neck_2", "neck_3", "neck_4", "neck_5", "neck_6", "neck_7", "neck_8", "neck_9", "neck_10", "neck_11", "neck_12", "neck_13", "neck_14", "neck_15", "neck_16", "neck_17", "neck_18", "neck_19", "neck_20", "neck_21", "neck_22", "neck_23", "lug0_a_0", "lug0_a_1", "lug0_n_0", "lug0_n_1", "lug0_b_0", "lug0_b_1", "lug1_a_0", "lug1_a_1", "lug1_n_0", "lug1_n_1", "lug1_b_0", "lug1_b_1", "cap_disc", "cap_skirt_0", "cap_skirt_1", "cap_skirt_2", "cap_skirt_3", "cap_skirt_4", "cap_skirt_5", "cap_skirt_6", "cap_skirt_7", "cap_skirt_8", "cap_skirt_9", "cap_skirt_10", "cap_skirt_11", "cap_skirt_12", "cap_skirt_13", "cap_skirt_14", "cap_skirt_15", "cap_skirt_16", "cap_skirt_17", "cap_skirt_18", "cap_skirt_19", "cap_skirt_20", "cap_skirt_21", "cap_skirt_22", "cap_skirt_23", "hook0_0", "hook0_1", "hook1_0", "hook1_1", "cap_tooth0_0", "cap_tooth1_0", "cap_tooth2_0", "cap_tooth3_0", "cap_tooth4_0", "cap_tooth5_0", "liner", "shell_top", "shell_skirt_0", "shell_skirt_1", "shell_skirt_2", "shell_skirt_3", "shell_skirt_4", "shell_skirt_5", "shell_skirt_6", "shell_skirt_7", "shell_skirt_8", "shell_skirt_9", "shell_skirt_10", "shell_skirt_11", "shell_skirt_12", "shell_skirt_13", "shell_skirt_14", "shell_skirt_15", "shell_skirt_16", "shell_skirt_17", "shell_skirt_18", "shell_skirt_19", "shell_skirt_20", "shell_skirt_21", "shell_skirt_22", "shell_skirt_23", "shell_skirt_24", "shell_skirt_25", "shell_skirt_26", "shell_skirt_27", "shell_skirt_28", "shell_skirt_29", "shell_skirt_30", "shell_skirt_31", "shell_tooth0_0", "shell_tooth1_0", "shell_tooth2_0", "shell_tooth3_0", "shell_tooth4_0", "shell_tooth5_0"]
+
+[reconstruction]
+enabled = true
+samples = 2048
+seed = 20261125
+
+# Mechanism probes, engage force and opening angle (src/sim2sim/bottle.py): probe pixels at the shell's top centre and the
+# bottle wall point facing the fixed camera; interior = [radius, top] of the bottle's inside in its frame (a content
+# outside it is tipped out); contents = the content bodies.
+[bottle]
+shell_point = [0.000000, 0.000000, 0.012500]
+bottle_point = [0.013005, -0.018361, 0.040000]
+push_m = [0.000000, 0.002000, 0.004000, 0.005000, 0.006000, 0.008000]
+one_grasp_push_m = 0.008
+turn_deg = 90.0
+angles_deg = [30.000000, 40.000000, 50.000000, 60.000000, 70.000000, 80.000000, 90.000000, 120.000000]
+lift_m = 0.02
+push_ticks = 300
+turn_ticks = 500
+lift_ticks = 300
+settle_ticks = 300
+open_lift_m = 0.01
+open_separation_m = 0.01
+interior = [0.020500, 0.094000]
+contents = []

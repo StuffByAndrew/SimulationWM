@@ -587,7 +587,7 @@ def _evaluate_panda(source,candidate,config,selection,artifacts,source_path,cand
 SUPPORTED_METRICS = frozenset({'appearance', 'dynamics', 'parameters', 'reconstruction', 'hinges',
                               'chamfer', 'center_of_mass', 'density', 'friction', 'image_mse',
                                'expert', 'policy_transfer', 'force_profile', 'cloth', 'fixture', 'die', 'lowrank',
-                               'objects', 'identification', 'gear_train'})  # die: host-side, src/sim2sim/die.py; objects, identification: tabletop.py
+                               'objects', 'identification', 'gear_train', 'bottle'})  # die: host-side, src/sim2sim/die.py; objects, identification: tabletop.py
 
 
 def selected_metrics(config):
@@ -619,7 +619,7 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             metadata = tomllib.loads(manifest.read_text())
             for key in ('probes', 'correspondence', 'camera', 'graspable_bodies', 'reconstruction', 'hinge_correspondence', 'hinge_matching',
                         'object_bodies', 'object_geoms', 'arm_probes', 'expert_trajectories', 'transfer_tasks', 'force_profile', 'cloth', 'fixture',
-                        'lowrank', 'tabletop', 'gear_train'):
+                        'lowrank', 'tabletop', 'gear_train', 'bottle'):
                 if key not in config and key in metadata:
                     config[key] = metadata[key]
         output = Path(config['output_dir'])
@@ -742,6 +742,13 @@ def evaluate_submission(zip_bytes: bytes, config: dict) -> dict:
             from .gear_train import evaluate as gear_train
             assert config.get('gear_train'), 'gear_train metric requires a private [gear_train] table'
             scores['gear_train'] = gear_train(source, source_path, candidate_path, simconfig, candidate_config, config, artifacts / 'gear_train')
+        if 'objects' in selection:
+            from .tabletop import objects
+            scores['objects'] = objects(source, candidate, config)
+        if 'bottle' in selection:
+            from .bottle import evaluate as bottle
+            assert config.get('bottle'), 'bottle metric requires a private [bottle] table'
+            scores['bottle'] = bottle(source_path, candidate_path, simconfig, candidate_config, config, artifacts / 'bottle')
         hook = config.get('metrics_hook')
         if hook:
             import importlib

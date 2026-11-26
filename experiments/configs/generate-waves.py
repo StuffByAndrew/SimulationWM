@@ -612,7 +612,7 @@ event_log_bytes = 67108864
 depth = {str(o.get("depth", False)).lower()}
 calibration = {str(vision).lower()}
 wrench = {str(wrench).lower()}
-{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
+{"point_grasps = 2" + chr(10) if o.get("grasps") == 2 else ""}{f"realtime = true{chr(10)}frame_rate = {o['realtime']}{chr(10)}" if o.get("realtime") else ""}{"tactile = true" + chr(10) if o.get("tactile") else ""}{"effort = false" + chr(10) if o.get("effort") is False else ""}{"movable_camera = true" + chr(10) if o.get("movecam") else ""}width = 320
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}{'resets = false' + chr(10) if o.get("noreset") else ""}default_ticks = 20
@@ -778,4 +778,26 @@ for wave_dir, run_id in HARD:
 env, factor, overrides = RUNS28["w26-cube-spring-block-mjcf"]
 (out / "w31-cube-spring-block-mjcf-noreset.toml").write_text(config("Wave 31", "gemini-20261125", 1e6, env, factor + "; no resets; neon",
                                                                     {**overrides, "provider_hold": PROVIDER_HOLD, "noreset": True}))
+print(out.name, sorted(p.name for p in out.glob("*.toml")))
+
+# Wave 32 (user-approved design docs/level-designs/childproof-bottle-20261125.md; planned): the childproof bottle
+# (experiments/validation/bottle-scenes.py, environments/bottle_*): a free neutral-grey bottle whose cap is a hidden push-and-turn
+# bayonet; empty vs unpredictable loose contents x {1, 2} simultaneous weld grasps (options grasps -> [simulation] point_grasps,
+# weld -> grasp = "weld"; user 2026-11-25: point-grasp levels with wrench use the weld grasp).
+# Weld grasp(s) with wrench, RGB-D, movable camera, sequence tool, lock-step, reference interaction, resets, TASK_CONVERGE, MJCF
+# answer, no hints or perturbation; gemini-4-neon, n = 1, 4 h wall (wall_only), no checkpoint hold, provider holds and
+# accounting-only caps. Metrics: bottle (src/sim2sim/bottle.py: mechanism probes, engage force and opening angle), objects
+# (per-object contents breakdown), chamfer and center_of_mass.
+ENVS["bottle_empty"] = ENVS["bottle_contents"] = (["bottle", "objects", "chamfer", "center_of_mass"], RECON)
+BOTTLE_W32 = {**NEON, "wall": 14400, "hold": 129600, "audit": 17179869184, "vision": True, "depth": True, "movecam": True,
+              "weld": True, "tools": ("sequence",), "task": TASK_CONVERGE, "eval_timeout": 900, "pool": "gemini-20261125-bottle"}
+RUNS_W32 = {f"w32-bottle-{variant}-{grasps}grasp": (f"bottle_{variant}", f"childproof bottle, {variant}; {grasps} weld grasp{'s' * (grasps > 1)} "
+                                                                       "with wrench, RGBD, movable camera, sequence tool; gemini-4-neon",
+                                                    {**BOTTLE_W32, "grasps": grasps})
+            for variant in ("empty", "contents") for grasps in (1, 2)}
+WAVES["wave32-20261125"] = ("Wave 32", "gemini-20261125-bottle", 1e6, RUNS_W32)
+out = Path(__file__).parent / "wave32-20261125"
+out.mkdir(exist_ok=True)
+for run_id, (env, factor, overrides) in RUNS_W32.items():
+    (out / f"{run_id}.toml").write_text(config("Wave 32", "gemini-20261125-bottle", 1e6, env, factor, overrides))
 print(out.name, sorted(p.name for p in out.glob("*.toml")))
