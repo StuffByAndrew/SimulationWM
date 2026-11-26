@@ -35,7 +35,7 @@ def restore(sim, state, camera):
         array = np.frombuffer(base64.b64decode(value["data_b64"]), dtype=value["dtype"]).reshape(value["shape"])
         (sim._model.eq_data if key == "model.eq_data" else getattr(sim._data, key))[...] = array
     sim._data.time, sim.ticks, sim.total_ticks = state["time"], state["ticks"], state["total_ticks"]
-    sim._grasp = tuple(state["grasp"]) if state["grasp"] is not None else None
+    sim._grasps = [tuple(grasp) if grasp is not None else None for grasp in state.get("grasps", [state["grasp"]])]
     sim._model.cam_pos[sim._camera_id], sim._model.cam_quat[sim._camera_id] = camera
     mujoco.mj_forward(sim._model, sim._data)
 

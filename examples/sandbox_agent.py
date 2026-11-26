@@ -251,6 +251,10 @@ def tool_schemas(task, local=LOCAL):
         if "realtime" in task:  # a real-time task has only the reference world
             properties, required = {k: v for k, v in properties.items() if k != "world"}, [k for k in required if k != "world"]
         contract = task["action_schema"][op]
+        if isinstance(contract, dict) and "grasp_index" in contract:  # simulation.point_grasps = 2: name the grasp every time
+            properties, required = {**properties, "grasp_index": {"type": "integer", "minimum": 0, "maximum": 1}}, required + ["grasp_index"]
+        if isinstance(contract, dict) and "rotation" in contract:  # simulation.grasp = "weld": move may also turn the held object
+            properties = {**properties, "rotation": NUMBERS(3)}
         notes = {"load_reconstruction": " Packages project_dir (default /workspace/project) as a ZIP and loads it into the reconstruction world.",
                  "submit": " Packages project_dir (default /workspace/project) as a ZIP and submits it for hidden evaluation.",
                  "finish": " Irreversibly ends the session.",
