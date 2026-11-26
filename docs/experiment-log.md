@@ -53,7 +53,15 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   latch 21, hand 12).
   - `w19-marble-heavy-hint-inkling` made 357 calls but only 17 camera actions. Its last ~330 turns only say "I'll call
     the camera tool now" with no tool call.
-  - The builder is asked to check the raw replies: a route or parse bug (run invalid) or model behaviour (a finding).
+  - **Builder diagnosis: model behaviour, not a route bug; the run is valid.**
+    - Every request carries all 10 tools, and Inkling's real tool calls parse and execute.
+    - The stuck replies are clean prose with no tool-call markup: finish_reason `stop`, about 12 tokens, no reasoning.
+    - Each gets the harness's identical "No tool was called" nudge, an in-context repetition attractor. It began
+      intermittently at message 34; there are 84+ consecutive text-only turns since message 572.
+  - **Decision: let it run.** Every model gets the same harness, so stopping it would bias the comparison.
+    - For the report: the loop's share of calls and of wall time, as a tool-use reliability finding for Inkling 2 Mini
+      (its model card warns it is "less reliable than larger models" with tools).
+  - The other 4 Inkling runs have no trailing intention-only streak (checked 19:00 UTC).
 - Gear recon and cheap (weld) are at about 110 run-minutes on kempner_cpu.
 
 ## 2026-11-26 18:00 UTC — Outage truncated the test pairs; sapphire started; queue rebalanced
