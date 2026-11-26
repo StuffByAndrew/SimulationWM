@@ -616,7 +616,7 @@ wrench = {str(wrench).lower()}
 height = 240
 camera = "fixed"
 {'wrist_camera = "wrist"' + chr(10) if o.get("wrist") else ""}{'reference_interaction = false' + chr(10) if o.get("noaction") else ""}{'resets = false' + chr(10) if o.get("noreset") else ""}default_ticks = 20
-{f"grasp_slip_m = {o['slip']}{chr(10)}" if o.get("slip") else ""}
+{f"grasp_slip_m = {o['slip']}{chr(10)}" if o.get("slip") else ""}{'grasp = "weld"' + chr(10) if o.get("weld") else ""}{f"grasp_slip_rad = {o['slip_rad']}{chr(10)}" if o.get("slip_rad") else ""}
 [evaluation]
 manifest = "{entry}manifest.toml"
 source_dir = "{source_dir}"
