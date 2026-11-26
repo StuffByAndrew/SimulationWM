@@ -46,6 +46,23 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 19:50 UTC — Wave 31 (resets vs no resets) complete
+- `w31-cloth-holes-noreset-20261125-003` **completed**: the agent called finish at 306 run-minutes, 4 submissions.
+- **All six no-reset levels are done** (n=1 each), against their Neon baselines with resets:
+
+| Level | Run | Outcome | Run-min | Submissions |
+|---|---|---|---|---|
+| tetra-spring-k | `-20261125-002` | agent finish | 141 | 3 |
+| hand-smooth-mesh | `-20261125-002` | agent finish | 354 | 2 |
+| latch-out | `-20261125-003` | agent finish | 264 | 5 |
+| marble-heavy-hint | `-20261125-003` | agent finish | 267 | 3 |
+| cloth-holes | `-20261125-003` | agent finish | 306 | 4 |
+| cube-spring-block-mjcf | `-20261125-002` | stopped at 4 h checkpoint (appearance work) | 240 | 4 |
+
+  - Truncated attempts, which are discarded: latch-out and cloth-holes `-002` (freezer failure), marble `-002`
+    (cancelled), and all netscratch `-001` preparations.
+- Fixture-rubber moved from the sapphire queue to the free kempner_cpu slot (`63942148`).
+
 ## 2026-11-26 18:50 UTC — Fixture-rigid completed; Inkling running (one run looping)
 - `w23-fixture-rigid-neon-20261125-002` **completed**: the agent called finish at 255 run-minutes after the checkpoint
   resume; 3 submissions.
