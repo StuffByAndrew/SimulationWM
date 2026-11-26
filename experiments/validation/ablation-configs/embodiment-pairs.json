@@ -1,0 +1,245 @@
+{
+ "title": "Same hidden scene: ideal point grasp + wrench vs Franka/Panda arm (gpt-6-astra, strict runs). Left: each setup's first camera frame and settings. Each dot is a scored submission; the line holds its value until the next one.\nDotted line: truth (ratios) or no-mechanism error (1). One run per embodiment: no repetitions exist on these scenes, so no dashed repeat lines appear.",
+ "data": [
+  "/n/home00/aejxie/sim2sim/experiments/reports/results-report-20261124/data.js",
+  "/n/holylabs/LABS/qianqian_lab/Lab/aejxie/sim2sim-experiments/reports/results-report-20261104-plain/data.js"
+ ],
+ "conditions": [
+  {
+   "id": "grasp",
+   "name": "point grasp + wrench",
+   "color": "#257de0"
+  },
+  {
+   "id": "arm",
+   "name": "Franka/Panda arm (joint efforts)",
+   "color": "#f47230"
+  }
+ ],
+ "families": {
+  "tunnel": [
+   [
+    "mech_rel",
+    "mechanism force error ÷ true force",
+    0.2,
+    "log1"
+   ],
+   [
+    "fp_push_n",
+    "slow-push force error (N)",
+    null,
+    "log"
+   ],
+   [
+    "fp_retract_n",
+    "slow-retract force error (N)",
+    null,
+    "log"
+   ],
+   [
+    "fp_fast_n",
+    "fast-cycle force error (N)",
+    null,
+    "log"
+   ]
+  ],
+  "lever": [
+   [
+    "r:mass",
+    "lever mass ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
+    "r:inertia",
+    "inertia ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
+    "r:damping",
+    "hinge damping ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
+    "r:frictionloss",
+    "hinge friction loss ÷ true",
+    0.1,
+    "ratio"
+   ]
+  ],
+  "blocks": [
+   [
+    "chamfer_mm",
+    "shape error, Chamfer (mm)",
+    2.0,
+    "zero"
+   ],
+   [
+    "com_mm",
+    "COM error (mm)",
+    2.0,
+    "zero"
+   ],
+   [
+    "r:mass:block_red",
+    "red block mass ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
+    "r:mass:block_blue",
+    "blue block mass ÷ true",
+    0.1,
+    "ratio"
+   ]
+  ]
+ },
+ "rows": [
+  [
+   "Tunnel: spring",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-spring-grasp-20261109-001"
+    ],
+    "arm": [
+     "w16-spring-franka-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: spring,\nsequence tool",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-spring-grasp-seq-20261109-001"
+    ],
+    "arm": [
+     "w16-spring-franka-seq-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: spring + damper",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-damper-grasp-20261109-001"
+    ],
+    "arm": [
+     "w16-damper-franka-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: spring + damper,\nsequence tool",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-damper-grasp-seq-20261109-001"
+    ],
+    "arm": [
+     "w16-damper-franka-seq-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: nonlinear spring",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-nonlinear-grasp-20261109-001"
+    ],
+    "arm": [
+     "w16-nonlinear-franka-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: nonlinear spring,\nsequence tool",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-nonlinear-grasp-seq-20261109-001"
+    ],
+    "arm": [
+     "w16-nonlinear-franka-seq-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: push-push latch",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-latch-grasp-20261109-001"
+    ],
+    "arm": [
+     "w16-latch-franka-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: push-push latch,\nsequence tool",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-latch-grasp-seq-20261109-001"
+    ],
+    "arm": [
+     "w16-latch-franka-seq-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: curved tunnel, spring",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-curved-grasp-20261109-001"
+    ],
+    "arm": [
+     "w16-curved-franka-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Tunnel: curved tunnel, spring,\nsequence tool",
+   "tunnel",
+   {
+    "grasp": [
+     "w16-curved-grasp-seq-20261109-001"
+    ],
+    "arm": [
+     "w16-curved-franka-seq-20261109-001"
+    ]
+   }
+  ],
+  [
+   "Randomized\ndamped lever",
+   "lever",
+   {
+    "grasp": [
+     "w2-lever-hard-base-20261103-002"
+    ],
+    "arm": [
+     "w3-panda-lever-hard-20261104-002"
+    ]
+   }
+  ],
+  [
+   "Two blocks",
+   "blocks",
+   {
+    "grasp": [
+     "w1-blocks-base-20261102-003"
+    ],
+    "arm": [
+     "w2-panda-vision-20261103-001"
+    ]
+   }
+  ]
+ ]
+}

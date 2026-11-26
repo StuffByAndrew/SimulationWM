@@ -214,16 +214,26 @@ METRICS = {"r:mass:cluster": ("sphere cluster mass", "ratio"), "r:mass:spring_ba
            **{f"traj:{p}_mm": (f"COM path error, {PROBE_NAME[p]} (mm)", "err") for p in PROBES}}
 
 
+ABLATION_BASE = {"latch-out": "w20", "hand-smooth-mesh": "w21", "cloth-holes": "w22", "marble-heavy-hint": "w19", "tetra-spring-k": "w11",
+                 "cube-spring-block-mjcf": "w26"}  # wave 31 (no resets): each level's original wave
+
+
+def family(run):
+    """The run id whose scoring a run follows: a wave-31 no-reset run is scored exactly as its level's original wave."""
+    m = re.match(r"w31-(.+)-noreset-\d{8}-\d{3}$", run)
+    return f"{ABLATION_BASE[m.group(1)]}-{m.group(1)}" if m else run
+
+
 def estimates(run, source, m, default):
     """Spring levels: mass on each source body (every positive-mass candidate body goes to the nearest source body by COM, so a split model
     still sums correctly) and the stiffest slide joint. Tunnel and box levels: none (their evaluator metrics are in extra_metrics)."""
-    names = [b["name"] for b in source["bodies"]]
-    if "-msd-" in run:  # the block's slide joint: mass it carries, stiffness and damping (the three constants of the mechanism)
+    names, fam = [b["name"] for b in source["bodies"]], family(run)
+    if "-msd-" in fam:  # the block's slide joint: mass it carries, stiffness and damping (the three constants of the mechanism)
         slides = [j for j in m["joints"] if j["type"] == 2]
         assert slides, (run, "no slide joint")
         j = max(slides, key=lambda j: j["stiffness"])
         return {"mass": next(b["subtree_mass"] for b in m["bodies"] if b["name"] == j["body"]), "stiffness": j["stiffness"], "damping": j["damping"]}
-    if run.startswith(("w16", "w17", "w18", "w19", "w21", "w22")) or "-out" in run:
+    if fam.startswith(("w16", "w17", "w18", "w19", "w21", "w22")) or "-out" in fam:
         return {}
     if "spring_base" not in names:
         return default(source, m)
@@ -257,12 +267,13 @@ _FP = {}
 def extra_metrics(run, i, hist):
     if hist["status"] == "failed":  # rejected by the evaluator: a gap, as the builder records it
         return {}
-    if run.startswith(("w16", "w17")):
+    fam = family(run)
+    if fam.startswith(("w16", "w17")):
         if run not in _FP:
             _FP[run] = json.loads((RUN(run) / "force-profile-rescore.json").read_text())["versions"]
         assert len(_FP[run]) >= i + 1, run
         return _fp_errors(_FP[run][f"version-{i + 1:03d}"])
-    if run.startswith(("w20", "w21", "w22")):
+    if fam.startswith(("w20", "w21", "w22")):
         ev = json.loads((RUN(run) / f"version-{i + 1:03d}" / "evaluation.json").read_text())
         assert ev["version"] == hist["version"], (run, i)
         sc = ev["scores"]
@@ -280,7 +291,7 @@ def extra_metrics(run, i, hist):
             return {} if c["status"] != "ok" else {"rest_chamfer_mm": 1000 * c["rest_chamfer_m"], "drop_chamfer_mm": 1000 * c["drop_mean_chamfer_m"],
                                                    "stiff_rel": c["stiffness_map"]["lift_force_relative_error"]}
         return {}
-    if run.startswith(("w18", "w19")):
+    if fam.startswith(("w18", "w19")):
         ev = json.loads((RUN(run) / f"version-{i + 1:03d}" / "evaluation.json").read_text())
         assert ev["version"] == hist["version"], (run, i)
         probes = {p["name"]: p["object_com"] for p in ev["scores"]["arm_probes"] if p["status"] == "ok"}
