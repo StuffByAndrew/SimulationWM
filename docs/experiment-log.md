@@ -46,6 +46,11 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 01:40 UTC — Hold review: cube-spring-block no-reset stopped at 4 h
+- `w31-cube-spring-block-mjcf-noreset-20261125-002` reached its 4 h checkpoint with 3 submissions. The agent was fitting
+  lighting and table-edge appearance (sun direction, fill light, surface colours), not physics or the mechanism, so per
+  the hold rule it was **stopped** at 4 h.
+
 ## 2026-11-26 02:30 UTC — Freezer failures: root cause found and fixed
 - Builder probes (`63754726`, `63755982`, test partition) found the cause.
   - The `scancel --signal=STOP/CONT` RPCs take 6–76 s under slurmctld load; the freeze itself follows within ms.
