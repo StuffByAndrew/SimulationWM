@@ -46,6 +46,28 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-26 04:00 UTC — Wrench bug on jointed bodies; gear relaunch pending; more parallelism
+- **Wrench bug (builder; repro jobs `63771115`, `63771547`):** with a point grasp on a JOINTED body (hinge or slide), the
+  public wrench reported the grip's constraint rows along directions the joint blocks.
+  - These rows have near-zero effective inverse mass, so any sub-mm misalignment gave about 1e11 N.
+  - It is not weld-specific (connect shows the same) and long predates the weld grasp.
+  - Free bodies are correct.
+  - Affected levels with `wrench = true`: damped_lever (12 configs), spring (8), msd_* (8), gear_train (3) and bottle (4).
+- **Runner decision:** the fix is approved. The public wrench becomes the least-magnitude grasp-point wrench that applies
+  the grip's own generalized force: identical for free bodies, blocked components dropped for jointed ones, nothing new
+  disclosed. Merge and image are pending.
+  - Gear-recon `-20261126-001` (`63755324`, about 60 run-minutes; its agent saw about 1e11 N) and gear cheap/deep were
+    cancelled. A fresh matched set runs after the fix.
+  - The 4 bottle runs are held.
+- **Earlier runs on the affected levels** may have shown agents garbage forces. The results explorer was asked to scan
+  the recorded wrench magnitudes; whether to flag them in reports is the user's call.
+- **Parallelism (user: max out parallel jobs):**
+  - kempner_cpu is at its 4-run QoS.
+  - Wave 27 shapes and objects-unstated pairs moved to **test** (12 h limit; 4 h wall runs), on separate nodes:
+    `63779546` (running on holy8a24502) and `63779635`.
+  - The 11 sapphire experiment jobs were re-submitted with **14 h** limits instead of 3 days, so backfill can place them:
+    `63779600`–`63779693`.
+
 ## 2026-11-26 03:30 UTC — Inkling 2 Mini launched on the hard five; user decisions on freeze/thaw and the bottle
 - **User decisions:**
   - Keep freeze/thaw time counting toward the hard wall (no change).
