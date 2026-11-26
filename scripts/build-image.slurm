@@ -71,7 +71,7 @@ import datetime, hashlib, json, os, re, socket, subprocess, sys
 from pathlib import Path
 record_path, containerfile, base_record, archive_dir, *rest = sys.argv[1:]
 METRIC_MODULES = {"evaluation", "runtime", "worker", "fixture", "fixture_view", "die", "launcher", "tabletop", "cloth", "force_profile",
-                  "primitive_metrics", "baselines", "gear_train"}  # a guard: never in the agent image (the scan covers every absent module)
+                  "primitive_metrics", "baselines", "gear_train", "bottle"}  # a guard: never in the agent image (the scan covers every absent module)
 images = {"evaluator": json.loads(Path(base_record).read_text())["images"]["evaluator"]} if base_record else {}
 for role, tag, raw in zip(rest[0::3], rest[1::3], rest[2::3]):
     inspection = json.loads(raw)
