@@ -401,27 +401,34 @@ def verify_host_limits(name, limits, deadline, proc=None):
     return observed
 
 
+FREEZE_DEADLINE_SECONDS = 900  # one freeze or thaw, including every controller RPC it needs
+
+
 def _set_paused(name, paused, backend):
     if backend != "slurm_step":
         subprocess.run(["podman", "pause" if paused else "unpause", name], capture_output=True, timeout=10, check=True, env=podman_env())
         return
     # Podman cannot pause without its own cgroup; Slurm applies step STOP/CONT with the cgroup v2 freezer.
     step, leaf = SLURM_STEPS[name]
-    # scancel is a slurmctld RPC that can stall under controller load (wave-2 job 57226610: one 10 s CONT timeout ended a
-    # run). Signalling is idempotent, so resend until the step freezer itself reports the requested state, else fail.
-    deadline = time.monotonic() + 180
+    # scancel is a slurmctld RPC whose latency under controller load reached 76 s (probe job 63755982; the step cgroups are
+    # root-owned, so there is no direct freezer write). A 30 s client timeout killed every attempt and failed runs 63706221
+    # and 63706223. Each request now runs to completion, so requests never overlap and a late STOP cannot land after a CONT;
+    # one is resent only after it returned without the step freezer reaching the requested state; past the deadline, fail.
+    deadline = time.monotonic() + FREEZE_DEADLINE_SECONDS
     while True:
+        remaining = deadline - time.monotonic()
         try:
-            subprocess.run(["scancel", "--signal=" + ("STOP" if paused else "CONT"), step], capture_output=True, timeout=30, check=True, env=podman_env())
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired("scancel", 0)
+            subprocess.run(["scancel", "--signal=" + ("STOP" if paused else "CONT"), step], capture_output=True, timeout=remaining, check=True, env=podman_env())
         except subprocess.TimeoutExpired:
-            pass
-        settle = time.monotonic() + 15
+            raise SandboxFailure("Slurm step %s freezer did not reach frozen=%d within %d s: %s"
+                                 % (step, paused, FREEZE_DEADLINE_SECONDS, json.dumps(_freezer_evidence(leaf)))) from None
+        settle = time.monotonic() + 30
         while time.monotonic() < settle:
             if "frozen " + str(int(paused)) in (leaf / "cgroup.events").read_text().splitlines():
                 return
             time.sleep(.05)
-        if time.monotonic() > deadline:
-            raise SandboxFailure("Slurm step %s freezer did not reach frozen=%d: %s" % (step, paused, json.dumps(_freezer_evidence(leaf))))
 
 
 def _freezer_evidence(leaf):

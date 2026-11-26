@@ -875,25 +875,36 @@ input()
             self.assertEqual([report["status"] for report in reports], ["unevaluated"])
 
 
-def test_slurm_step_freeze_resends_signal_after_controller_timeout(tmp_path):
-    """A stalled slurmctld RPC (wave-2 job 57226610) must not end the run: resend until the freezer state is reached."""
+def test_slurm_step_freeze_waits_out_slow_controller_rpcs_and_never_overlaps_them(tmp_path):
+    """scancel RPCs took up to 76 s (probe job 63755982); a 30 s client timeout killed every attempt (runs 63706221,
+    63706223). Each request runs to completion; one is resent only after it returned without the freezer state."""
+    import pytest
     import subprocess
     from unittest.mock import patch
     from sim2sim import runtime
     events = tmp_path / "cgroup.events"
     events.write_text("populated 1\nfrozen 1\n")
-    calls = []
+    clock, calls = [0.], []
+
     def scancel(args, **options):
-        calls.append(args)
-        if len(calls) == 1:
-            raise subprocess.TimeoutExpired(args, options["timeout"])
-        events.write_text("populated 1\nfrozen 0\n")
-    clock = [0.]
+        calls.append((args, options["timeout"]))
+        clock[0] += 76  # a slow controller RPC that completes
+        if len(calls) == 2:  # the first CONT was lost; the second takes effect
+            events.write_text("populated 1\nfrozen 0\n")
+
     with patch.dict(runtime.SLURM_STEPS, {"agent": ("1.2", tmp_path)}), patch.object(runtime.subprocess, "run", scancel), \
             patch.object(runtime.time, "monotonic", lambda: clock[0]), \
             patch.object(runtime.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s)):
         runtime._set_paused("agent", False, "slurm_step")
-    assert calls == [["scancel", "--signal=CONT", "1.2"]] * 2
+    assert [args for args, _ in calls] == [["scancel", "--signal=CONT", "1.2"]] * 2
+    assert calls[0][1] == runtime.FREEZE_DEADLINE_SECONDS and calls[1][1] < calls[0][1]  # the client waits out the RPC
+
+    def stalled(args, **options):  # an RPC still running at the deadline: fail loudly, never a second overlapping request
+        raise subprocess.TimeoutExpired(args, options["timeout"])
+    clock[0], calls[:] = 0., []
+    with patch.dict(runtime.SLURM_STEPS, {"agent": ("1.2", tmp_path)}), patch.object(runtime.subprocess, "run", stalled), \
+            patch.object(runtime.time, "monotonic", lambda: clock[0]), pytest.raises(runtime.SandboxFailure, match="within 900 s"):
+        runtime._set_paused("agent", True, "slurm_step")
 
 
 def test_slurm_step_freeze_failure_reports_cgroup_and_task_states(tmp_path):
