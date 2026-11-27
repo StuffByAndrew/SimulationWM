@@ -46,6 +46,21 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 04:40 UTC — Bottle results (3 of 4); first BYCOST checkpoint resumed
+- **Bottle** (`python -m sim2sim.bottle`), all opened:
+
+| Run | Run-min | Submissions | First opening | Contents |
+|---|---|---|---|---|
+| `w32-bottle-empty-2grasp-20261127-001` | 153 | 2 | ~44 run-min, episode 14 | n/a |
+| `w32-bottle-contents-2grasp-20261127-001` | 189 | 3 | ~12 run-min, episode 5 | seen; tipped out ball, cube, rod |
+| `w32-bottle-empty-1grasp-20261127-001` | 206 | 3 | ~20 run-min, episode 7 | n/a |
+
+  `w32-bottle-contents-1grasp-20261127-001` is still running (238 run-minutes, 3 submissions).
+- `w25-hand-prism-offset-com-control-20261127-001` reached its 4 h checkpoint while running a physical-parameter sweep
+  (solref/solimp, friction, inertia) against 9 recorded sequences: **resumed to 6 h**, with the BYCOST caps unchanged
+  ($1000 per run, pool $15000).
+- BYCOST spend: $646.49 of $15,000.
+
 ## 2026-11-27 03:45 UTC — First bottle run done: the agent opened it
 - `w32-bottle-empty-2grasp-20261127-001` (BYCOST key) **completed**: 153 run-minutes, 2 submissions.
   - `python -m sim2sim.bottle` (job log `experiments/validation/bottle-check-*.log`): **opened**, first at action 382,
