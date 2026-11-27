@@ -46,6 +46,31 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 19:30 UTC — Batch wrap-up: every planned condition has a complete run
+- `w23-fixture-rubber-neon-20261125-002` **completed** after its checkpoint resume: agent finish at 337 run-minutes,
+  2 submissions. It was the last run.
+- **Status by wave** (n=1 per condition; discarded attempts are logged above):
+  - **Carbon, hard five:** complete (agent finish in all; 1–3 submissions).
+  - **Inkling 2 Mini, hard five:** complete, **0 submissions** in all five; the intention-only tool-call loop took
+    50–79% of run time.
+  - **Wave 23 fixture (Neon):**
+    - bimodal (320 run-minutes, 3 submissions);
+    - rigid (255, 3; resumed at 4 h);
+    - rubber (337, 2; resumed at 4 h).
+  - **Wave 24 die (BYCOST):** all 4 by agent finish, 3–6 submissions.
+  - **Wave 25 touch harness vs control (BYCOST):** all 8; smooth-mesh treatment stopped at 4 h after converging.
+  - **Wave 26 low-rank vs MJCF (BYCOST):** lowrank 152 run-minutes / 2 submissions; mjcf 220 / 4.
+  - **Wave 27 touch-tabletop (BYCOST):** all 8; L3 grab succeeded in both runs.
+  - **Wave 28 gear-train (weld):** recon deep, cheap shallow, deep deep.
+  - **Wave 29 low-rank prompt:** all 8 (two prompted reruns `-20261127-002`).
+  - **Wave 31 resets vs no resets:** all 6.
+  - **Wave 32 bottle (BYCOST):** 3 of 4 opened it; contents-1grasp never opened.
+- **Infrastructure this batch** (all fixed and logged above): netscratch and lab FILE quotas (fixed by audit compaction),
+  the freezer RPC kill, the real-time audit reservation, the agent-image leak (isolated images), the jointed-body wrench,
+  Neon 503 outages (provider holds) and the main key's daily quota (moved to BYCOST).
+- **BYCOST spend:** about $800 of the $15,000 lifetime pool.
+- **Next:** analysis and reports (results explorer); see docs/experiment-todo.md. Cable-tangle (wave 30) is not yet built.
+
 ## 2026-11-27 15:25 UTC — Gear-train (wave 28, weld) complete
 - `w28-gear-deep-20261126-002` (gear-removal use): agent finish at 232 run-minutes, 1 submission, depth class **deep**.
 - **Wave 28 (n=1 per condition):**

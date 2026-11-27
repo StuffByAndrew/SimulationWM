@@ -12,13 +12,19 @@ Keep this list current: strike items when a log entry covers them.
   limits would be hit. Medium reasoning.
 - One run per condition. **No replicates until the user says so** (user, 2026-11-24; this supersedes the 2026-11-05
   n=3 rule). Reruns of runs killed by infrastructure are not replicates and continue.
-- Slurm `test` or `sapphire` (CPU) only, never GPU partitions. Pack 2–3 runs per `scripts/experiment-strict.slurm` job.
-- Cost: one pool per ET day, $1000 since 2026-11-06 (user; $700 from 2026-11-04, $500 before) (`cost_pool = "sim2sim-YYYYMMDD"`), and per-run caps (usually $44). Agents never see
-  spend. The orchestrator picks and launches the next wave without asking, within the day's pool.
+- Strict runs on CPU partitions only: `kempner_cpu` (`--account=kempner_qianqian_lab`, 32 CPUs / 128 GB per user = 4 runs
+  at 8 CPUs; die runs need 16), `test` (12 h; only for runs that cannot outlast an outage) and `sapphire` (give 14–20 h
+  limits, not 3 days, so backfill places them). At most 2 jobs per node. GPU only for self-hosted model services
+  (kempner_gpu_priority A100s, never H100/H200).
+- Cost: Gemini on `GEMINI_API_KEY` is unlimited (accounting-only caps); `GEMINI_API_KEY_BYCOST` has a $15000 lifetime
+  pool; astra keeps its $200 per ET day. Agents never see spend. The orchestrator launches the next wave without asking.
 - Only the declared factor may differ between paired runs. Since wave 6 the task is `TASK_CONVERGE` (finish when nothing
   differs); compare new-prompt runs only with new-prompt baselines.
-- Run on netscratch (`SIM2SIM_EXPERIMENTS_ROOT=/n/netscratch/qianqian_lab/Lab/aejxie/sim2sim-experiments`); the lab root
-  is over its quota (2026-11-23).
+- Storage: every strict job compacts its runs at the end (`sim2sim.compact`). Check `my_storage.sh` FILES% before large
+  batches; FILE quotas, not bytes, killed runs on 11-24/25.
+- Gemini keys: about 40 concurrent Neon runs exhausted `GEMINI_API_KEY`'s daily quota (HTTP 429, resets about 08:00
+  UTC). Spread big batches across it and `GEMINI_API_KEY_BYCOST` (lifetime pool `gemini-bycost`, $15000). Use
+  `bycost()` in `generate-waves.py` for key-only variants.
 
 ## Roles (user, 2026-11-24)
 - Level building belongs to the "s2s builder role" session; the runner session (this log's author) orchestrates runs:
@@ -30,137 +36,26 @@ Keep this list current: strike items when a log entry covers them.
   strict job compacts its runs at the end. Lab, netscratch and home are all usable again; probe the roots and check
   `my_storage.sh` (FILES%) before large batches.
 
-## Queue priority (user, 2026-11-24)
-0. **Wave 31, resets vs no resets (user, 2026-11-25): top priority.** Prepare and `scontrol top` as soon as the runtime's
-   `[simulation] resets` switch is merged (builder).
-1. Stochasticity experiments: fixture (wave 23) and die (wave 24).
-2. Explanation-depth gear-train runs (wave 28): weld configs ready (builder, 2026-11-25). Run all three conditions
-   (recon, cheap, deep) as a new matched set from the regenerated `wave28-20261124` configs; the connect-grasp deep run is
-   not part of the set. Put them at the top (`scontrol top`). Image record `trusted-image-isolated-weld.json`; see the
-   gear-train section below.
-3. Other new-capability runs: waves 25, 26 and 29 (and wave 27 once built).
-4. Carbon evaluation last: its reruns carry `Nice=200000`.
-
-## Childproof bottle (user, 2026-11-25): built, ready to launch (wave 32)
-- [ ] **Launch wave 32** ([design](level-designs/childproof-bottle-20261125.md), [level](environments.md#childproof-bottle-bottle_empty-bottle_contents)):
-  `experiments/configs/wave32-20261125/w32-bottle-{empty,contents}-{1,2}grasp.toml`, 4 runs, n = 1. Weld grasp(s)
-  (`grasp = "weld"`; `point_grasps = 2` in the 2-grasp runs) with wrench, RGB-D, movable camera, `sequence` tool,
-  `TASK_CONVERGE`, MJCF answer, gemini-4-neon, 4 h wall (`wall_only`), budget hold 36 h, provider hold 36 h,
-  accounting-only caps, pool `gemini-20261125-bottle`, evaluation timeout 900 s.
-  - **Image:** `experiments/images/trusted-image-isolated-bottle.json` (agent `2e7cd4413663`, evaluator `053bb9233a8a`;
-    build job `63754732`). The agent image's sources equal the weld record's (`trusted-image-isolated-weld.json`); the
-    evaluator adds `bottle.py`, the `objects` wiring and the rollout generalization. No baseline needs a rerun (new level).
-  - **Validation:** check `63752922` passed (hidden mechanism and contents; twist only and pushes ≤ 7.7 N stay closed,
-    8.05 N + quarter turn opens; stable two-weld opening; **one weld grasp can open it** with table friction holding the
-    bottle); full suite `63753627` (364 passed, known `test_tools` failure); OCI suite with this record `63755828`: 12 passed,
-    1 skipped (tools image), including the two-weld end-to-end bottle run (opened at action 7, contents seen, bottle and
-    objects metrics ok in the evaluator container). Smoke: `--prepare-only` of `w32-bottle-contents-2grasp` (job
-    `63760019`); the dashboard lists both bottle environments.
-  - **Watch in the first run:** the bottle metric runs ~22 probe rollouts per world (2 min 47 s for the whole check on a test
-    node; budget 900 s per evaluation); a submission without a body under either probe pixel scores `cannot_answer`.
-    Post-run: `python -m sim2sim.bottle RUN_DIR` on a test node for opening, its time and contents seen/tipped out.
-  - **Premise note:** one grasp suffices physically (H2 then measures help, not necessity).
-
-## Inkling 2 Mini on the five hard levels (user, 2026-11-24): configs ready, not launched
-- `experiments/configs/inkling-20261124/*.toml`, zero cost, self-hosted (AGENTS.md "Inkling 2 Mini, self-hosted").
-- **Launch:**
-  1. `sbatch scripts/inkling-service.slurm` from the repository root. For requeue, add
-     `-p kempner_requeue --qos=normal`. The lab's 16-GPU priority QoS was full on 2026-11-25.
-  2. Wait until `$INKLING_ROOT/service/service.json` exists and the log says `healthy`.
-  3. Prepare and submit the five runs like the Carbon ones (`trusted-image-isolated.json`, sapphire). No key is needed.
-- **Capacity:** one service, 5 slots and 262144 shared cache cells, serves all five runs. Expect slow calls, about 14
-  tokens/s per run when all five generate at once.
-  - Keep the service's `-t` longer than the 6 h walls plus queueing.
-  - A preempted or dead service is held as a provider outage (36 h allowance).
-- **Report:** compare at matched tokens as well as matched wall time, and report the timeout and malformed-call rates.
-
-## 2026-11-23 batch (launched; see the log)
-- [ ] Recordings (a1a65b1): jobs submitted before 2026-11-24 ~07:30 UTC keep their submit-time copy of
-  `experiment-strict.slurm`, so they do not record. Run `.venv/bin/python experiments/validation/run-video.py RUN_DIR`
-  on a test node for each such run before it goes into a report (all queued sapphire jobs of waves 23–26, 29 and Carbon).
-- [ ] One `test` slot is reserved for the user's dashboard (user, 2026-11-23, via the results-explorer session) until
-  the user releases it: at most 4 strict jobs on `test`; use sapphire otherwise.
-- [ ] Review holds (4 h checkpoint: resume to 6 h while the agent works on the physics or mechanism) for waves 23–26 and
-  the Carbon batch; jobs in `experiments/validation/jobs-20261123.txt`.
-- [ ] Carbon vs Neon/Hydrogen/astra on the five hard levels (`model-compare-20261119.py`, add the Carbon set); record the
-  best overall model in AGENTS.md "Gemini models" and make it the default.
-- [ ] Wave 25: touch harness (local controller + pausable bash) vs the w21 harness, on Neon; report to the analyst session.
-- [ ] Wave 26: low-rank answer vs full MJCF on cube_spring_block (n=2 each): parameter errors vs wall minutes and tokens;
-  extract the MJCF runs' cube mass/COM/inertia and spring stiffness from their submissions for the same errors.
-- [ ] Hydrogen configs of waves 23/24 exist but were not launched (Neon is the default).
+## 2026-11-23 to 27 batch: all runs finished; analysis to do
+Every condition has one complete run (n=1; no replicates by user rule). Killed or truncated attempts are infrastructure
+failures and are discarded (user rule); the experiment log records each one and its rerun.
+- [ ] **Reports** (results explorer): Carbon vs Neon/Hydrogen/astra (hard five); Inkling 2 Mini (0 submissions; the
+  tool-call loop study is done); wave 31 resets vs no resets; wave 28 depth (deep/shallow/deep) with accuracy, sim_cost and
+  the G-cheap/G-deep scores; wave 26 low-rank vs MJCF; wave 29 low-rank prompt vs baselines; wave 25 touch harness;
+  wave 27 touch-tabletop (H1–H5; L3 grab succeeded in both runs); wave 24 die (Brier vs baselines); wave 23 fixture
+  (rigid, rubber, bimodal); wave 32 bottle (3 of 4 opened). Several sets mix the two Gemini keys; only the key differs.
+- [ ] **Recordings:** runs from jobs submitted before a1a65b1 (2026-11-24 about 07:30 UTC) have no recording. Run
+  `experiments/validation/run-video.py RUN_DIR` on a test node before reporting them.
+- [ ] **Wrench bug, earlier runs:** lever, spring, msd and gear runs before f550e3a showed agents garbage forces (scan
+  `experiments/validation/wrench-scan-20261126/`). Flagging them in reports is the user's call; it was asked and is unanswered.
+- [ ] **Not built:** the H4 trace classifier and the dashboard structure summary for gear-train (builder deferred).
+- [ ] **Hydrogen configs** of waves 23 and 24 exist and were not launched (Neon is the default).
 
 ## Cable tangles (user, 2026-11-24): designed, to build and queue
 - [ ] Build and queue per [level-designs/cable-tangle-20261124.md](level-designs/cable-tangle-20261124.md): C1 one knotted
   cable vs C2 cable + hidden unlinked closed loop (both show two ends); new two-point-grasp capability; {base, 2 grasps,
   + MJCF} × {C1, C2} = 6 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are user-approved;
   do not re-ask.
-
-## Explanation-depth gear train (user, 2026-11-24): designed, to build and queue
-- [ ] Build and queue per [level-designs/gear-train-depth-20261124.md](level-designs/gear-train-depth-20261124.md): visible
-  ~20-gear train, deep and shallow models equal in prediction (deep ≥ 10× costlier); neutral task × {none, cheap-use,
-  intervention-use} sentence = 3 runs, point grasp + wrench, RGB-D movable camera, Neon, n=1, 4 h. Settings are
-  user-approved; do not re-ask.
-- [x] Built (builder session, 2026-11-24); weld grasp (2026-11-25). **Ready to launch.**
-  - Configs `experiments/configs/wave28-20261124/` (`RUNS_W28`): `w28-gear-recon`, `w28-gear-cheap`, `w28-gear-deep`, one
-    run each, a new matched set. gemini-4-neon, weld grasp with wrench (`grasp = "weld"`, `grasp_slip_m = 0.002`,
-    `grasp_slip_rad = 0.05`), RGB-D, movable camera, `sequence` tool, lock-step, 14400 s wall (`wall_only`), no checkpoint
-    hold, budget hold 129600, provider hold 129600, pool `gemini-20261124`, evaluation timeout 600 s.
-  - Image: `experiments/images/trusted-image-isolated-weld.json` (job `63739907`). Every `sim2sim` module in its agent and
-    evaluator archives is byte-identical to the builder branch's `src/sim2sim` (hashes of the archives' layers), including
-    `gear_train.py` and both slips, so no new image was built. No baseline needs a rerun.
-  - Validation: check job `63754037` (all premises; see the `docs/environments.md` gear-train section) and 34 tests in the
-    same job. Smoke: `--prepare-only` of `w28-gear-deep` on the login node; the dashboard lists the level (with the
-    generic base prompt, since the task is neutral rather than `TASK_CONVERGE`).
-  - Watch in the first runs: whether the agent finds that turning the crank needs the grasp rotated with it (`move`
-    `rotation`); how often the grasp slips (`grasped` false after a move: more than 2 mm stretch or 0.05 rad twist, as from
-    a straight drag, a missing rotation or very fast turns) and whether that alone stalls the agent; the depth class of each
-    submission (`scores.gear_train.structure`); and `scores.gear_train.accuracy.candidate_timestep_s`. Agents choose their
-    own timestep; a G-cheap model at a large step is legitimate if it passes the gate.
-  - Weakened from the design: evaluation probes stay within reach and below both slip thresholds, so they are gentle (120°
-    in 2.4 s or more).
-
-## Touch-only tabletop levels (user, 2026-11-24): designed, to build and queue
-- [ ] Build and queue per [level-designs/touch-tabletop-20261124.md](level-designs/touch-tabletop-20261124.md): Franka +
-  Shadow hand, touch only; L1 abstract shapes, L2 mug/banana/hammer (categories unstated vs stated), L3 spiky ball in a
-  bin; × {w21, w25} harness = 8 runs, Neon, n=1, 4 h. Settings are user-approved; do not re-ask.
-- [x] Built (builder session, 2026-11-24). **All 8 runs ready (L3 settled by the user 2026-11-24: hard identification task,
-  no pass bar, 40 mm walls; check job `63460653`). Held only for the isolated image (agent/evaluator split).**
-  - Configs `experiments/configs/wave27-20261124/`: `w27-shapes`, `w27-objects-unstated`, `w27-objects-stated` and
-    `w27-bin-spiky`, each also as `-touch` (w25 harness: + local controller copy, pausable bash). gemini-4-neon, touch only
-    (tactile, no images, no wrench), 14400 s wall, no checkpoint hold, provider hold 129600, pool `gemini-20261124`.
-  - Image `b56436aa9137…`: record `experiments/images/trusted-image-touch.json` (job `63327059`, built from the merged
-    branch `d59a5b2`). Point strict jobs at it with `SIM2SIM_TRUSTED_IMAGE_RECORD`. No existing baseline needs a rerun:
-    the harness change is additive (a new robot family).
-  - Validation:
-    - check job `63325077` (all premises; see the `docs/environments.md` section);
-    - tests `63325338` and `63325491` (tabletop, local controller, runtime, simulation);
-    - OCI `63327523` (8 passed, 1 skipped) and `63328095` (new panda_shadow end-to-end test passed);
-    - smoke `--prepare-only` of `w27-objects-stated` and `w27-bin-spiky-touch` (job `63328177`).
-  - Watch in the first runs: whether agents find the flexed-wrist pose. With the wrist straight the forearm hangs ~4 cm
-    under the palm and hits low objects, the table and the bin rim. Also watch L3 balls knocked over the 30 mm wall.
-    After each run: `python -m sim2sim.tabletop RUN_DIR` (Slurm `test`) for grab success and the contact coverage view.
-  - L3 reference floors (scripted identification, 3 presses per ball): palm taxels 25% (curled) / 47.5% (straight), contact
-    height 97.5%; grab possible but hard (1 of 108 open-loop tries). See `docs/environments.md`.
-
-## Wave 24 biased die (user, 2026-11-23): launched on Neon only (4 runs)
-- [ ] Configs `experiments/configs/wave24-20261123/` (8 runs): {point grasp without wrench, Franka with joint efforts} ×
-  {25 frames/s baseline, 100 frames/s control} × {gemini-4-neon, gemini-4-hydrogen}.
-  - Every run: real time, RGB-D, movable camera, `sequence` + `channel` tools, die metric.
-  - 6 h wall with the 4 h checkpoint hold, `provider_hold_seconds` 14400, accounting-only caps, pool `gemini-20261123`.
-  - Single factors: the actuator (grasp vs franka at equal frame rate), and the frame rate (25 vs 100 at equal actuator).
-  - The 100 frames/s control keeps the throws, evaluation trials and baselines identical, so it tests whether the agent
-    adapts its modeling approach (e.g. a mechanics model from precise release estimates) to more precise observations.
-- [ ] Before launching:
-  - Use the merged main image `42f70708fdcc…` (`experiments/images/trusted-image.json`, job `63142237`); the
-    branch-only image in `trusted-image-die.json` predates the merge (predictor runner moved to `sim2sim.predictor`).
-  - Pack **one die run per strict job**. The controller's real-time physics thread, the agent (4 CPU) and, during
-    evaluation, the predictor container (4 CPU) all need CPUs at once.
-  - Use lab or netscratch storage (`audit_bytes` 32 GiB: every frame batch the agent's code reads is audited).
-- [ ] Review:
-  - Brier score vs experiment time against the uniform, empirical and mechanics baselines (`RUN/die-view.html`).
-  - Whether agents model the throw-dependent outcome distribution, use the controller channel, and report estimates.
-  - Latency and late-answer rates.
-  - Compare at matched wall minutes and tokens.
 
 ## Wave 16 tunnel levels (user, 2026-11-08): standing review rules
 - [ ] When the runs end or hold, review each automatically (audit progress notes, submitted models, `force_profile`):
@@ -390,17 +285,3 @@ Keep this list current: strike items when a log entry covers them.
   - Find out what state on a node causes it (stale pause process or lock?).
 
 
-## Wave 23 positioning fixture (user, 2026-11-23): launched on Neon only (3 runs)
-- [ ] Launch `experiments/configs/wave23-20261123/` (6 runs: `fixture_rigid`, `fixture_rubber`, `fixture_bimodal` ×
-  `gemini-4-neon`, `gemini-4-hydrogen`; Franka with joint torques, RGB-D, movable camera, sequence tool; 6 h visible wall,
-  4 h checkpoint hold, `provider_hold_seconds = 14400`, accounting-only caps, pool `gemini-20261123`). Levels:
-  `docs/environments.md` (Spring-powered positioning-fixture levels). The submission is a predictor program
-  (`predictor.py`: `predict`, `settings`), scored by `fixture` (CRPS at 25 held-out settings × 16 releases, Brier, hit
-  rates at the chosen settings × 40 releases); each evaluation takes a few minutes (`timeout_seconds = 1800`).
-- [ ] Launch with the merged main image `42f70708fdcc…` (`experiments/images/trusted-image.json`, job `63142237`; OCI
-  job `63143283` passed). The branch-only image in `trusted-image-fixture.json` predates the merge (unified predictor
-  runner and predictor-task prompt). Rebuild if `src/` or the harness changes before launch.
-- [ ] Gemini fairness rules (AGENTS.md) need an astra reference only if a comparison is wanted; none exists for this level.
-- [ ] Review per run: the dashboard links each submission's fixture view (predicted vs measured histograms, settings map,
-  trial replay). Check whether agents find the bimodal level's minor (folded-back) mode and avoid mean-based settings for
-  the narrow target.
