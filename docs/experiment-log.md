@@ -46,6 +46,26 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 08:05 UTC — Waves 25, 26 and 29 complete (BYCOST); two w29 prompted runs rerun
+- **Wave 25, touch harness vs control (4 levels):** all 8 done.
+  - Treatment: prism 232 run-min / 4 submissions; offset-com 342 / 7; smooth-mesh stopped at 4 h (241 / 4); spiky 316 / 4.
+  - Control: prism 201 / 3; offset-com 290 / 3; smooth-mesh 346 / 6; spiky 336 / 8.
+  - All others ended by agent finish.
+- **Wave 26, low-rank answer vs full MJCF (cube-spring-block):** lowrank 152 run-min / 2 submissions; mjcf 220 / 4. Both
+  agent finish.
+- **Wave 29, low-rank prompt (spring-as-a-scale):**
+  - Done, by agent finish:
+    - cube-spring prompted 155 / 3, baseline 250 / 6;
+    - cube-spring-block prompted 343 / 4;
+    - tetra-spring-block baseline 342 / 3;
+    - tetra-spring baseline 305 / 5;
+    - w11 prompted 96 / 2.
+  - **Infrastructure failures:** the prompted tetra-spring and tetra-spring-block runs were blocked at about 2 min with
+    "Container is not running for host-side verification".
+    - Rerun as `-20261127-002` on test (BYCOST, sources identical): `64102544` (holy8a24401) and `64102552`.
+- The kempner_cpu runs (gear ×3, fixture-rubber) still hit HTTP 429 on GEMINI_API_KEY at 08:02 UTC, awaiting the
+  daily reset.
+
 ## 2026-11-27 06:55 UTC — Die (wave 24) and touch-tabletop (wave 27) complete (BYCOST reruns)
 - **Wave 24, biased die (Neon, 4 h wall, isolated wrench image):** all 4 finished by agent finish.
   - grasp 25 fps: 184 run-minutes, 5 submissions;
