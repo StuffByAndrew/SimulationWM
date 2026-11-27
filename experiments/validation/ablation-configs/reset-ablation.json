@@ -1,9 +1,9 @@
 {
- "title": "Same hidden scene and config, resets allowed vs no resets (Gemini 4 Neon, strict runs; wave 31). Left: each condition's first camera frame and settings. Each dot is a scored submission; the line holds its value until the next one.\nDashed: a second run of the same condition. Dotted line: truth (ratios) or no-mechanism error (1). Cube row: both runs with resets ended early on Google outages (truncated); its full rerun is still running.",
+ "title": "Same hidden scene and config, resets allowed vs no resets (Gemini 4 Neon, strict runs; wave 31). Left: each condition's first camera frame and settings. Each dot is a scored submission; the line holds its value until the next one.\nDashed: a second run of the same condition. Dotted line: truth (ratios) or no-mechanism error (1). Cube row: solid = the full run with resets (-20261127); dashed = two earlier runs cut short by Google outages (truncated).",
  "data": [
   "/n/home00/aejxie/sim2sim/experiments/reports/results-gemini-vs-astra-20261124/data.js",
   "/n/home00/aejxie/sim2sim/experiments/reports/results-new-20261124/data.js",
-  "/n/home00/aejxie/sim2sim/experiments/reports/results-resets-20261126/data.js"
+  "/n/home00/aejxie/sim2sim/experiments/reports/results-resets-20261127/data.js"
  ],
  "conditions": [
   {
@@ -126,28 +126,28 @@
   ],
   "cube": [
    [
+    "r:stiffness",
+    "spring stiffness ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
+    "r:mass:block",
+    "block mass ÷ true",
+    0.1,
+    "ratio"
+   ],
+   [
     "r:mass:cube",
-    "cube mass ÷ true",
+    "cube mass ÷ true (incl. a 50 kg table body, 3 runs)",
     0.1,
     "ratio"
    ],
    [
     "com_mm",
-    "COM error (mm)",
+    "COM error (mm; same table body)",
     5.0,
     "log"
-   ],
-   [
-    "chamfer_mm",
-    "shape, Chamfer (mm)",
-    2.0,
-    "log"
-   ],
-   [
-    "r:stiffness",
-    "spring stiffness ÷ true",
-    0.1,
-    "ratio"
    ]
   ]
  },
@@ -217,10 +217,11 @@
    }
   ],
   [
-   "Cube on a spring,\nfull MJCF (resets runs truncated)",
+   "Cube on a spring,\nfull MJCF",
    "cube",
    {
     "resets": [
+     "w26-cube-spring-block-mjcf-20261127-001",
      "w26-cube-spring-block-mjcf-20261123-001",
      "w26-cube-spring-block-mjcf-20261123-002"
     ],

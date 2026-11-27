@@ -1,7 +1,8 @@
 """Report data spec: the six wave-31 no-reset runs (Gemini 4 Neon, resets disabled), scored exactly as their levels' original waves
 (report-spec-20261114.family). Built for ablation-pairs-plot.py (ablation-configs/reset-ablation.json), whose baselines come from the Gemini and
-new-runs reports' data. Build: .venv/bin/python experiments/validation/build-results-report.py data experiments/validation/report-spec-20261126-resets.py \\
-    experiments/reports/report-work-20261126-resets experiments/reports/results-resets-20261126"""
+new-runs reports' data, plus later full baselines with resets (BASELINES: the cube's outage-free rerun).
+Build: .venv/bin/python experiments/validation/build-results-report.py data experiments/validation/report-spec-20261126-resets.py \\
+    experiments/reports/report-work-20261126-resets experiments/reports/results-resets-20261127"""
 import importlib.util
 from pathlib import Path
 
@@ -16,12 +17,16 @@ NORESET = {"latch-out": "w31-latch-out-noreset-20261125-003", "hand-smooth-mesh"
 assert set(NORESET) == set(B.ABLATION_BASE)
 for r in NORESET.values():
     assert B.json.loads((B.RUN(r) / "config-private.json").read_text())["simulation"]["resets"] is False, r
-NAMES = {r: (lv, "Gemini 4 Neon, no resets") for lv, r in NORESET.items()}
+WORK_CUBE = B.MAIN / "reports" / "report-work-20261127-cube"  # the cube baseline's outage-free rerun (extract-cube.slurm)
+BASELINES = {"cube-spring-block-mjcf": "w26-cube-spring-block-mjcf-20261127-001"}  # resets allowed, Neon, completed
+for r in BASELINES.values():
+    assert B.json.loads((B.RUN(r) / "config-private.json").read_text())["simulation"].get("resets", True) is not False, r
+NAMES = {r: (lv, "Gemini 4 Neon, no resets") for lv, r in NORESET.items()} | {r: (lv, "Gemini 4 Neon, resets allowed") for lv, r in BASELINES.items()}
 ORDER = list(NAMES)
-SUMMARIES = ((B.MAIN / "validation" / "results-w31-noreset-20261125.json", set(NAMES)),)
+SUMMARIES = ((B.MAIN / "validation" / "results-w31-noreset-20261125.json", set(NAMES)), (B.MAIN / "validation" / "results-w26-mjcf-20261127.json", set(NAMES)))
 INVALID, CONTINUATIONS, COMPARISONS, NOTE_FLAGS, EXAMPLES, VIEWER, FIGURES = set(), {}, {}, {}, {}, {}, {}
-MODELS, CHECKPOINTS = (WORK / "models.json",), (WORK / "checkpoints-cost.json",)
-TRACES, CHAT, EDITS = (WORK / "traces",), (WORK / "chat",), WORK / "edits.json"
+MODELS, CHECKPOINTS = (WORK / "models.json", WORK_CUBE / "models.json"), (WORK / "checkpoints-cost.json", WORK_CUBE / "checkpoints-cost.json")
+TRACES, CHAT, EDITS = (WORK / "traces", WORK_CUBE / "traces"), (WORK / "chat", WORK_CUBE / "chat"), WORK / "edits.json"
 VENDOR, TOOLS = B.VENDOR, B.TOOLS
 estimates, extra_metrics, METRICS = B.estimates, B.extra_metrics, B.METRICS
 RECORDINGS = B.recordings(NAMES)
