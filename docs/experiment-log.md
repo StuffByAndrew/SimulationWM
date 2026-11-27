@@ -55,7 +55,8 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - `w25-hand-spiky-control`: fitting a capsule tower over 34 probes;
   - `w29-cube-spring-block-lowrank-prompt`: cube contact dynamics;
   - `w29-tetra-spring-block-neon`: spring and plate masses;
-  - `w29-tetra-spring-neon`: debugging spring displacement.
+  - `w29-tetra-spring-neon`: debugging spring displacement;
+  - `w29-cube-spring-neon` (at 04:40 UTC): verifying model v8, cube mass and a toss test.
   - All are `-20261127-001`.
 
 ## 2026-11-27 04:40 UTC — Bottle results (3 of 4); first BYCOST checkpoint resumed
