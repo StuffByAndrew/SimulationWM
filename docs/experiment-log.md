@@ -46,6 +46,26 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 03:40 UTC — Inkling 2 Mini done: 0 submissions in all five; tool-call loop in every run
+- All 5 Inkling runs ended with **0 submissions**: tetra and latch at the wall deadline; marble, hand and cloth by agent
+  finish. The Inkling service (`63770834`) was cancelled, freeing its 2 A100s.
+- **Text-only (intention-only) replies, all runs** (results explorer, `experiments/validation/tool-loop-study.py`; rows in
+  `experiments/reports/report-work-20261127-inkling/tool-loop-study.jsonl`). A reply counts as text-only when it has no
+  tool call; compaction summaries are excluded.
+
+| Level | Turns text-only | Share of run time | Longest streak |
+|---|---|---|---|
+| tetra-spring-k | 538/620 (87%) | 70% | 229 turns |
+| marble-heavy-hint | 1441/1506 (96%) | 79% | 341 |
+| latch-out | 224/276 (81%) | 50% | 124 |
+| hand-smooth-mesh | 300/330 (91%) | 70% | 214 |
+| cloth-holes | 753/833 (90%) | 62% | 690 |
+
+  - Typical replies: "Let me make a camera call now.", "I'll emit the reset tool call now."
+  - Neon control (w31 latch-out): 3% of turns, 1.6% of time, never two in a row.
+- **Finding:** under the shared harness, Inkling 2 Mini (self-hosted, BF16 GGUF) mostly fails to emit tool calls once
+  the loop starts. This is a tool-use reliability result, not a route bug (builder audit).
+
 ## 2026-11-27 02:30 UTC — Carbon on the hard five complete; Inkling runs ending with no submissions
 - **Carbon, all five hard levels done** (one complete run each; earlier attempts killed by outages, quota or cancellation
   are discarded):
