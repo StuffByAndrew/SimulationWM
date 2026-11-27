@@ -46,6 +46,25 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 02:30 UTC — Carbon on the hard five complete; Inkling runs ending with no submissions
+- **Carbon, all five hard levels done** (one complete run each; earlier attempts killed by outages, quota or cancellation
+  are discarded):
+
+| Level | Run | Outcome | Run-min | Submissions |
+|---|---|---|---|---|
+| cloth-holes | `w22-cloth-holes-carbon-20261123-001` | agent finish | 356 | 1 |
+| tetra-spring-k | `w11-tetra-spring-k-carbon-20261125-001` | agent finish | 235 | 1 |
+| marble-heavy-hint | `w19-marble-heavy-hint-carbon-20261125-001` | agent finish | 358 | 1 |
+| latch-out | `w20-latch-out-carbon-20261125-001` | agent finish | 355 | 3 |
+| hand-smooth-mesh | `w21-hand-smooth-mesh-carbon-20261125-001` | agent finish | 355 | 1 |
+
+  The Carbon vs Neon/Hydrogen/astra comparison is now possible (results explorer).
+- **Inkling:** tetra-spring-k (240 min, 620 calls) and latch-out (360 min, 276 calls) hit their wall deadline with **0
+  submissions**.
+  - Tetra spent most of its turns in the intention-only loop.
+  - Marble (1,494 calls), hand and cloth are near their walls, also with 0 submissions so far.
+- **BYCOST spend:** $368.85 of $15,000 after about 2 h of the 34 reruns.
+
 ## 2026-11-27 00:30 UTC — Main Gemini key's Neon quota exhausted; 34 runs moved to the second key (BYCOST)
 - From about 21:45 UTC on 11-26, every Neon call on `GEMINI_API_KEY` returned HTTP 429 "You exceeded your current
   quota" (likely the daily request quota: about 40 concurrent Neon runs plus the outage retries). Provider holds kept the
