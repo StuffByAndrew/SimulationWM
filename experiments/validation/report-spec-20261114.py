@@ -219,9 +219,13 @@ ABLATION_BASE = {"latch-out": "w20", "hand-smooth-mesh": "w21", "cloth-holes": "
 
 
 def family(run):
-    """The run id whose scoring a run follows: a wave-31 no-reset run is scored exactly as its level's original wave."""
+    """The run id whose scoring a run follows: a wave-31 no-reset run is scored exactly as its level's original wave, and a wave-25 hand run
+    (touch harness or its control) exactly as wave 21's hand levels."""
     m = re.match(r"w31-(.+)-noreset-\d{8}-\d{3}$", run)
-    return f"{ABLATION_BASE[m.group(1)]}-{m.group(1)}" if m else run
+    if m:
+        return f"{ABLATION_BASE[m.group(1)]}-{m.group(1)}"
+    m = re.match(r"w25-(hand-.+?)(-control)?-\d{8}-\d{3}$", run)
+    return f"w21-{m.group(1)}" if m else run
 
 
 def estimates(run, source, m, default):

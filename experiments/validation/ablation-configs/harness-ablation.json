@@ -1,0 +1,13 @@
+{
+ "title": "Same hidden hand level and config, control vs touch harness (local controller + pausable bash), Gemini 4 Neon, strict runs, wave 25. Left: each condition's first camera frame and settings. Each dot is a scored submission; the line holds its value until the next one.\nDotted line: truth (mass ratio). One run per condition. The smooth-shape harness run was stopped at its 4 h checkpoint (241 min).",
+ "data": ["/n/home00/aejxie/sim2sim/experiments/reports/results-harness-20261127/data.js"],
+ "conditions": [{"id": "control", "name": "control (no harness)", "color": "#257de0"}, {"id": "harness", "name": "touch harness: local controller + pausable bash", "color": "#f47230"}],
+ "families": {"hand": [["chamfer_mm", "object shape, Chamfer (mm)", 2.0, "log"], ["com_mm", "object COM error (mm)", 5.0, "log"],
+                       ["r:mass", "object mass ÷ true", 0.1, "ratio"], ["hand_traj_mm", "object path error, squeeze + tilt (mm)", 5.0, "log"]]},
+ "rows": [
+  ["Shadow hand: prism", "hand", {"control": ["w25-hand-prism-control-20261127-001"], "harness": ["w25-hand-prism-20261127-001"]}],
+  ["Shadow hand: prism,\noff-centre COM", "hand", {"control": ["w25-hand-prism-offset-com-control-20261127-001"], "harness": ["w25-hand-prism-offset-com-20261127-001"]}],
+  ["Shadow hand:\nsmooth convex shape", "hand", {"control": ["w25-hand-smooth-mesh-control-20261127-001"], "harness": ["w25-hand-smooth-mesh-20261127-001"]}],
+  ["Shadow hand: two cones", "hand", {"control": ["w25-hand-spiky-control-20261127-001"], "harness": ["w25-hand-spiky-20261127-001"]}]
+ ]
+}
