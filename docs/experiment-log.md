@@ -68,7 +68,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 | `w32-bottle-contents-2grasp-20261127-001` | 189 | 3 | ~12 run-min, episode 5 | seen; tipped out ball, cube, rod |
 | `w32-bottle-empty-1grasp-20261127-001` | 206 | 3 | ~20 run-min, episode 7 | n/a |
 
-  `w32-bottle-contents-1grasp-20261127-001` is still running (238 run-minutes, 3 submissions).
+  `w32-bottle-contents-1grasp-20261127-001` hit its 240-minute wall deadline with 3 submissions and **never opened the
+  bottle**: 0 open states; contents not seen. So 3 of 4 bottle runs opened it: both two-grasp runs and the empty
+  one-grasp run.
 - `w25-hand-prism-offset-com-control-20261127-001` reached its 4 h checkpoint while running a physical-parameter sweep
   (solref/solimp, friction, inertia) against 9 recorded sequences: **resumed to 6 h**, with the BYCOST caps unchanged. Its
   treatment run `w25-hand-prism-offset-com-20261127-001` held at the same time while matching fingertip contact forces
