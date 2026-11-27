@@ -60,6 +60,8 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   G-cheap/G-deep scores and the H4 trace classifier are for the results explorer.
 - Only fixture-rubber is still running. It is in another provider outage (14 consecutive 300 s timeouts, about 16 h of its
   36 h allowance used), on kempner_cpu with a 3-day limit.
+- 17:25 UTC: fixture-rubber reached its 4 h checkpoint with 0 submissions while mapping the mechanism (carriage
+  travel, end-stop, bimodal stops across dial settings): **resumed to 6 h**.
 
 ## 2026-11-27 14:25 UTC — Wave 29 complete; gear-deep's first submission is deep
 - **Wave 29 complete:** the prompted reruns `w29-tetra-spring-lowrank-prompt-20261127-002` (agent finish, 350 run-min, 6
