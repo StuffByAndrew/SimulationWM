@@ -65,6 +65,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     - Rerun as `-20261127-002` on test (BYCOST, sources identical): `64102544` (holy8a24401) and `64102552`.
 - The kempner_cpu runs (gear ×3, fixture-rubber) still hit HTTP 429 on GEMINI_API_KEY at 08:02 UTC, awaiting the
   daily reset.
+  - **The quota reset at about 08:05 UTC.** Gear-deep (70 run-minutes) and fixture-rubber (38) resumed. Gear recon and
+    cheap now see 503 "high demand" spikes instead of 429s; recon's failure streak reset.
+  - Their provider-hold totals are about 23 h of the 36 h allowance, so they stay on GEMINI_API_KEY.
 
 ## 2026-11-27 06:55 UTC — Die (wave 24) and touch-tabletop (wave 27) complete (BYCOST reruns)
 - **Wave 24, biased die (Neon, 4 h wall, isolated wrench image):** all 4 finished by agent finish.
