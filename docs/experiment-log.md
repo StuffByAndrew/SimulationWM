@@ -46,6 +46,21 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 15:25 UTC — Gear-train (wave 28, weld) complete
+- `w28-gear-deep-20261126-002` (gear-removal use): agent finish at 232 run-minutes, 1 submission, depth class **deep**.
+- **Wave 28 (n=1 per condition):**
+
+| Condition | Use stated in the task | Depth of every submission | Submissions |
+|---|---|---|---|
+| G-recon | none | deep | 3 |
+| G-cheap | planner: accuracy and speed | shallow | 2 |
+| G-deep | gears removed by axle | deep | 1 |
+
+  Consistent with H1 (deep unprompted), H2 (cheap use → shallow) and H3 (removal use → deep). Accuracy, sim_cost,
+  G-cheap/G-deep scores and the H4 trace classifier are for the results explorer.
+- Only fixture-rubber is still running. It is in another provider outage (14 consecutive 300 s timeouts, about 16 h of its
+  36 h allowance used), on kempner_cpu with a 3-day limit.
+
 ## 2026-11-27 14:25 UTC — Wave 29 complete; gear-deep's first submission is deep
 - **Wave 29 complete:** the prompted reruns `w29-tetra-spring-lowrank-prompt-20261127-002` (agent finish, 350 run-min, 6
   submissions) and `w29-tetra-spring-block-lowrank-prompt-20261127-002` (357, 4) finished. All 8 wave 29 runs and their
