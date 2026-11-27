@@ -46,6 +46,18 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 04:45 UTC — Hold reviews at 4 h (BYCOST reruns)
+- **Stopped:** `w25-hand-smooth-mesh-20261127-001`. It had converged (4 submissions; submission 4 generalised across held-out
+  sequences) and had already tried to finish.
+- **Resumed to 6 h** (physics or touch-geometry work; BYCOST caps unchanged):
+  - `w25-hand-smooth-mesh-control`: fitting the object's shape from touch probes;
+  - `w25-hand-spiky`: box + capsule model refinement, mass and friction;
+  - `w25-hand-spiky-control`: fitting a capsule tower over 34 probes;
+  - `w29-cube-spring-block-lowrank-prompt`: cube contact dynamics;
+  - `w29-tetra-spring-block-neon`: spring and plate masses;
+  - `w29-tetra-spring-neon`: debugging spring displacement.
+  - All are `-20261127-001`.
+
 ## 2026-11-27 04:40 UTC — Bottle results (3 of 4); first BYCOST checkpoint resumed
 - **Bottle** (`python -m sim2sim.bottle`), all opened:
 
