@@ -46,6 +46,25 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 06:55 UTC — Die (wave 24) and touch-tabletop (wave 27) complete (BYCOST reruns)
+- **Wave 24, biased die (Neon, 4 h wall, isolated wrench image):** all 4 finished by agent finish.
+  - grasp 25 fps: 184 run-minutes, 5 submissions;
+  - grasp 100 fps: 176, 6;
+  - franka 25 fps: 173, 3;
+  - franka 100 fps: 190, 5.
+  - Scores: each run's `RUN/die-view.html` and evaluations (Brier vs baselines).
+- **Wave 27, touch-tabletop (8 runs):** 6 agent finish, 2 at the wall deadline (shapes 240, objects-unstated 240).
+  Submissions: shapes 2 / touch 2; objects-unstated 2 / touch 4; objects-stated 4 / touch 6; bin-spiky 3 / touch 4.
+  - `python -m sim2sim.tabletop` (job `64086418`, log `experiments/validation/tabletop-post-64086418.log`): contact
+    coverage views written for all 8.
+  - **L3 grab success in both bin-spiky runs:**
+    - w21 harness: the spiky COM is 0.144 m above the rim, held by the thumb and the index and middle distal phalanges;
+    - w25 touch harness: 0.210 m above the rim, in 4 finger links.
+    - In both, every smooth ball stayed in the bin. Identification scores are in their evaluations.
+- **Still running:** w25 and w29 BYCOST pairs on sapphire (4 jobs). kempner_cpu gear ×3 and fixture-rubber wait for the
+  GEMINI_API_KEY reset.
+- BYCOST spend: $701.73 of $15,000.
+
 ## 2026-11-27 04:45 UTC — Hold reviews at 4 h (BYCOST reruns)
 - **Stopped:** `w25-hand-smooth-mesh-20261127-001`. It had converged (4 submissions; submission 4 generalised across held-out
   sequences) and had already tried to finish.
