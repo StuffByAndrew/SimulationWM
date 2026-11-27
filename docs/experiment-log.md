@@ -63,6 +63,8 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
     - bottle pairs ×2.
   - The cancelled runs were at up to about 150 run-minutes (w25, w26, w29) or 0 (die, bottle, w27). Per the user's rule,
     killed runs that are rerun are discarded.
+  - 00:31 UTC: all 19 BYCOST jobs started on sapphire, and the first calls on `GEMINI_API_KEY_BYCOST` succeeded (w25
+    hand-prism pair, w27 objects-unstated).
 
 ## 2026-11-26 21:50 UTC — Sapphire batch progress; Carbon w11 completed
 - `w11-tetra-spring-k-carbon-20261125-001` **completed**: 235 run-minutes, 1 submission. Carbon marble, latch and hand
