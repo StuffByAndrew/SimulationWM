@@ -46,6 +46,15 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 14:25 UTC — Wave 29 complete; gear-deep's first submission is deep
+- **Wave 29 complete:** the prompted reruns `w29-tetra-spring-lowrank-prompt-20261127-002` (agent finish, 350 run-min, 6
+  submissions) and `w29-tetra-spring-block-lowrank-prompt-20261127-002` (357, 4) finished. All 8 wave 29 runs and their
+  baselines are now in.
+- **G-deep** `w28-gear-deep-20261126-002`: first submission at about 219 run-minutes, depth class **deep** (every gear
+  matched). The run is near its 240-minute wall.
+- Still running: fixture-rubber (192 run-minutes, slowed by Neon 503 holds).
+- BYCOST spend: $802.74 of $15,000.
+
 ## 2026-11-27 10:40 UTC — Gear-train (weld) G-recon and G-cheap complete: depth tracks the stated use
 - `w28-gear-recon-20261126-002` (no use sentence): agent finish at 236 run-minutes, 3 submissions. **All depth class
   deep** (every gear matched, fraction 1.0).
