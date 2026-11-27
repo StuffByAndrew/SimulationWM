@@ -57,6 +57,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   - Accuracy and cost scores, and the H4 trace classifier, are for the results explorer.
 - Still running: fixture-rubber (130 run-minutes), and the w29 prompted reruns (143 and 154 run-minutes, 1 submission
   each).
+- 12:25 UTC: the w29 prompted reruns reached their 4 h checkpoints while doing physics: tetra-spring was identifying
+  anisotropic inertia from swings (2 submissions); tetra-spring-block was weighing the cluster on the spring in the
+  well (1). **Both resumed to 6 h**, with the BYCOST caps unchanged.
 
 ## 2026-11-27 08:05 UTC — Waves 25, 26 and 29 complete (BYCOST); two w29 prompted runs rerun
 - **Wave 25, touch harness vs control (4 levels):** all 8 done.
