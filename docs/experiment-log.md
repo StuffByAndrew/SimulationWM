@@ -46,6 +46,18 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 10:40 UTC — Gear-train (weld) G-recon and G-cheap complete: depth tracks the stated use
+- `w28-gear-recon-20261126-002` (no use sentence): agent finish at 236 run-minutes, 3 submissions. **All depth class
+  deep** (every gear matched, fraction 1.0).
+- `w28-gear-cheap-20261126-002` (planner use; accuracy and speed scored): agent finish at 236 run-minutes, 2
+  submissions. **All depth class shallow** (matched fraction 0.0).
+- G-deep (`w28-gear-deep-20261126-002`) is still running (101 run-minutes, 0 submissions).
+  - H1: deep unprompted. H2: the cheap-use sentence moves the agent to the shallow model.
+  - H3 (G-deep) is pending.
+  - Accuracy and cost scores, and the H4 trace classifier, are for the results explorer.
+- Still running: fixture-rubber (130 run-minutes), and the w29 prompted reruns (143 and 154 run-minutes, 1 submission
+  each).
+
 ## 2026-11-27 08:05 UTC — Waves 25, 26 and 29 complete (BYCOST); two w29 prompted runs rerun
 - **Wave 25, touch harness vs control (4 levels):** all 8 done.
   - Treatment: prism 232 run-min / 4 submissions; offset-com 342 / 7; smooth-mesh stopped at 4 h (241 / 4); spiky 316 / 4.
