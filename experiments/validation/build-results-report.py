@@ -98,9 +98,12 @@ def mass_parts(source, m):
                        for g in m["geoms"] if g["rgba"][3] > 0 and g["body"] in names])
 
 
-def submission(source, model, hist, truth, est_fn=estimates):
+def submission(source, model, hist, truth, est_fn=estimates, no_scene=False):
     if hist["status"] == "failed":  # rejected by the evaluator (e.g. a modified robot fixture): a scored gap, with the evaluator's reason
         return dict(m={}, est={}, rejected=hist["unavailable_reason"])
+    if no_scene:  # a predictor program or parameter answer, not an MJCF scene: its scores come only from the spec's extra_metrics
+        assert "missing" in model, "a NO_SCENE run submitted a scene"
+        return dict(m={}, est={})
     assert "missing" not in model, "a submission without its entry scene must be one the evaluator rejected"
     assert hist["status"] == "ok", hist["status"]
     rec, hinge = hist.get("reconstruction") or {}, next(iter((hist.get("hinges") or {}).values()), None) or {}
@@ -252,7 +255,8 @@ def data(spec_path, work, out):
         est_fn = (lambda src, m: S.estimates(run, src, m, estimates)) if hasattr(S, "estimates") else estimates  # optional spec hook: scene-specific estimates
         truth = est_fn(model["source"], model["source"])
         subs = [dict(t=c["wall_min"] + offset, mtok=c["tokens"] / 1e6, **({"usd": c["cost_usd"]} if c.get("cost_usd") is not None else {}),
-                     **submission(model["source"], s, h, truth, est_fn)) for c, s, h in zip(cp, model["submissions"], hist)]
+                     **submission(model["source"], s, h, truth, est_fn, run in getattr(S, "NO_SCENE", ())))  # optional: non-scene submissions
+                for c, s, h in zip(cp, model["submissions"], hist)]
         for i, sub in enumerate(subs):  # optional spec hook: extra per-submission metrics (keys declared in S.METRICS)
             sub["m"].update(S.extra_metrics(run, i, hist[i]) if hasattr(S, "extra_metrics") else {})
         tax, note_labels, script_kinds = taxonomy(notes, stats["scripts"])
@@ -264,7 +268,7 @@ def data(spec_path, work, out):
                          cost_usd=row["cost_usd"], reason=row["reason"], budget_stop=row["budget_stop"], submissions=row["submissions"],
                          final_mtok=cps[run]["final_tokens"] / 1e6, truth=truth, subs=subs, actions=stats["actions"], calls=stats["calls"],
                          call_seconds=stats["seconds"], taxonomy=tax, parts=dict(source=mass_parts(model["source"], model["source"]),
-                                                                           final=None if "missing" in model["submissions"][-1] else mass_parts(model["source"], model["submissions"][-1])), tools=stats["tools"], flags=flags, replies=stats["replies"])
+                                                                           final=None if not model["submissions"] or "missing" in model["submissions"][-1] else mass_parts(model["source"], model["submissions"][-1])), tools=stats["tools"], flags=flags, replies=stats["replies"])
     comparisons = {}
     for cid, c in S.COMPARISONS.items():
         members = c["base"] + [c["abl"]]
