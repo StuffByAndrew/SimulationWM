@@ -46,6 +46,13 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
   `63480090`).
 - The maintenance move to lab (job `63470430`) is running; netscratch was writable again at 19:59 UTC.
 
+## 2026-11-27 03:45 UTC — First bottle run done: the agent opened it
+- `w32-bottle-empty-2grasp-20261127-001` (BYCOST key) **completed**: 153 run-minutes, 2 submissions.
+  - `python -m sim2sim.bottle` (job log `experiments/validation/bottle-check-*.log`): **opened**, first at action 382,
+    episode 14, by about 44 run-minutes (2,645 s); 970 of 11,918 states open. Contents not applicable (empty bottle).
+- The other bottle runs are at about 178 run-minutes (1–3 submissions each).
+- BYCOST spend: $540.52 of $15,000.
+
 ## 2026-11-27 03:40 UTC — Inkling 2 Mini done: 0 submissions in all five; tool-call loop in every run
 - All 5 Inkling runs ended with **0 submissions**: tetra and latch at the wall deadline; marble, hand and cloth by agent
   finish. The Inkling service (`63770834`) was cancelled, freeing its 2 A100s.
