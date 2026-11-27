@@ -57,7 +57,9 @@ used" = native wall time ÷ wall limit. How to run experiments: [experiments.md]
 
   `w32-bottle-contents-1grasp-20261127-001` is still running (238 run-minutes, 3 submissions).
 - `w25-hand-prism-offset-com-control-20261127-001` reached its 4 h checkpoint while running a physical-parameter sweep
-  (solref/solimp, friction, inertia) against 9 recorded sequences: **resumed to 6 h**, with the BYCOST caps unchanged
+  (solref/solimp, friction, inertia) against 9 recorded sequences: **resumed to 6 h**, with the BYCOST caps unchanged. Its
+  treatment run `w25-hand-prism-offset-com-20261127-001` held at the same time while matching fingertip contact forces
+  (contact stiffness over 12 sequences): also **resumed**, with the caps unchanged
   ($1000 per run, pool $15000).
 - BYCOST spend: $646.49 of $15,000.
 
